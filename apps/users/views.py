@@ -1,4 +1,5 @@
 from django.shortcuts import render
+from rest_framework.generics import GenericAPIView
 from apps.users.models import *
 from apps.users.serializers import *
 from rest_framework.permissions import AllowAny
@@ -14,6 +15,8 @@ from .otp import generate_otp
 from .chatflow import chatflow_send_text, ChatFlowError
 from rest_framework.parsers import MultiPartParser, JSONParser, FormParser
 from apps.users.utlis import *
+from rest_framework.exceptions import MethodNotAllowed
+
 
 @extend_schema(tags=["Аутентификация"])
 class RegisterView(generics.CreateAPIView):
@@ -135,62 +138,47 @@ class VerifyCodeView(generics.GenericAPIView):
 
         return Response({"detail": "Номер подтверждён", "user_id": user.id, "is_verify": user.is_verify}, status=200)
     
-class OwnProfileMixin:
-    permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self):
-        qs = super().get_queryset()
-        if getattr(self, "action", None) == "list":
-            return qs.filter(user=self.request.user)
-        return qs
+    
+@extend_schema(tags=["Профили"])
+class UserProfileView(GenericAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = UserProfileSerializer
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
+    queryset = UserProfile.objects.select_related("user")
+
+    def _self_profile(self):
+        return UserProfile.objects.select_related("user").get_or_create(user=self.request.user)[0]
 
     def get_object(self):
-        obj = super().get_object()
-        if self.request.method in ("PUT", "PATCH", "DELETE"):
-            if obj.user_id != self.request.user.id and not self.request.user.is_staff:
-                raise PermissionDenied("Можно изменять только свой профиль.")
-        return obj
+        pk = self.kwargs.get("pk")
+        if pk is None:
+            return self._self_profile()            
+        return self.get_queryset().get(pk=pk)     
 
-    @action(detail=False, methods=["get", "patch", "put"])
-    def me(self, request):
-        Model = self.get_queryset().model
-        obj, _ = Model.objects.select_related("user").get_or_create(user=request.user)
 
-        if request.method in ("PATCH", "PUT"):
-            serializer = self.get_serializer(obj, data=request.data, partial=(request.method == "PATCH"))
-            serializer.is_valid(raise_exception=True)
-            serializer.save()
-            return Response(serializer.data)
-
+    def get(self, request, *args, **kwargs):
+        obj = self.get_object()
         return Response(self.get_serializer(obj).data)
 
+    def patch(self, request, *args, **kwargs):
+        if "pk" in kwargs:
+            raise MethodNotAllowed("PATCH")
+        obj = self._self_profile()
+        ser = self.get_serializer(obj, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(ser.data)
 
-@extend_schema(tags=["Профили"])
-class ClientProfileView(
-    OwnProfileMixin,
-    mixins.ListModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.UpdateModelMixin,
-    viewsets.GenericViewSet,
-):
-    queryset = ClientProfile.objects.select_related("user")
-    serializer_class = ClientProfileSerializer
-
-
-@extend_schema(tags=["Профили"])
-class CarrierProfileView(
-    OwnProfileMixin,
-    mixins.ListModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.UpdateModelMixin,
-    viewsets.GenericViewSet,
-):
-    queryset = CarrierProfile.objects.select_related("user")
-    serializer_class = CarrierProfileSerializer
-
-
-
-
+    def put(self, request, *args, **kwargs):
+        if "pk" in kwargs:
+            raise MethodNotAllowed("PUT")
+        obj = self._self_profile()
+        ser = self.get_serializer(obj, data=request.data)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(ser.data)
+    
 @extend_schema(tags=["Аутентификация"])
 class SelfieWithIdCardView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]

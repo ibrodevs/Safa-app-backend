@@ -2,7 +2,13 @@
 """Django's command-line utility for administrative tasks."""
 import os
 import sys
+import os, sys, ctypes
 
+if sys.platform == "win32":
+    os.add_dll_directory(r"D:\bin")
+    ctypes.CDLL(r"D:\bin\geos_c.dll")
+    ctypes.CDLL(r"D:\bin\gdal311.dll")
+    os.environ.setdefault("PROJ_LIB", r"D:\share\proj")
 
 def main():
     """Run administrative tasks."""

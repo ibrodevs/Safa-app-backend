@@ -5,8 +5,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 router = routers.DefaultRouter()
 
 
-router.register(r'carrier-profile', CarrierProfileView, basename='carrier_profile')
-router.register(r'client-profile', ClientProfileView, basename='clinet_profile')
+
 
 urlpatterns = [
     path("register/", RegisterView.as_view(), name='reg'),
@@ -16,6 +15,8 @@ urlpatterns = [
     path("selfie/", SelfieWithIdCardView.as_view(), name="kyc-selfie"),
     path('whatsapp-code', RequestCodeWhatsAppView.as_view(), name='wha_code'),
     path('verify/', VerifyCodeView.as_view(), name='verify'),
+    path('profile/', UserProfileView.as_view(), name='profile'),
+    path('profile/<int:pk>', UserProfileView.as_view(), name='profile_id'),
     path("", include(router.urls)),
 ]
 

@@ -5,7 +5,7 @@ from django.utils import timezone
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
 
-from .models import User, CourierKYC, ClientProfile, CarrierProfile
+from .models import User, CourierKYC, UserProfile
 
 
 
@@ -46,20 +46,14 @@ class UserChangeForm(forms.ModelForm):
         return self.initial.get("password")
 
 
-class ClientProfileInline(admin.StackedInline):
-    model = ClientProfile
+class UserProfileInline(admin.StackedInline):
+    model = UserProfile
     can_delete = False
     extra = 0
     fk_name = "user"
     show_change_link = True
 
 
-class CarrierProfileInline(admin.StackedInline):
-    model = CarrierProfile
-    can_delete = False
-    extra = 0
-    fk_name = "user"
-    show_change_link = True
 
 
 class CourierKYCInline(admin.StackedInline):
@@ -103,19 +97,19 @@ class UserAdmin(BaseUserAdmin):
 
         inline_classes = []
         if obj.role == User.Roles.CLIENT:
-            inline_classes = [ClientProfileInline]
+            inline_classes = [UserProfileInline]
         elif obj.role == User.Roles.CARRIER:
-            inline_classes = [CarrierProfileInline, CourierKYCInline]
+            inline_classes = [UserProfileInline, CourierKYCInline]
 
         return [inline_class(self.model, self.admin_site) for inline_class in inline_classes]
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
-        from .models import ClientProfile, CarrierProfile, CourierKYC
+        from .models import UserProfile, CourierKYC
         if obj.role == User.Roles.CLIENT:
-            ClientProfile.objects.get_or_create(user=obj)
+            UserProfile.objects.get_or_create(user=obj)
         elif obj.role == User.Roles.CARRIER:
-            CarrierProfile.objects.get_or_create(user=obj)
+            UserProfile.objects.get_or_create(user=obj)
             CourierKYC.objects.get_or_create(user=obj)
 
 
@@ -152,17 +146,11 @@ class CourierKYCAdmin(admin.ModelAdmin):
 
 
 
-@admin.register(ClientProfile)
-class ClientProfileAdmin(admin.ModelAdmin):
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
     list_display = ("id", "user", "user__first_name","created_at")
     search_fields = ("user__phone_number", "user__first_name", "user__last_name", "user__email")
     readonly_fields = ("created_at",)
 
 
-@admin.register(CarrierProfile)
-class CarrierProfileAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "user__first_name","created_at")
-    search_fields = ("user__phone_number", "user__first_name", "user__last_name", "user__email")
-    readonly_fields = ("created_at",)
-
-
+    

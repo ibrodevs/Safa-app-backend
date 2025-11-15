@@ -113,16 +113,14 @@ class VerifyCodeSerializer(serializers.Serializer):
     code  = serializers.CharField(max_length=8)
 
 
-
-class ClientProfileSerializer(serializers.ModelSerializer):
+class UserProfileSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
-
     first_name = serializers.CharField(source='user.first_name', required=False)
-    last_name  = serializers.CharField(source='user.last_name', required=False)
-    avatar     = serializers.ImageField(source='user.avatar', required=False, allow_null=True)
+    last_name  = serializers.CharField(source='user.last_name',  required=False)
+    avatar     = serializers.ImageField(source='user.avatar',     required=False, allow_null=True)
 
     class Meta:
-        model = ClientProfile
+        model  = UserProfile
         fields = ('user', 'first_name', 'last_name', 'avatar', 'created_at')
         read_only_fields = ('created_at',)
 
@@ -138,34 +136,6 @@ class ClientProfileSerializer(serializers.ModelSerializer):
                 setattr(user, attr, value)
             user.save(update_fields=list(user_data.keys()))
         return instance
-
-
-class CarrierProfileSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
-
-    first_name = serializers.CharField(source='user.first_name', required=False)
-    last_name  = serializers.CharField(source='user.last_name', required=False)
-    avatar     = serializers.ImageField(source='user.avatar', required=False, allow_null=True)
-
-    class Meta:
-        model = CarrierProfile
-        fields = ('user', 'first_name', 'last_name', 'avatar', 'created_at')
-        read_only_fields = ('created_at',)
-
-    def update(self, instance, validated_data):
-        user_data = validated_data.pop('user', {})
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-
-        if user_data:
-            user = instance.user
-            for attr, value in user_data.items():
-                setattr(user, attr, value)
-            user.save(update_fields=list(user_data.keys()))
-        return instance
-    
-
 
 def _abs_url(request, file_field):
     if not file_field:

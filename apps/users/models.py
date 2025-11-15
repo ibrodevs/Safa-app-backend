@@ -79,19 +79,9 @@ class CourierKYC(models.Model):
 
 
 
-class ClientProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='client')
+class UserProfile(models.Model):
+    user   = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"ClientProfile #{self.user_id}"
-
-
-class CarrierProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='carrier')
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"CarrierProfile #{self.user_id}"
-
-
+        return f"Profile #{self.user_id}"
