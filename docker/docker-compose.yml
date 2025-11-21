@@ -1,33 +1,66 @@
-version: "3.9"
-
 services:
-  web:
-    build:
-      context: ..            
-      dockerfile: docker/app.Dockerfile
-    container_name: dogo_web
-    command: sh -c "python manage.py migrate && daphne -b 0.0.0.0 -p 8000 core.asgi:application"
-    env_file:
-      - ../.env
+  db:
+    image: postgres:16
+    container_name: dogo-db
+    restart: always
     environment:
-      - CHANNEL_BACKEND=redis
-      - REDIS_URL=redis://redis:6379/0
+      POSTGRES_DB: dogo
+      POSTGRES_USER: dogo
+      POSTGRES_PASSWORD: dogo_pass_123
     volumes:
-      - ..:/app
-    depends_on:
-      - redis
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - dogo-net
 
   redis:
-    image: redis:7-alpine
-    container_name: dogo_redis
+    image: redis:7
+    container_name: dogo-redis
+    restart: always
+    networks:
+      - dogo-net
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: dogo-web
+    restart: always
+    command: >
+      sh -c "python manage.py migrate &&
+             daphne -b 0.0.0.0 -p 8000 core.asgi:application"
+    environment:
+      POSTGRES_DB: dogo
+      POSTGRES_USER: dogo
+      POSTGRES_PASSWORD: dogo_pass_123
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      DJANGO_DEBUG: "False"
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ..:/app
+    networks:
+      - dogo-net
 
   nginx:
-    image: nginx:alpine
-    container_name: dogo_nginx
+    image: nginx:1.27
+    container_name: dogo-nginx
+    restart: always
     ports:
       - "80:80"
     volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ..:/app:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../static_root:/app/static_root:ro
+      - ../media:/app/media:ro
     depends_on:
       - web
+    networks:
+      - dogo-net
+
+volumes:
+  postgres_data:
+
+networks:
+  dogo-net:
+    driver: bridge

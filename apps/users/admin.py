@@ -1,4 +1,3 @@
-# users/admin.py
 from django.contrib import admin
 from django import forms
 from django.utils import timezone

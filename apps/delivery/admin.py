@@ -1,4 +1,3 @@
-# apps/delivery/admin.py
 from django.contrib import admin
 
 from .models import (
@@ -49,7 +48,6 @@ class ShipmentStopInline(admin.TabularInline):
     autocomplete_fields = ("container",)
     fields = ("container",)          # НЕ показываем поле position
     ordering = ("position",)         # показываем в порядке позиции
-    # position остаётся в модели, просто скрыта из формы
 
 
 @admin.action(description="Пересчитать стоимость")
@@ -118,7 +116,6 @@ class ShipmentAdmin(admin.ModelAdmin):
         super().save_related(request, form, formsets, change)
 
         shipment = form.instance
-        # Берём все остановки этого шипмента и жёстко даём им позиции 0..n-1
         stops = list(shipment.stops.order_by("position", "id"))
         changed = False
         for idx, stop in enumerate(stops):
@@ -127,7 +124,6 @@ class ShipmentAdmin(admin.ModelAdmin):
                 stop.save(update_fields=["position"])
                 changed = True
 
-        # Если нужно, можно тут же пересчитать маршрут/цену:
         if changed:
             shipment.estimate()
             shipment.save(update_fields=["distance_km", "estimated_fare"])

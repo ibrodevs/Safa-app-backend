@@ -1,4 +1,3 @@
-# apps/delivery/serializer.py
 from __future__ import annotations
 from rest_framework import serializers
 from .models import Bazar, Container, CourierSegment, Shipment, ShipmentStop
@@ -10,7 +9,6 @@ class BazarSerializer(serializers.ModelSerializer):
 
 class ContainerSerializer(serializers.ModelSerializer):
     bazar = BazarSerializer(read_only=True)
-    # возвращаем lat/lon явно
     latitude  = serializers.FloatField(source="lat", read_only=True)
     longitude = serializers.FloatField(source="lon", read_only=True)
 

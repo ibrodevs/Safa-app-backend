@@ -5,4 +5,4 @@ from .views import ShipmentViewSet
 router = DefaultRouter()
 router.register("shipments", ShipmentViewSet, basename="shipments")
 
-urlpatterns = [path("api/", include(router.urls))]
+urlpatterns = [path("", include(router.urls))]

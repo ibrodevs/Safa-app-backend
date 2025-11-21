@@ -1,4 +1,3 @@
-# apps/delivery/consumers.py
 from __future__ import annotations
 
 from decimal import Decimal
@@ -40,7 +39,6 @@ class ShipmentTrackingConsumer(JsonWebsocketConsumer):
       - либо payload из REST через _broadcast(shipment)
     """
 
-    # ---------- lifecycle ----------
 
     def connect(self):
         self.shipment_id = int(self.scope["url_route"]["kwargs"]["shipment_id"])
@@ -53,7 +51,6 @@ class ShipmentTrackingConsumer(JsonWebsocketConsumer):
         if group:
             async_to_sync(self.channel_layer.group_discard)(group, self.channel_name)
 
-    # ---------- входящие сообщения ----------
 
     def receive_json(self, content, **kwargs):
         msg_type = content.get("type")
@@ -64,7 +61,6 @@ class ShipmentTrackingConsumer(JsonWebsocketConsumer):
         else:
             self.send_json({"type": "error", "detail": "bad_payload"})
 
-    # ---------- логика трекинга ----------
 
     def _on_location(self, content: dict):
         user = self.scope.get("user")
@@ -72,7 +68,6 @@ class ShipmentTrackingConsumer(JsonWebsocketConsumer):
             self.send_json({"type": "error", "detail": "unauthenticated"})
             return
 
-        # координаты
         try:
             lat = Decimal(str(content.get("lat")))
             lon = Decimal(str(content.get("lon")))
@@ -82,7 +77,6 @@ class ShipmentTrackingConsumer(JsonWebsocketConsumer):
 
         client_speed = _clamp_speed(content.get("speed_kmh"))
 
-        # посылка
         try:
             shipment: Shipment = (
                 Shipment.objects
@@ -94,7 +88,6 @@ class ShipmentTrackingConsumer(JsonWebsocketConsumer):
             self.send_json({"type": "error", "detail": "not_found"})
             return
 
-        # только назначенный курьер
         if shipment.carrier_id != user.id:
             self.send_json({
                 "type": "error",
@@ -104,7 +97,6 @@ class ShipmentTrackingConsumer(JsonWebsocketConsumer):
             })
             return
 
-        # атомарно: обновляем позицию и ETA
         with transaction.atomic():
             pos, created = (
                 CourierPosition.objects
@@ -122,7 +114,6 @@ class ShipmentTrackingConsumer(JsonWebsocketConsumer):
                 now = timezone.now()
                 dt_s = max((now - prev_at).total_seconds(), 1.0)
 
-                # расстояние между двумя точками в метрах
                 dist_m = haversine_m(
                     float(prev_lat),
                     float(prev_lon),
@@ -141,7 +132,6 @@ class ShipmentTrackingConsumer(JsonWebsocketConsumer):
                 pos.speed_kmh = speed
                 pos.save(update_fields=["lat", "lon", "speed_kmh"])
 
-            # расстояние до следующей остановки
             dist_m_to_target = shipment.distance_to_next_m(float(lat), float(lon))
             arrived = dist_m_to_target <= ARRIVAL_RADIUS_M
 

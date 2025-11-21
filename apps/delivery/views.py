@@ -1,4 +1,3 @@
-# apps/delivery/views.py
 from __future__ import annotations
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -21,6 +20,7 @@ from .serializer import (
     QuoteOutSerializer,
 )
 from .geo import polyline_len_km, haversine_m, bbox_deltas
+from .pagination import StandardResultsSetPagination
 
 
 def _broadcast(shipment: Shipment):
@@ -53,7 +53,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         "stops__container", "stops__container__bazar"
     )
     permission_classes = [permissions.IsAuthenticated]
-
+    pagination_class = StandardResultsSetPagination
     def get_serializer_class(self):
         if self.action == "create":
             return ShipmentCreateSerializer
@@ -62,11 +62,18 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         return ShipmentDetailSerializer
 
     def get_queryset(self):
+
         qs = super().get_queryset()
-        u = self.request.user
-        if u.is_staff:
+        user = self.request.user
+
+        if not user.is_authenticated:
+            return qs.none()
+
+        if user.is_superuser or user.is_staff:
             return qs
-        return (qs.filter(client=u) | qs.filter(carrier=u)).distinct()
+
+        return qs.filter(Q(client=user) | Q(carrier=user)).distinct()
+
 
     def perform_create(self, serializer):
         shipment = serializer.save()
@@ -193,7 +200,6 @@ class ShipmentViewSet(viewsets.ModelViewSet):
 
         dlat, dlon = bbox_deltas(lat, radius_m)
 
-        # черновой предфильтр по первой точке (position=0)
         base = (
             Shipment.objects.filter(status=Shipment.Status.PENDING)
             .filter(
@@ -207,7 +213,6 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             .prefetch_related("stops__container", "stops__container__bazar")
         )
 
-        # финальный расчёт дистанции в Python
         items = []
         for s in base:
             first = s.stops.order_by("position").first()
@@ -247,3 +252,40 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 s.save(update_fields=["current_stop_index"])
         _broadcast(s)
         return response.Response(ShipmentDetailSerializer(s).data)
+
+    @extend_schema(
+        tags=["Shipments"],
+        summary="История завершённых доставок для текущего пользователя",
+        parameters=[
+            OpenApiParameter(
+                name="page",
+                description="Номер страницы (начиная с 1)",
+                required=False,
+                type=int,
+                location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name="page_size",
+                description="Количество записей на странице (макс 100)",
+                required=False,
+                type=int,
+                location=OpenApiParameter.QUERY,
+            ),
+        ],
+        responses=ShipmentCardSerializer(many=True),
+    )
+    @decorators.action(detail=False, methods=["get"], url_path="history")
+    def history(self, request):
+        qs = (
+            self.get_queryset()
+            .filter(status=Shipment.Status.COMPLETED)
+            .order_by("-created_at")
+        )
+
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            ser = ShipmentCardSerializer(page, many=True)
+            return self.get_paginated_response(ser.data)
+
+        ser = ShipmentCardSerializer(qs, many=True)
+        return response.Response(ser.data)

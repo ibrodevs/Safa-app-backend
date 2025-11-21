@@ -80,12 +80,11 @@ DATABASES = {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": os.getenv("POSTGRES_DB", "dogo"),
         "USER": os.getenv("POSTGRES_USER", "dogo"),
-        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "password"),
-        "HOST": os.getenv("POSTGRES_HOST", "localhost"),
+        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "dogo_pass_123"),
+        "HOST": os.getenv("POSTGRES_HOST", "db"),
         "PORT": os.getenv("POSTGRES_PORT", "5432"),
     }
 }
-
 
 CHANNEL_BACKEND = os.getenv("CHANNEL_BACKEND", "memory")  
 
