@@ -42,6 +42,7 @@ INSTALLED_APPS = [
 
     'apps.users',
     'apps.delivery',
+    'apps.notification'
 ]
 
 MIDDLEWARE = [
@@ -85,6 +86,15 @@ DATABASES = {
         "PORT": os.getenv("POSTGRES_PORT", "5432"),
     }
 }
+
+
+
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
+# }
 
 CHANNEL_BACKEND = os.getenv("CHANNEL_BACKEND", "memory")  
 
@@ -162,3 +172,8 @@ OTP_TTL_SECONDS = int(os.getenv("OTP_TTL_SECONDS", "300"))
 
 
 OSRM_URL = "https://router.project-osrm.org"
+
+
+FCM_PROJECT_ID = "dogoapp-7b7a2"
+
+FCM_SERVICE_ACCOUNT_FILE = BASE_DIR / "firebase" / "dogoapp-7b7a2-firebase-adminsdk-fbsvc-61e2b5bc29.json"

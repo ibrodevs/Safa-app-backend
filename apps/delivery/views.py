@@ -2,13 +2,18 @@ from __future__ import annotations
 
 from decimal import Decimal, ROUND_HALF_UP
 import requests
-
+from apps.notification.events import (
+    notify_shipment_offer_for_carrier,
+    notify_shipment_status,
+    notify_shipment_canceled,
+)
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
-
+from rest_framework.views import APIView
+from rest_framework.response import Response
 from rest_framework import viewsets, permissions, response, status, serializers
 from rest_framework.decorators import action
 
@@ -19,6 +24,7 @@ from drf_spectacular.utils import (
     OpenApiResponse,
     OpenApiTypes,
     inline_serializer,
+    OpenApiExample
 )
 
 from .models import Shipment, ShipmentStop, CourierSegment
@@ -103,7 +109,10 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         s.status = Shipment.Status.ASSIGNED
         s.save(update_fields=["carrier", "status"])
         _broadcast(s)
+    
+        notify_shipment_status(s)
         return response.Response(ShipmentDetailSerializer(s).data)
+
 
     @extend_schema(
         tags=["Shipments"],
@@ -117,12 +126,19 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         ser = ShipmentStatusSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         s.status = ser.validated_data["status"]
+
         if s.status == Shipment.Status.COMPLETED:
             s.finalize()
             s.save(update_fields=["status", "final_fare"])
         else:
             s.save(update_fields=["status"])
+
         _broadcast(s)
+
+        notify_shipment_status(s)
+        if s.status == Shipment.Status.CANCELED:
+            notify_shipment_canceled(s, reason="manual")
+
         return response.Response(
             ShipmentDetailSerializer(s).data,
             status=status.HTTP_200_OK,
@@ -288,8 +304,12 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 )
             else:
                 s.save(update_fields=["current_stop_index"])
+
         _broadcast(s)
+        notify_shipment_status(s)
+
         return response.Response(ShipmentDetailSerializer(s).data)
+
 
     @extend_schema(
         tags=["Shipments"],
@@ -436,3 +456,77 @@ class GeoViewSet(viewsets.ViewSet):
             },
             status=status.HTTP_200_OK,
         )
+
+
+
+
+YANDEX_API_KEY = "bc8fb1c9-1361-46e4-b872-a95d055823e8"
+
+@extend_schema(tags=["Гео"])
+class ReverseGeocodeView(APIView):
+    @extend_schema(
+        summary="Реверс-геокодинг (координаты → адрес)",
+        description="Принимает широту и долготу, обращается к API Яндекса и возвращает текстовый адрес.",
+        parameters=[
+            OpenApiParameter(
+                name="lat",
+                required=True,
+                type=float,
+                description="Широта"
+            ),
+            OpenApiParameter(
+                name="lon",
+                required=True,
+                type=float,
+                description="Долгота"
+            ),
+        ],
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "address": {
+                        "type": "string",
+                        "example": "Россия, Москва, Красная площадь"
+                    }
+                }
+            },
+            400: {
+                "type": "object",
+                "properties": {
+                    "error": {"type": "string"}
+                }
+            }
+        },
+        examples=[
+            OpenApiExample(
+                "Пример запроса",
+                summary="Пример координат",
+                value={"lat": 55.75, "lon": 37.61}
+            )
+        ]
+    )
+    def get(self, request):
+        lat = request.query_params.get('lat')
+        lon = request.query_params.get('lon')
+
+        if not lat or not lon:
+            return Response({"error": "lat and lon are required"}, status=400)
+
+        url = (
+            f"https://geocode-maps.yandex.ru/1.x/"
+            f"?apikey={YANDEX_API_KEY}&geocode={lon},{lat}&format=json"
+        )
+
+        r = requests.get(url)
+        data = r.json()
+
+        try:
+            address = (
+                data["response"]["GeoObjectCollection"]["featureMember"][0]
+                ["GeoObject"]["metaDataProperty"]["GeocoderMetaData"]["text"]
+            )
+        except:
+            address = None
+
+        return Response({"address": address})

@@ -5,4 +5,7 @@ from .views import *
 router = DefaultRouter()
 router.register("shipments", ShipmentViewSet, basename="shipments")
 router.register(r"geo", GeoViewSet, basename="geo")
-urlpatterns = [path("", include(router.urls))]
+
+urlpatterns = [
+    path("api/reverse/", ReverseGeocodeView.as_view()),
+    path("", include(router.urls))]
