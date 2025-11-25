@@ -40,10 +40,10 @@ class User(AbstractUser):
 
     role = models.CharField(max_length=16, choices=Roles.choices, default=Roles.CLIENT)
     first_name = models.CharField(max_length=155, verbose_name='Имя')
-    last_name  = models.CharField(max_length=155, verbose_name='Фамилия')
     phone_number = models.CharField(unique=True, max_length=13, validators=[phone_re])
     avatar = models.ImageField(upload_to='avatars/', verbose_name='Аватарка', null=True, blank=True)
     otp = models.CharField(max_length=6, verbose_name='Код отп', null=True,blank=True)
+    city = models.CharField(max_length=40, null=True, blank=True, verbose_name='Город')
     is_verify = models.BooleanField(default=False)
     created_at   = models.DateTimeField(auto_now_add=True)
     USERNAME_FIELD = "phone_number"

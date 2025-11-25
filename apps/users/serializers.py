@@ -9,7 +9,7 @@ phone_re = RegexValidator(
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('id', 'role', 'first_name', 'last_name', 'phone_number')
+        fields = ('id', 'role', 'first_name', 'phone_number', 'city')
         read_only_fields = ('id', 'role', 'phone_number')
 
     def get_kyc(self, obj):
@@ -25,62 +25,85 @@ class UserSerializer(serializers.ModelSerializer):
             "selfie_id_card": None,
         }
 
+
+
 class RegisterSerializer(serializers.ModelSerializer):
     id_front = serializers.ImageField(write_only=True, required=False, allow_null=True)
     id_back  = serializers.ImageField(write_only=True, required=False, allow_null=True)
-    password = serializers.CharField(write_only=True)
-    password_confirm = serializers.CharField(write_only=True)
 
     class Meta:
         model = User
         fields = (
-            "phone_number", "first_name", "last_name", "avatar",
-            "role", "password", "password_confirm", "id_front", "id_back"
+            "phone_number", "first_name", "avatar",
+            "role", "id_front", "id_back",
         )
         extra_kwargs = {
-            "email": {"required": False, "allow_blank": True, "allow_null": True},
+            "phone_number": {"validators": [phone_re]},
             "avatar": {"required": False, "allow_null": True},
         }
 
     def validate(self, attrs):
-        pwd = attrs.get("password")
-        pwd2 = attrs.get("password_confirm")
-        if pwd != pwd2:
-            raise serializers.ValidationError({"password_confirm": "Пароли не совпадают."})
-
         role = attrs.get("role", User.Roles.CLIENT)
         if role == User.Roles.CARRIER:
             if not attrs.get("id_front") or not attrs.get("id_back"):
                 raise serializers.ValidationError(
                     {"non_field_errors": ["Для перевозчика загрузите лицевую и обратную сторону документа."]}
                 )
-
-        attrs.pop("password_confirm", None)
         return attrs
 
     def create(self, validated_data):
         id_front = validated_data.pop("id_front", None)
         id_back  = validated_data.pop("id_back", None)
-        password = validated_data.pop("password")
+        phone    = validated_data["phone_number"]
 
-        user = User.objects.create_user(password=password, **validated_data)
+        user, created = User.objects.get_or_create(
+            phone_number=phone,
+            defaults=validated_data,
+        )
+
+        if not created:
+            for field, value in validated_data.items():
+                setattr(user, field, value)
+            user.save(update_fields=list(validated_data.keys()))
 
         if user.role == User.Roles.CARRIER:
             kyc, _ = CourierKYC.objects.get_or_create(user=user)
-            if id_front:
+            changed = []
+
+            if id_front is not None:
                 kyc.id_front = id_front
-            if id_back:
+                changed.append("id_front")
+
+            if id_back is not None:
                 kyc.id_back = id_back
-            kyc.status = CourierKYC.Status.PENDING
-            kyc.save()
+                changed.append("id_back")
+
+            if changed or kyc.status != CourierKYC.Status.PENDING:
+                kyc.status = CourierKYC.Status.PENDING
+                changed.append("status")
+
+            if changed:
+                kyc.save(update_fields=changed)
 
         return user
 
 
+
+
 MAX_MB = 32
 
+
+
 class SelfieWithIdCardSerializer(serializers.Serializer):
+    phone = serializers.CharField(write_only=True, validators=[phone_re])
     selfie_id_card = serializers.ImageField(required=True, write_only=True)
+
+    def validate_phone(self, value):
+        from apps.users.utlis import normalize_phone
+        try:
+            return normalize_phone(value)
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
 
     def validate_selfie_id_card(self, f):
         if f.size > MAX_MB * 1024 * 1024:
@@ -90,9 +113,18 @@ class SelfieWithIdCardSerializer(serializers.Serializer):
         return f
 
     def create(self, validated_data):
-        user = self.context["request"].user
+        phone = validated_data["phone"]
+        selfie = validated_data["selfie_id_card"]
+
+        try:
+            user = User.objects.get(phone_number=phone)
+        except User.DoesNotExist:
+            raise serializers.ValidationError(
+                {"phone": "Пользователь с таким телефоном не найден."}
+            )
+
         kyc, _ = CourierKYC.objects.get_or_create(user=user)
-        kyc.selfie_id_card = validated_data["selfie_id_card"]
+        kyc.selfie_id_card = selfie
         kyc.save(update_fields=["selfie_id_card"])
         return kyc
 
@@ -101,7 +133,11 @@ class SelfieWithIdCardSerializer(serializers.Serializer):
         url = instance.selfie_id_card.url if instance.selfie_id_card else None
         if url and request:
             url = request.build_absolute_uri(url)
-        return {"selfie_id_card": url}
+        return {
+            "phone": instance.user.phone_number,
+            "selfie_id_card": url,
+        }
+
 
 
 
@@ -116,12 +152,11 @@ class VerifyCodeSerializer(serializers.Serializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     first_name = serializers.CharField(source='user.first_name', required=False)
-    last_name  = serializers.CharField(source='user.last_name',  required=False)
     avatar     = serializers.ImageField(source='user.avatar',     required=False, allow_null=True)
-
+    city = serializers.CharField(source='user.city', required=False)
     class Meta:
         model  = UserProfile
-        fields = ('user', 'first_name', 'last_name', 'avatar', 'created_at')
+        fields = ('user', 'first_name', 'city', 'avatar', 'created_at')
         read_only_fields = ('created_at',)
 
     def update(self, instance, validated_data):
@@ -162,3 +197,9 @@ class CourierKYCSerializer(serializers.ModelSerializer):
 
     def get_selfie_id_card(self, obj):
         return _abs_url(self.context.get("request"), obj.selfie_id_card)
+
+
+
+
+class CarrierLoginSerializer(serializers.Serializer):
+    phone = serializers.CharField(validators=[phone_re])

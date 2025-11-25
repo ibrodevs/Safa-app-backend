@@ -8,49 +8,7 @@ from django.db import models
 
 from .geo import polyline_len_km, haversine_m
 
-ARRIVAL_RADIUS_M = 50 
-
-
-class Bazar(models.Model):
-    name = models.CharField(max_length=155, verbose_name="Базар")
-
-    class Meta:
-        ordering = ["name"]
-        verbose_name = "Базар"
-        verbose_name_plural = "Базары"
-
-    def __str__(self) -> str:
-        return self.name
-
-
-class Container(models.Model):
-    bazar = models.ForeignKey(Bazar, on_delete=models.PROTECT, related_name="containers", verbose_name="Базар")
-    number = models.CharField(max_length=50, verbose_name="Номер")
-    passage = models.CharField(max_length=50, verbose_name="Проход")
-    title = models.CharField(max_length=150, blank=True, verbose_name="Название")
-    lat = models.DecimalField(max_digits=9, decimal_places=6, verbose_name="Широта (lat)")
-    lon = models.DecimalField(max_digits=9, decimal_places=6, verbose_name="Долгота (lon)")
-
-    class Meta:
-        verbose_name = "Точка (контейнер)"
-        verbose_name_plural = "Точки (контейнеры)"
-        ordering = ["title"]
-
-    @property
-    def latitude(self) -> float:
-        return float(self.lat)
-
-    @property
-    def longitude(self) -> float:
-        return float(self.lon)
-
-    def save(self, *args, **kwargs):
-        if not self.title:
-            self.title = f"Контейнер {self.number}, {self.passage}"
-        super().save(*args, **kwargs)
-
-    def __str__(self) -> str:
-        return self.title
+ARRIVAL_RADIUS_M = 50
 
 
 class CourierSegment(models.Model):
@@ -113,7 +71,6 @@ class Shipment(models.Model):
 
     size = models.CharField(max_length=1, choices=Size.choices, default=Size.M, verbose_name="Размер")
     quantity = models.PositiveIntegerField(default=1, verbose_name="Кол-во")
-    item_label = models.CharField(max_length=32, blank=True, verbose_name="Тип груза (UI)")
     fragile = models.BooleanField(default=False, verbose_name="Хрупкая")
     description = models.CharField(max_length=255, blank=True, verbose_name="Описание")
 
@@ -139,8 +96,8 @@ class Shipment(models.Model):
         return f"{self.id:04d}"
 
     def _route_points(self) -> List[Tuple[float, float]]:
-        qs = self.stops.select_related("container").order_by("position")
-        return [(s.container.lat, s.container.lon) for s in qs]
+        qs = self.stops.order_by("position")
+        return [(s.lat, s.lon) for s in qs]
 
     def route_distance_km(self) -> Decimal:
         km = Decimal(str(polyline_len_km(self._route_points())))
@@ -154,7 +111,7 @@ class Shipment(models.Model):
         return Decimal(self.segment.size_m_multiplier or 1)
 
     def next_stop(self) -> Optional["ShipmentStop"]:
-        stops = list(self.stops.select_related("container").order_by("position"))
+        stops = list(self.stops.order_by("position"))
         if self.current_stop_index >= len(stops):
             return None
         return stops[self.current_stop_index]
@@ -163,7 +120,7 @@ class Shipment(models.Model):
         nxt = self.next_stop()
         if not nxt:
             return Decimal("0")
-        d = haversine_m(lat, lon, float(nxt.container.lat), float(nxt.container.lon))
+        d = haversine_m(lat, lon, float(nxt.lat), float(nxt.lon))
         return Decimal(d).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     def estimate(self) -> int:
@@ -187,7 +144,9 @@ class Shipment(models.Model):
 
 class ShipmentStop(models.Model):
     shipment = models.ForeignKey(Shipment, on_delete=models.CASCADE, related_name="stops", verbose_name="Посылка")
-    container = models.ForeignKey(Container, on_delete=models.PROTECT, related_name="shipment_stops", verbose_name="Точка")
+    title = models.CharField(max_length=255, verbose_name="Адрес / подпись")
+    lat = models.DecimalField(max_digits=9, decimal_places=6, verbose_name="Широта (lat)")
+    lon = models.DecimalField(max_digits=9, decimal_places=6, verbose_name="Долгота (lon)")
     position = models.PositiveSmallIntegerField(verbose_name="Позиция", null=True, blank=True)
 
     class Meta:
@@ -204,8 +163,6 @@ class CourierPosition(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="position", verbose_name="Пользователь")
     lat = models.DecimalField(max_digits=9, decimal_places=6, verbose_name="Широта (lat)")
     lon = models.DecimalField(max_digits=9, decimal_places=6, verbose_name="Долгота (lon)")
-    speed_kmh = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True, verbose_name="Скорость, км/ч")
-    heading = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="Курс, °")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлено")
 
     class Meta:

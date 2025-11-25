@@ -8,11 +8,11 @@ def _ensure_role_related_records(user: User):
     if user.role == User.Roles.CARRIER:
         UserProfile.objects.get_or_create(user=user)
         CourierKYC.objects.get_or_create(user=user)
-        UserProfile.objects.filter(user=user).delete()
     else:
         UserProfile.objects.get_or_create(user=user)
-        UserProfile.objects.filter(user=user).delete()
         CourierKYC.objects.filter(user=user).delete()
+
+
 
 @receiver(post_save, sender=User)
 def create_profiles_on_user_save(sender, instance: User, created: bool, **kwargs):

@@ -13,9 +13,10 @@ urlpatterns = [
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('debug-code/', DebugRequestCodeView.as_view(), name='debug-code'),
     path("selfie/", SelfieWithIdCardView.as_view(), name="kyc-selfie"),
-    path('whatsapp-code', RequestCodeWhatsAppView.as_view(), name='wha_code'),
+    path('whatsapp-code/', RequestCodeWhatsAppView.as_view(), name='wha_code'),
     path('verify/', VerifyCodeView.as_view(), name='verify'),
     path('profile/', UserProfileView.as_view(), name='profile'),
+    path('carrier-wait/', CarrierLoginView.as_view(), name='carrier-wait'),
     path('profile/<int:pk>', UserProfileView.as_view(), name='profile_id'),
     path("", include(router.urls)),
 ]

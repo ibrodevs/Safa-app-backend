@@ -16,7 +16,7 @@ from .chatflow import chatflow_send_text, ChatFlowError
 from rest_framework.parsers import MultiPartParser, JSONParser, FormParser
 from apps.users.utlis import *
 from rest_framework.exceptions import MethodNotAllowed
-
+from rest_framework_simplejwt.tokens import RefreshToken
 
 @extend_schema(tags=["Аутентификация"])
 class RegisterView(generics.CreateAPIView):
@@ -86,11 +86,12 @@ class RequestCodeWhatsAppView(generics.GenericAPIView):
             return Response({"detail": f"WhatsApp send failed: {e}"}, status=502)
 
         return Response({"detail": "sent_whatsapp", "phone": phone}, status=200)
-    
+
+
 @extend_schema(tags=["Аутентификация"])
 class VerifyCodeView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
-    serializer_class = VerifyCodeSerializer 
+    serializer_class = VerifyCodeSerializer
 
     def post(self, request, *args, **kwargs):
         ser = self.get_serializer(data=request.data)
@@ -99,13 +100,13 @@ class VerifyCodeView(generics.GenericAPIView):
             phone = normalize_phone(ser.validated_data["phone"])
         except ValueError as e:
             return Response({"detail": str(e)}, status=400)
-        code  = str(ser.validated_data["code"]).strip()
+
+        code = str(ser.validated_data["code"]).strip()
 
         if is_static_otp_phone(phone):
-            expected = str(generate_otp(phone=phone))  
+            expected = str(generate_otp(phone=phone))
             if code != expected:
                 return Response({"detail": "Неверный код."}, status=400)
-
         else:
             cache_key = f"otp:{phone}"
             cached = cache.get(cache_key)
@@ -136,7 +137,19 @@ class VerifyCodeView(generics.GenericAPIView):
             user.is_verify = True
             user.save(update_fields=["is_verify"])
 
-        return Response({"detail": "Номер подтверждён", "user_id": user.id, "is_verify": user.is_verify}, status=200)
+        refresh = RefreshToken.for_user(user)
+        access = refresh.access_token
+
+        return Response(
+            {
+                "detail": "Номер подтверждён",
+                "user_id": user.id,
+                "is_verify": user.is_verify,
+                "access": str(access),
+                "refresh": str(refresh),
+            },
+            status=200,
+        )
     
 
     
@@ -178,35 +191,100 @@ class UserProfileView(GenericAPIView):
         ser.is_valid(raise_exception=True)
         ser.save()
         return Response(ser.data)
-    
-@extend_schema(tags=["Аутентификация"])
+
+
+
+@extend_schema(
+    tags=["Аутентификация"],
+    request=SelfieWithIdCardSerializer,
+    responses={200: SelfieWithIdCardSerializer, 201: SelfieWithIdCardSerializer},
+)
 class SelfieWithIdCardView(generics.GenericAPIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
     serializer_class = SelfieWithIdCardSerializer
     parser_classes = (MultiPartParser, FormParser)
 
-    @extend_schema(
-        request=SelfieWithIdCardSerializer,
-        responses={
-            201: SelfieWithIdCardSerializer,
-            200: SelfieWithIdCardSerializer,
-            403: OpenApiResponse(description="Только для перевозчиков"),
-        },
-    )
     def post(self, request, *args, **kwargs):
-        if request.user.role != User.Roles.CARRIER:
-            return Response({"detail": "Только для перевозчиков."}, status=status.HTTP_403_FORBIDDEN)
-
         serializer = self.get_serializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         kyc = serializer.save()
         code = status.HTTP_201_CREATED if not kyc.checked_at else status.HTTP_200_OK
-        return Response(SelfieWithIdCardSerializer(kyc, context={"request": request}).data, status=code)
+        return Response(
+            SelfieWithIdCardSerializer(kyc, context={"request": request}).data,
+            status=code,
+        )
 
-    @extend_schema(responses={200: SelfieWithIdCardSerializer, 403: OpenApiResponse(description="Только для перевозчиков")})
-    def get(self, request, *args, **kwargs):
-        if request.user.role != User.Roles.CARRIER:
-            return Response({"detail": "Только для перевозчиков."}, status=status.HTTP_403_FORBIDDEN)
 
-        kyc, _ = CourierKYC.objects.get_or_create(user=request.user)
-        return Response(SelfieWithIdCardSerializer(kyc, context={"request": request}).data, status=status.HTTP_200_OK)
+
+
+
+@extend_schema(
+    tags=["Аутентификация"],
+    summary="Логин тачкиста по телефону и статусу KYC",
+    request=CarrierLoginSerializer,
+    responses={
+        200: OpenApiResponse(description="Успешный вход, статус approved"),
+        403: OpenApiResponse(description="Профиль на проверке или отклонён"),
+        404: OpenApiResponse(description="Перевозчик не найден"),
+    },
+)
+class CarrierLoginView(generics.GenericAPIView):
+    permission_classes = [permissions.AllowAny]
+    serializer_class = CarrierLoginSerializer
+
+    def post(self, request, *args, **kwargs):
+        ser = self.get_serializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        try:
+            phone = normalize_phone(ser.validated_data["phone"])
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=400)
+
+        try:
+            user = User.objects.get(phone_number=phone, role=User.Roles.CARRIER)
+        except User.DoesNotExist:
+            return Response({"detail": "Перевозчик с таким телефоном не найден."}, status=404)
+
+        kyc = getattr(user, "kyc", None)
+        if not kyc:
+            return Response(
+                {
+                    "status": "no_kyc",
+                    "detail": "Вы ещё не загрузили документы для проверки.",
+                },
+                status=403,
+            )
+
+        if kyc.status == CourierKYC.Status.PENDING:
+            return Response(
+                {
+                    "status": "pending",
+                    "detail": "Ваши данные на проверке.",
+                },
+                status=403,
+            )
+
+        if kyc.status == CourierKYC.Status.REJECTED:
+            return Response(
+                {
+                    "status": "rejected",
+                    "detail": "Ваши данные отклонены.",
+                    "comment": kyc.comment or "",
+                },
+                status=403,
+            )
+
+        refresh = RefreshToken.for_user(user)
+        access = refresh.access_token
+
+        return Response(
+            {
+                "status": "approved",
+                "detail": "Профиль одобрен.",
+                "user_id": user.id,
+                "access": str(access),
+                "refresh": str(refresh),
+            },
+            status=200,
+        )

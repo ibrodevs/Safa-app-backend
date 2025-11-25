@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 
 from asgiref.sync import async_to_sync
@@ -11,12 +12,18 @@ from django.utils import timezone
 from .models import Shipment, CourierPosition, ARRIVAL_RADIUS_M
 from .geo import haversine_m
 
+logger = logging.getLogger(__name__)
+
+BASE_SPEED_KMH = Decimal("20.0")
+
 
 def _clamp_speed(v) -> Decimal | None:
-    """Обрезаем скорость до [0; 120] км/ч."""
     if v is None:
         return None
-    v = Decimal(str(v))
+    try:
+        v = Decimal(str(v))
+    except Exception:
+        return None
     if v < 0:
         return Decimal("0.0")
     if v > 120:
@@ -25,161 +32,167 @@ def _clamp_speed(v) -> Decimal | None:
 
 
 class ShipmentTrackingConsumer(JsonWebsocketConsumer):
-    """
-    WS: /ws/shipments/<shipment_id>/?token=<JWT_ACCESS>
-
-    Входящие сообщения:
-      { "type": "loc", "lat": 42.874, "lon": 74.612 }
-      { "type": "loc", "lat": 42.874, "lon": 74.612, "speed_kmh": 20 }
-      { "type": "ping" }
-
-    Ответы:
-      - {"type": "telemetry", ...}
-      - {"type": "error", "detail": "..."}
-      - либо payload из REST через _broadcast(shipment)
-    """
-
 
     def connect(self):
-        self.shipment_id = int(self.scope["url_route"]["kwargs"]["shipment_id"])
+        user = self.scope.get("user")
+
+        if not user or not user.is_authenticated:
+            self.close()
+            return
+
+        try:
+            self.shipment_id = int(self.scope["url_route"]["kwargs"]["shipment_id"])
+        except Exception:
+            self.close()
+            return
+
+        try:
+            shipment = Shipment.objects.get(id=self.shipment_id)
+        except Shipment.DoesNotExist:
+            self.close()
+            return
+
+        allowed_users = {shipment.client_id}
+
+        if shipment.carrier_id:
+            allowed_users.add(shipment.carrier_id)
+
+        if user.id not in allowed_users:
+            self.close()
+            return
+
         self.group = f"shipment_{self.shipment_id}"
-        async_to_sync(self.channel_layer.group_add)(self.group, self.channel_name)
+
+        try:
+            async_to_sync(self.channel_layer.group_add)(self.group, self.channel_name)
+        except Exception:
+            self.close()
+            return
+
         self.accept()
+
+
+
 
     def disconnect(self, code):
         group = getattr(self, "group", None)
         if group:
             async_to_sync(self.channel_layer.group_discard)(group, self.channel_name)
 
-
     def receive_json(self, content, **kwargs):
-        msg_type = content.get("type")
-        if msg_type == "loc":
+        t = content.get("type")
+        if t == "loc":
             self._on_location(content)
-        elif msg_type == "ping":
+        elif t == "ping":
             self.send_json({"type": "pong"})
         else:
             self.send_json({"type": "error", "detail": "bad_payload"})
 
-
     def _on_location(self, content: dict):
-        user = self.scope.get("user")
-        if not user or isinstance(user, AnonymousUser) or not user.is_authenticated:
-            self.send_json({"type": "error", "detail": "unauthenticated"})
-            return
-
         try:
-            lat = Decimal(str(content.get("lat")))
-            lon = Decimal(str(content.get("lon")))
-        except (TypeError, ValueError, ArithmeticError):
-            self.send_json({"type": "error", "detail": "bad_payload"})
-            return
+            user = self.scope.get("user")
+            if not user or isinstance(user, AnonymousUser) or not user.is_authenticated:
+                self.send_json({"type": "error", "detail": "unauthenticated"})
+                return
 
-        client_speed = _clamp_speed(content.get("speed_kmh"))
+            try:
+                lat = Decimal(str(content.get("lat")))
+                lon = Decimal(str(content.get("lon")))
+            except Exception:
+                self.send_json({"type": "error", "detail": "bad_payload"})
+                return
 
-        try:
-            shipment: Shipment = (
-                Shipment.objects
-                .select_related("segment", "carrier")
-                .prefetch_related("stops__container")
-                .get(id=self.shipment_id)
-            )
-        except Shipment.DoesNotExist:
-            self.send_json({"type": "error", "detail": "not_found"})
-            return
+            client_speed = _clamp_speed(content.get("speed_kmh"))
 
-        if shipment.carrier_id != user.id:
-            self.send_json({
-                "type": "error",
-                "detail": "forbidden",
-                "carrier_id": shipment.carrier_id,
-                "user_id": user.id,
-            })
-            return
-
-        with transaction.atomic():
-            pos, created = (
-                CourierPosition.objects
-                .select_for_update()
-                .get_or_create(
-                    user=user,
-                    defaults={"lat": lat, "lon": lon, "speed_kmh": client_speed},
+            try:
+                shipment: Shipment = (
+                    Shipment.objects
+                    .select_related("segment", "carrier")
+                    .prefetch_related("stops")
+                    .get(id=self.shipment_id)
                 )
-            )
+            except Shipment.DoesNotExist:
+                self.send_json({"type": "error", "detail": "not_found"})
+                return
 
-            if created:
-                speed = client_speed
-            else:
-                prev_lat, prev_lon, prev_at = pos.lat, pos.lon, pos.updated_at
-                now = timezone.now()
-                dt_s = max((now - prev_at).total_seconds(), 1.0)
+            if shipment.carrier_id != user.id:
+                self.send_json({
+                    "type": "error",
+                    "detail": "forbidden",
+                    "carrier_id": shipment.carrier_id,
+                    "user_id": user.id,
+                })
+                return
 
-                dist_m = haversine_m(
-                    float(prev_lat),
-                    float(prev_lon),
-                    float(lat),
-                    float(lon),
+            with transaction.atomic():
+                pos, created = (
+                    CourierPosition.objects
+                    .select_for_update()
+                    .get_or_create(
+                        user=user,
+                        defaults={"lat": lat, "lon": lon},
+                    )
                 )
-                dist_km = Decimal(dist_m / 1000.0)
 
-                server_speed = (dist_km / Decimal(dt_s) * Decimal("3600")).quantize(
-                    Decimal("0.1")
-                )
-                speed = client_speed if client_speed is not None else _clamp_speed(server_speed)
+                if not created:
+                    pos.lat = lat
+                    pos.lon = lon
+                    pos.save(update_fields=["lat", "lon"])
 
-                pos.lat = lat
-                pos.lon = lon
-                pos.speed_kmh = speed
-                pos.save(update_fields=["lat", "lon", "speed_kmh"])
+                dist_m_to_target = shipment.distance_to_next_m(float(lat), float(lon))
+                arrived = dist_m_to_target <= ARRIVAL_RADIUS_M
 
-            dist_m_to_target = shipment.distance_to_next_m(float(lat), float(lon))
-            arrived = dist_m_to_target <= ARRIVAL_RADIUS_M
-
-            if arrived:
-                stops = list(shipment.stops.order_by("position"))
-                if shipment.current_stop_index >= len(stops) - 1:
-                    shipment.status = Shipment.Status.COMPLETED
-                    shipment.finalize()
+                if arrived:
+                    stops = list(shipment.stops.order_by("position"))
+                    if shipment.current_stop_index >= len(stops) - 1:
+                        shipment.status = Shipment.Status.COMPLETED
+                        shipment.finalize()
+                    else:
+                        shipment.current_stop_index += 1
+                        shipment.eta_to_next_min = Decimal("0.0")
                 else:
-                    shipment.current_stop_index += 1
-                    shipment.eta_to_next_min = Decimal("0.0")
-            else:
-                if speed and speed > 0 and dist_m_to_target > 0:
-                    eta = (
-                        (dist_m_to_target / Decimal("1000")) / speed * Decimal("60")
-                    ).quantize(Decimal("0.1"))
-                else:
-                    eta = None
-                shipment.eta_to_next_min = eta or Decimal("0.0")
+                    if dist_m_to_target > 0:
+                        speed = client_speed or BASE_SPEED_KMH
+                        try:
+                            eta = (
+                                (dist_m_to_target / Decimal("1000")) / speed * Decimal("60")
+                            ).quantize(Decimal("0.1"))
+                        except Exception:
+                            eta = None
+                    else:
+                        eta = None
+                    shipment.eta_to_next_min = eta or Decimal("0.0")
 
-            shipment.save(
-                update_fields=[
-                    "current_stop_index",
-                    "eta_to_next_min",
-                    "status",
-                    "final_fare",
-                ]
+                shipment.save(
+                    update_fields=[
+                        "current_stop_index",
+                        "eta_to_next_min",
+                        "status",
+                        "final_fare",
+                    ]
+                )
+
+            payload = {
+                "type": "telemetry",
+                "shipment_id": shipment.id,
+                "status": shipment.status,
+                "courier": {
+                    "lat": str(lat),
+                    "lon": str(lon),
+                },
+                "target_index": shipment.current_stop_index,
+                "distance_m": str(dist_m_to_target),
+                "eta_min": str(shipment.eta_to_next_min) if shipment.eta_to_next_min else None,
+            }
+
+            async_to_sync(self.channel_layer.group_send)(
+                self.group,
+                {"type": "shipment.event", "payload": payload},
             )
 
-        payload = {
-            "type": "telemetry",
-            "shipment_id": shipment.id,
-            "status": shipment.status,
-            "courier": {
-                "lat": str(lat),
-                "lon": str(lon),
-                "speed_kmh": str(speed) if speed is not None else None,
-            },
-            "target_index": shipment.current_stop_index,
-            "distance_m": str(dist_m_to_target),
-            "eta_min": str(shipment.eta_to_next_min) if shipment.eta_to_next_min else None,
-        }
-
-        async_to_sync(self.channel_layer.group_send)(
-            self.group,
-            {"type": "shipment.event", "payload": payload},
-        )
-
+        except Exception as e:
+            logger.exception("ws_error: %s", e)
+            self.send_json({"type": "error", "detail": "internal_error"})
 
     def shipment_event(self, event):
         self.send_json(event["payload"])

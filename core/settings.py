@@ -159,3 +159,6 @@ CHATFLOW_BASE_URL = os.getenv("CHATFLOW_BASE_URL", "https://app.chatflow.kz")
 CHATFLOW_TOKEN = os.getenv("CHATFLOW_TOKEN", "")
 CHATFLOW_INSTANCE_ID = os.getenv("CHATFLOW_INSTANCE_ID", "")
 OTP_TTL_SECONDS = int(os.getenv("OTP_TTL_SECONDS", "300"))
+
+
+OSRM_URL = "https://router.project-osrm.org"

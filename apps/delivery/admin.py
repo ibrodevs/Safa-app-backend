@@ -1,27 +1,11 @@
 from django.contrib import admin
 
 from .models import (
-    Bazar,
-    Container,
     CourierSegment,
     Shipment,
     ShipmentStop,
     CourierPosition,
 )
-
-
-@admin.register(Bazar)
-class BazarAdmin(admin.ModelAdmin):
-    list_display = ("id", "name")
-    search_fields = ("name",)
-
-
-@admin.register(Container)
-class ContainerAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "bazar", "number", "passage", "latitude", "longitude")
-    list_filter = ("bazar",)
-    search_fields = ("title", "number", "passage", "bazar__name")
-    ordering = ("bazar__name", "title")
 
 
 @admin.register(CourierSegment)
@@ -41,18 +25,22 @@ class CourierSegmentAdmin(admin.ModelAdmin):
 class ShipmentStopInline(admin.TabularInline):
     """
     Остановки маршрута в админке.
-    Позицию руками не трогаем — она проставится автоматически.
+
+    Поля, связанные с контейнерами/базарами, убраны.
+    Позиция выставляется автоматически (0, 1, 2...) в save_related().
     """
     model = ShipmentStop
     extra = 0
-    autocomplete_fields = ("container",)
-    fields = ("container",)          # НЕ показываем поле position
-    ordering = ("position",)         # показываем в порядке позиции
+    # никаких autocomplete по контейнерам
+    # показываем только служебные поля маршрута
+    fields = ("position",)
+    ordering = ("position",)
 
 
 @admin.action(description="Пересчитать стоимость")
 def reestimate_action(modeladmin, request, queryset):
-    for s in queryset.select_related("segment").prefetch_related("stops__container"):
+    # убрали prefetch_related("stops__container"), т.к. контейнеров больше нет
+    for s in queryset.select_related("segment").prefetch_related("stops"):
         s.estimate()
         s.save(update_fields=["distance_km", "estimated_fare"])
 
@@ -81,7 +69,7 @@ class ShipmentAdmin(admin.ModelAdmin):
         "created_at",
     )
     list_filter = ("status", "size", "fragile", "segment")
-    search_fields = ("title", "client__first_name", "client__last_name", "client__phone_number")
+    search_fields = ("title", "client__first_name", "client__phone_number")
     date_hierarchy = "created_at"
     readonly_fields = (
         "distance_km", "estimated_fare", "final_fare",
