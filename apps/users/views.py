@@ -17,6 +17,10 @@ from rest_framework.parsers import MultiPartParser, JSONParser, FormParser
 from apps.users.utlis import *
 from rest_framework.exceptions import MethodNotAllowed
 from rest_framework_simplejwt.tokens import RefreshToken
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 @extend_schema(tags=["Аутентификация"])
 class RegisterView(generics.CreateAPIView):
@@ -287,4 +291,105 @@ class CarrierLoginView(generics.GenericAPIView):
                 "refresh": str(refresh),
             },
             status=200,
+        )
+
+
+
+
+
+@extend_schema(
+    tags=["Аутентификация"],
+    summary="Удаление заявки курьера (KYC) и его профиля",
+    responses={
+        200: OpenApiResponse(description="Заявка и профиль удалены"),
+        400: OpenApiResponse(description="Нельзя удалить уже одобренную заявку"),
+        403: OpenApiResponse(description="Не курьер"),
+        404: OpenApiResponse(description="Заявка не найдена"),
+    },
+)
+class CourierKYCCancelView(generics.GenericAPIView):
+    """
+    Удаляет заявку (CourierKYC) и профиль (UserProfile) текущего авторизованного курьера.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        user = request.user
+
+        logger.info(
+            "CourierKYC cancel requested",
+            extra={
+                "user_id": getattr(user, "id", None),
+                "phone_number": getattr(user, "phone_number", None),
+                "role": getattr(user, "role", None),
+            },
+        )
+
+        if user.role != User.Roles.CARRIER:
+            logger.warning(
+                "CourierKYC cancel forbidden: user is not carrier",
+                extra={
+                    "user_id": getattr(user, "id", None),
+                    "role": getattr(user, "role", None),
+                },
+            )
+            raise PermissionDenied("Только перевозчик может удалять свою заявку.")
+
+        kyc = getattr(user, "kyc", None)
+        if kyc is None:
+            logger.info(
+                "CourierKYC cancel: no KYC found for carrier",
+                extra={
+                    "user_id": user.id,
+                    "phone_number": user.phone_number,
+                },
+            )
+            return Response(
+                {"detail": "У вас нет активной заявки курьера."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if kyc.status == CourierKYC.Status.APPROVED:
+            logger.info(
+                "CourierKYC cancel denied: KYC already approved",
+                extra={
+                    "user_id": user.id,
+                    "phone_number": user.phone_number,
+                    "kyc_status": kyc.status,
+                },
+            )
+            return Response(
+                {
+                    "detail": (
+                        "Нельзя удалить уже одобренную заявку. "
+                        "Свяжитесь с поддержкой, если нужно изменить данные."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # порядок: сначала профиль, затем KYC (или наоборот — не критично, всё в одной транзакции не требуется)
+        deleted_profile_count, _ = UserProfile.objects.filter(user=user).delete()
+        logger.info(
+            "UserProfile deleted for courier (if existed)",
+            extra={
+                "user_id": user.id,
+                "phone_number": user.phone_number,
+                "deleted_profile_count": deleted_profile_count,
+            },
+        )
+
+        kyc.delete()
+        logger.info(
+            "CourierKYC deleted successfully",
+            extra={
+                "user_id": user.id,
+                "phone_number": user.phone_number,
+            },
+        )
+
+        return Response(
+            {"detail": "Заявка курьера и профиль удалены."},
+            status=status.HTTP_200_OK,
         )

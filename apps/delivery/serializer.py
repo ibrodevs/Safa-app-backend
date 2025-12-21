@@ -1,16 +1,13 @@
 from __future__ import annotations
 from rest_framework import serializers
 from .models import CourierSegment, Shipment, ShipmentStop
-
+from apps.delivery.geo import haversine_m
 
 class CourierSegmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = CourierSegment
         fields = [
-            "id", "name", "slug", "is_active", "order", "icon",
-            "base_price", "per_km_price", "min_fare",
-            "fragile_pct", "size_s_multiplier", "size_m_multiplier", "size_l_multiplier",
-            "per_unit",
+            "id", "name", "icon", "description"
         ]
 
 class ShipmentStopInSerializer(serializers.Serializer):
@@ -86,6 +83,8 @@ class ShipmentDetailSerializer(serializers.ModelSerializer):
     stops = ShipmentStopReadSerializer(many=True, read_only=True)
     stops_count = serializers.SerializerMethodField()
     public_code = serializers.CharField(read_only=True)
+    commission = serializers.SerializerMethodField()
+    courier_income = serializers.SerializerMethodField()
 
     class Meta:
         model = Shipment
@@ -103,16 +102,21 @@ class ShipmentDetailSerializer(serializers.ModelSerializer):
             "stops_count",
             "estimated_fare",
             "final_fare",
+            "commission",
+            "courier_income",
             "created_at",
+            "finished_at",
         ]
         read_only_fields = fields
-
-    def get_size_label(self, obj):
-        return {"S": "Маленькие", "M": "Средние", "L": "Большие"}.get(obj.size, obj.size)
 
     def get_stops_count(self, obj):
         return obj.stops.count()
 
+    def get_commission(self, obj):
+        return obj.commission_amount
+
+    def get_courier_income(self, obj):
+        return obj.courier_income
 
 
 class ShipmentStatusSerializer(serializers.ModelSerializer):
@@ -164,3 +168,39 @@ class ShipmentCardSerializer(serializers.ModelSerializer):
 
     def get_size_label(self, obj):
         return {"S": "Маленькие", "M": "Средние", "L": "Большие"}.get(obj.size, obj.size)
+
+
+
+
+
+class ShipmentNearbySerializer(serializers.ModelSerializer):
+    distance_m = serializers.SerializerMethodField()
+    stops = ShipmentStopReadSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Shipment
+        fields = (
+            "id",
+            "public_code",
+            "title",
+            "estimated_fare",
+            "quantity",
+            "fragile",
+            "status",
+            "created_at",
+            "distance_m",
+            "stops",
+        )
+
+    def get_distance_m(self, obj) -> int | None:
+        lat = self.context.get("user_lat")
+        lon = self.context.get("user_lon")
+        if lat is None or lon is None:
+            return None
+
+        stop = obj.stops.order_by("position").first()
+        if not stop or stop.lat is None or stop.lon is None:
+            return None
+
+        d = haversine_m(lat, lon, float(stop.lat), float(stop.lon))
+        return int(round(d))

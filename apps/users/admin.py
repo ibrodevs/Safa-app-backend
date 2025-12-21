@@ -15,6 +15,7 @@ class UserCreationForm(forms.ModelForm):
             "phone_number",
             "first_name",
             "role",
+            "city",
             "is_verify",
             "avatar",
             "is_active",
@@ -40,6 +41,7 @@ class UserChangeForm(forms.ModelForm):
             "phone_number",
             "first_name",
             "role",
+            "city",
             "is_verify",
             "avatar",
             "is_active",
@@ -77,6 +79,7 @@ class UserAdmin(BaseUserAdmin):
         "phone_number",
         "first_name",
         "role",
+        "city",
         "is_verify",
         "is_staff",
         "is_superuser",
@@ -88,7 +91,7 @@ class UserAdmin(BaseUserAdmin):
 
     fieldsets = (
         ("Учётные данные", {"fields": ("phone_number",)}),
-        ("Личные данные", {"fields": ("first_name", "avatar", "role", "is_verify")}),
+        ("Личные данные", {"fields": ("first_name", "avatar", "role", "city", "is_verify")}),
         ("Служебное", {"fields": ("last_login", "created_at")}),
     )
     add_fieldsets = (
@@ -100,6 +103,7 @@ class UserAdmin(BaseUserAdmin):
                     "phone_number",
                     "first_name",
                     "role",
+                    "city",
                     "is_verify",
                     "avatar",
                     "is_active",
@@ -165,6 +169,6 @@ class CourierKYCAdmin(admin.ModelAdmin):
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "user__first_name", "created_at")
+    list_display = ("id", "user", "user__first_name", "user__city", "rate", "client_rate_count" ,"created_at")
     search_fields = ("user__phone_number", "user__first_name")
     readonly_fields = ("created_at",)

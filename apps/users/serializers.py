@@ -149,14 +149,26 @@ class VerifyCodeSerializer(serializers.Serializer):
     code  = serializers.CharField(max_length=8)
 
 
+
 class UserProfileSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
+    role = serializers.CharField(source='user.role', read_only=True)
+    phone_number = serializers.CharField(source='user.phone_number', read_only=True)
     first_name = serializers.CharField(source='user.first_name', required=False)
-    avatar     = serializers.ImageField(source='user.avatar',     required=False, allow_null=True)
+    avatar = serializers.ImageField(source='user.avatar', required=False, allow_null=True)
     city = serializers.CharField(source='user.city', required=False)
+
     class Meta:
-        model  = UserProfile
-        fields = ('user', 'first_name', 'city', 'avatar', 'created_at')
+        model = UserProfile
+        fields = (
+            'role',
+            'phone_number',
+            'first_name',
+            'city',
+            'avatar',
+            'rate',
+            'client_rate_count',
+            'created_at',
+        )
         read_only_fields = ('created_at',)
 
     def update(self, instance, validated_data):
@@ -171,12 +183,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 setattr(user, attr, value)
             user.save(update_fields=list(user_data.keys()))
         return instance
-
-def _abs_url(request, file_field):
-    if not file_field:
-        return None
-    url = getattr(file_field, "url", None)
-    return request.build_absolute_uri(url) if (request and url) else url
 
 
 class CourierKYCSerializer(serializers.ModelSerializer):

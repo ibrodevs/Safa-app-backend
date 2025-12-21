@@ -1,7 +1,7 @@
 from __future__ import annotations
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List, Tuple
-
+from django.utils import timezone
 from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
@@ -16,16 +16,17 @@ class CourierSegment(models.Model):
     slug = models.SlugField(max_length=32, unique=True, verbose_name="Код")
     is_active = models.BooleanField(default=True, verbose_name="Активен")
     order = models.PositiveSmallIntegerField(default=0, verbose_name="Порядок в UI")
-    icon = models.CharField(max_length=64, blank=True, verbose_name="Иконка")
+    icon = models.ImageField(null=True ,blank=True, verbose_name="Иконка")
 
-    base_price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)], verbose_name="Посадка")
+    base_price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)], verbose_name="Базовая цена")
     per_km_price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)], verbose_name="Цена за км")
     min_fare = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Минималка")
+    description = models.TextField(verbose_name=('Описание'), null=True, blank=True)
 
-    fragile_pct = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"), verbose_name="Хрупкость, %")
-    size_s_multiplier = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("1.00"), verbose_name="×S")
-    size_m_multiplier = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("1.00"), verbose_name="×M")
-    size_l_multiplier = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("1.15"), verbose_name="×L")
+    fragile_pct = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"), verbose_name="Наценка за хрупкость, %",)
+    size_s_multiplier = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("1.00"), verbose_name="Множитель для S (мал.)")
+    size_m_multiplier = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("1.00"), verbose_name="Множитель для M (сред.)")
+    size_l_multiplier = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("1.15"), verbose_name="Множитель для L (больш.)")
 
     per_unit = models.BooleanField(default=True, verbose_name="Цена за единицу")
 
@@ -77,11 +78,15 @@ class Shipment(models.Model):
     distance_km = models.DecimalField(max_digits=7, decimal_places=2, default=0, verbose_name="Дистанция, км")
     estimated_fare = models.PositiveIntegerField(default=0, verbose_name="Предварительная стоимость")
     final_fare = models.PositiveIntegerField(default=0, verbose_name="Итоговая стоимость")
-
+    rating_applied = models.BooleanField(
+        default=False,
+        verbose_name="Рейтинг начислен",
+    )
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name="Статус")
     current_stop_index = models.PositiveSmallIntegerField(default=1, verbose_name="Индекс цели")
     eta_to_next_min = models.DecimalField(max_digits=6, decimal_places=1, default=0, verbose_name="ETA, мин")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
+    finished_at = models.DateTimeField(null=True, blank=True, verbose_name="Завершено")
 
     class Meta:
         ordering = ("-created_at",)
@@ -139,7 +144,21 @@ class Shipment(models.Model):
 
     def finalize(self) -> int:
         self.final_fare = self.estimated_fare
+        if not self.finished_at:
+            self.finished_at = timezone.now()
         return self.final_fare
+
+    @property
+    def commission_amount(self) -> int:
+        pct = getattr(settings, "PLATFORM_COMMISSION_PCT", Decimal("0"))
+        fare = Decimal(self.final_fare or self.estimated_fare or 0)
+        value = (fare * pct).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        return int(value)
+
+    @property
+    def courier_income(self) -> int:
+        fare = int(self.final_fare or self.estimated_fare or 0)
+        return fare - self.commission_amount
 
 
 class ShipmentStop(models.Model):

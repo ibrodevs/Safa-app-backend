@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import re
 from decimal import Decimal, ROUND_HALF_UP
 import requests
 from apps.notification.events import (
@@ -8,6 +8,7 @@ from apps.notification.events import (
     notify_shipment_canceled,
 )
 from asgiref.sync import async_to_sync
+from django.utils import timezone
 from channels.layers import get_channel_layer
 from django.conf import settings
 from django.db.models import Q
@@ -16,7 +17,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import viewsets, permissions, response, status, serializers
 from rest_framework.decorators import action
-
+from .stats import carrier_daily_stats_with_change
+from apps.users.models import UserProfile, User
 from drf_spectacular.utils import (
     extend_schema,
     extend_schema_view,
@@ -26,7 +28,8 @@ from drf_spectacular.utils import (
     inline_serializer,
     OpenApiExample
 )
-
+from datetime import date as _date
+import logging
 from .models import Shipment, ShipmentStop, CourierSegment
 from .serializer import (
     CourierSegmentSerializer,
@@ -36,9 +39,13 @@ from .serializer import (
     ShipmentCardSerializer,
     QuoteInSerializer,
     QuoteOutSerializer,
+    ShipmentNearbySerializer
 )
 from .geo import polyline_len_km, haversine_m, bbox_deltas
 from .pagination import StandardResultsSetPagination
+from apps.users.models import User
+
+logger = logging.getLogger(__name__)
 
 
 def _broadcast(shipment: Shipment):
@@ -50,10 +57,39 @@ def _broadcast(shipment: Shipment):
     )
 
 
+@extend_schema_view(
+    list=extend_schema(
+        tags=["Shipments"],
+        summary="Список активных тарифных сегментов доставки",
+        description="Возвращает все активные сегменты (тарифы) для доставки.",
+        responses=CourierSegmentSerializer(many=True),
+    ),
+    retrieve=extend_schema(
+        tags=["Shipments"],
+        summary="Детали тарифного сегмента",
+        responses=CourierSegmentSerializer,
+    ),
+)
 class CourierSegmentViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = CourierSegment.objects.filter(is_active=True).order_by("order", "name")
     serializer_class = CourierSegmentSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+
+
+
+
+def _increment_carrier_rating(shipment):
+    carrier = shipment.carrier
+    if not carrier:
+        return
+    if getattr(carrier, "role", None) != User.Roles.CARRIER:
+        return
+
+    profile, _ = UserProfile.objects.get_or_create(user=carrier)
+    profile.rate = (profile.rate or 0) + 1
+    profile.client_rate_count = (profile.client_rate_count or 0) + 1
+    profile.save(update_fields=["rate", "client_rate_count"])
 
 
 @extend_schema_view(
@@ -75,11 +111,26 @@ class ShipmentViewSet(viewsets.ModelViewSet):
     pagination_class = StandardResultsSetPagination
 
     def get_serializer_class(self):
-        if self.action == "create":
+        if self.action == "nearby":
+            return ShipmentNearbySerializer
+        elif self.action in ("list",):
+            return ShipmentDetailSerializer
+        elif self.action == "create":
             return ShipmentCreateSerializer
-        if self.action in ["set_status", "accept", "advance"]:
-            return ShipmentStatusSerializer
+        elif self.action in ("retrieve", "accept", "advance"):
+            return ShipmentDetailSerializer
         return ShipmentDetailSerializer
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        if self.action == "nearby":
+            try:
+                ctx["user_lat"] = float(self.request.query_params.get("lat"))
+                ctx["user_lon"] = float(self.request.query_params.get("lon"))
+            except (TypeError, ValueError):
+                ctx["user_lat"] = ctx["user_lon"] = None
+        return ctx
+
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -97,6 +148,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         shipment = serializer.save()
         _broadcast(shipment)
 
+
     @extend_schema(
         tags=["Shipments"],
         summary="Курьер принимает посылку",
@@ -104,45 +156,62 @@ class ShipmentViewSet(viewsets.ModelViewSet):
     )
     @action(detail=True, methods=["post"])
     def accept(self, request, pk=None):
-        s = self.get_object()
-        s.carrier = request.user
-        s.status = Shipment.Status.ASSIGNED
-        s.save(update_fields=["carrier", "status"])
-        _broadcast(s)
-    
-        notify_shipment_status(s)
-        return response.Response(ShipmentDetailSerializer(s).data)
+        user = request.user
+        if getattr(user, "role", None) != User.Roles.CARRIER:
+            return response.Response(
+                {"detail": "only_for_carrier"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        shipment = get_object_or_404(
+            Shipment,
+            pk=pk,
+            status=Shipment.Status.PENDING,
+            carrier__isnull=True,
+        )
+
+        shipment.carrier = user
+        shipment.status = Shipment.Status.ASSIGNED
+        shipment.save(update_fields=["carrier", "status"])
+
+        _broadcast(shipment)
+        notify_shipment_status(shipment)
+
+        return response.Response(ShipmentDetailSerializer(shipment).data)
+
 
 
     @extend_schema(
         tags=["Shipments"],
-        summary="Сменить статус",
-        request=ShipmentStatusSerializer,
+        summary="Смена статуса",
+        request=inline_serializer(
+            name="ShipmentSetStatusRequest",
+            fields={
+                "status": serializers.ChoiceField(choices=[c for c, _ in Shipment.Status.choices]),
+            },
+        ),
         responses=ShipmentDetailSerializer,
     )
     @action(detail=True, methods=["post"])
     def set_status(self, request, pk=None):
         s = self.get_object()
-        ser = ShipmentStatusSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
-        s.status = ser.validated_data["status"]
+        new_status = request.data.get("status")
 
-        if s.status == Shipment.Status.COMPLETED:
-            s.finalize()
-            s.save(update_fields=["status", "final_fare"])
+        old_status = s.status
+
+        if new_status == Shipment.Status.COMPLETED:
+            _complete_shipment_if_needed(s)
         else:
+            s.status = new_status
             s.save(update_fields=["status"])
+            if new_status != old_status:
+                notify_shipment_status(s)
 
         _broadcast(s)
+        return response.Response(ShipmentDetailSerializer(s).data)
 
-        notify_shipment_status(s)
-        if s.status == Shipment.Status.CANCELED:
-            notify_shipment_canceled(s, reason="manual")
 
-        return response.Response(
-            ShipmentDetailSerializer(s).data,
-            status=status.HTTP_200_OK,
-        )
+
 
     @extend_schema(
         tags=["Shipments"],
@@ -208,78 +277,80 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             ).data
         )
 
+
     @extend_schema(
         tags=["Shipments"],
         summary="Ближайшие заказы для курьера",
         parameters=[
-            OpenApiParameter(name="lat", type=float, required=True),
-            OpenApiParameter(name="lon", type=float, required=True),
-            OpenApiParameter(name="radius_m", type=int, required=False),
+            OpenApiParameter(
+                "lat",
+                OpenApiTypes.FLOAT,
+                OpenApiParameter.QUERY,
+                description="Широта курьера",
+                required=True,
+            ),
+            OpenApiParameter(
+                "lon",
+                OpenApiTypes.FLOAT,
+                OpenApiParameter.QUERY,
+                description="Долгота курьера",
+                required=True,
+            ),
+            OpenApiParameter(
+                name="page",
+                description="Номер страницы (начиная с 1)",
+                required=False,
+                type=int,
+                location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name="page_size",
+                description="Количество записей на странице (макс 100)",
+                required=False,
+                type=int,
+                location=OpenApiParameter.QUERY,
+            ),
         ],
-        responses=ShipmentCardSerializer(many=True),
+        responses=OpenApiResponse(
+            response=ShipmentNearbySerializer(many=True),
+            description="Пагинированный список ближайших доставок",
+        ),
     )
-    @action(detail=False, methods=["get"])
+    @action(detail=False, methods=["get"], url_path="nearby")
     def nearby(self, request):
         try:
             lat = float(request.query_params["lat"])
             lon = float(request.query_params["lon"])
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, ValueError):
             return response.Response(
-                {"detail": "lat/lon required"},
-                status=400,
+                {"detail": "lat и lon обязательны"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        radius_m = int(request.query_params.get("radius_m", 300) or 300)
+        qs = Shipment.objects.filter(
+            status=Shipment.Status.PENDING,
+            carrier__isnull=True,
+        ).order_by("created_at")
 
-        dlat, dlon = bbox_deltas(lat, radius_m)
-
-        base = (
-            Shipment.objects.filter(status=Shipment.Status.PENDING)
-            .filter(
-                stops__position=0,
-                stops__lat__gte=lat - dlat,
-                stops__lat__lte=lat + dlat,
-                stops__lon__gte=lon - dlon,
-                stops__lon__lte=lon + dlon,
-            )
-            .distinct()
-            .prefetch_related("stops")
+        page = self.paginate_queryset(qs)
+        serializer = self.get_serializer(
+            page or qs,
+            many=True,
+            context={"request": request, "user_lat": lat, "user_lon": lon},
         )
 
-        items: list[tuple[int, Shipment]] = []
-        for s in base:
-            first = s.stops.order_by("position").first()
-            if not first:
-                continue
-            dist_m = int(
-                round(
-                    haversine_m(
-                        lat,
-                        lon,
-                        float(first.lat),
-                        float(first.lon),
-                    )
-                )
-            )
-            if dist_m <= radius_m:
-                items.append((dist_m, s))
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
 
-        items.sort(key=lambda t: t[0])
-        data = ShipmentCardSerializer(
-            [s for _, s in items],
-            many=True,
-        ).data
-        for d, (dist_m, _) in zip(data, items):
-            d["distance_m"] = dist_m
-        return response.Response(data)
+        return response.Response(serializer.data)
+
+
+
 
     @extend_schema(
         tags=["Shipments"],
-        summary="Ручное продвижение на следующую точку/завершение",
-        request=inline_serializer(
-            name="AdvanceIn",
-            fields={"force": serializers.BooleanField(default=False)},
-        ),
+        summary="Курьер продвигает доставку к следующей точке / завершает доставку",
+        request=None,
         responses=ShipmentDetailSerializer,
     )
     @action(detail=True, methods=["post"])
@@ -287,28 +358,35 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         s = self.get_object()
         nxt = s.next_stop()
         if not nxt:
-            s.status = Shipment.Status.COMPLETED
-            s.finalize()
-            s.save(update_fields=["status", "final_fare"])
+            if s.status != Shipment.Status.COMPLETED:
+                s.status = Shipment.Status.COMPLETED
+                s.finalize()
+                s.save(update_fields=["status", "final_fare", "finished_at"])
+                _increment_carrier_rating(s)
+                notify_shipment_status(s)
         else:
             s.current_stop_index += 1
             if s.current_stop_index >= s.stops.count():
-                s.status = Shipment.Status.COMPLETED
-                s.finalize()
-                s.save(
-                    update_fields=[
-                        "current_stop_index",
-                        "status",
-                        "final_fare",
-                    ]
-                )
+                if s.status != Shipment.Status.COMPLETED:
+                    s.status = Shipment.Status.COMPLETED
+                    s.finalize()
+                    s.save(
+                        update_fields=[
+                            "current_stop_index",
+                            "status",
+                            "final_fare",
+                            "finished_at",
+                        ]
+                    )
+                    _increment_carrier_rating(s)
+                    notify_shipment_status(s)
             else:
                 s.save(update_fields=["current_stop_index"])
+                notify_shipment_status(s)
 
         _broadcast(s)
-        notify_shipment_status(s)
-
         return response.Response(ShipmentDetailSerializer(s).data)
+
 
 
     @extend_schema(
@@ -351,119 +429,14 @@ class ShipmentViewSet(viewsets.ModelViewSet):
 
 UA = {"User-Agent": "dordoi-go/1.0 (+contact@example.com)"}
 
-
-@extend_schema(tags=["Гео"])
-class GeoViewSet(viewsets.ViewSet):
-    permission_classes = [permissions.AllowAny]
-
-    @extend_schema(
-        summary="Построить маршрут между двумя точками (для Яндекс.Карт)",
-        parameters=[
-            OpenApiParameter(
-                "from_lat",
-                OpenApiTypes.FLOAT,
-                OpenApiParameter.QUERY,
-                required=True,
-                description="Широта точки отправления",
-            ),
-            OpenApiParameter(
-                "from_lon",
-                OpenApiTypes.FLOAT,
-                OpenApiParameter.QUERY,
-                required=True,
-                description="Долгота точки отправления",
-            ),
-            OpenApiParameter(
-                "to_lat",
-                OpenApiTypes.FLOAT,
-                OpenApiParameter.QUERY,
-                required=True,
-                description="Широта точки назначения",
-            ),
-            OpenApiParameter(
-                "to_lon",
-                OpenApiTypes.FLOAT,
-                OpenApiParameter.QUERY,
-                required=True,
-                description="Долгота точки назначения",
-            ),
-        ],
-        responses={
-            200: OpenApiTypes.OBJECT,
-            400: OpenApiResponse(
-                description="from_lon,from_lat,to_lon,to_lat required"
-            ),
-            404: OpenApiResponse(description="no_route"),
-        },
-    )
-    @action(detail=False, methods=["get"], url_path="route")
-    def route(self, request):
-        try:
-            flat = float(request.query_params["from_lat"])
-            flon = float(request.query_params["from_lon"])
-            tlat = float(request.query_params["to_lat"])
-            tlon = float(request.query_params["to_lon"])
-        except Exception:
-            return response.Response(
-                {"detail": "from_lon,from_lat,to_lon,to_lat required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        osrm_url = getattr(settings, "OSRM_URL", "").rstrip("/")
-        if not osrm_url:
-            return response.Response(
-                {"detail": "OSRM_URL is not configured"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-        url = f"{osrm_url}/route/v1/driving/{flon},{flat};{tlon},{tlat}"
-        try:
-            r = requests.get(
-                url,
-                params={
-                    "overview": "full",
-                    "geometries": "geojson",
-                    "alternatives": "false",
-                    "steps": "false",
-                },
-                headers=UA,
-                timeout=10,
-            )
-            r.raise_for_status()
-        except requests.RequestException as e:
-            return response.Response(
-                {"detail": f"osrm_error: {e}"},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
-
-        data = r.json()
-        routes = data.get("routes") or []
-        if not routes:
-            return response.Response(
-                {"detail": "no_route"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        route0 = routes[0]
-        distance_km = round(route0["distance"] / 1000.0, 2)
-        duration_min = round(route0["duration"] / 60.0)
-
-        return response.Response(
-            {
-                "distance_km": distance_km,
-                "duration_min": duration_min,
-                "geometry": route0["geometry"],
-            },
-            status=status.HTTP_200_OK,
-        )
-
-
+TWOGIS_API_KEY = "c65e5972-5592-4197-9dd2-e43bdcfd83fd"
 
 
 YANDEX_API_KEY = "bc8fb1c9-1361-46e4-b872-a95d055823e8"
 
 @extend_schema(tags=["Гео"])
 class ReverseGeocodeView(APIView):
+    permission_classes = [permissions.AllowAny]
     @extend_schema(
         summary="Реверс-геокодинг (координаты → адрес)",
         description="Принимает широту и долготу, обращается к API Яндекса и возвращает текстовый адрес.",
@@ -530,3 +503,287 @@ class ReverseGeocodeView(APIView):
             address = None
 
         return Response({"address": address})
+
+
+
+
+DORDOI_LON = 74.6217
+DORDOI_LAT = 42.9367
+DORDOI_RADIUS = 4000
+
+logger = logging.getLogger(__name__)
+
+_MARKET_WORDS = (
+    "дордой",
+    "рынок дордой",
+    "мурас спорт",
+    "алкан базары",
+    "рынок",
+    "базар",
+    "базары",
+)
+_RE_PASSAGE = re.compile(r"(\d+)\s*[-–]?\s*й?\s*проход", re.IGNORECASE)
+_RE_CONTAINER = re.compile(r"контейнер\s+(\d+)", re.IGNORECASE)
+
+
+def _split_market_container_passage(title: str, address: str) -> tuple[str | None, str | None, str | None]:
+    full = f"{title}, {address}".strip(", ")
+
+    market = None
+    container = None
+    passage = None
+
+    parts = [p.strip() for p in full.split(",") if p.strip()]
+    markets = [
+        p
+        for p in parts
+        if any(w in p.lower() for w in _MARKET_WORDS)
+    ]
+    if markets:
+        market = markets[-1]
+
+    m = _RE_CONTAINER.search(full)
+    if m:
+        container = m.group(1)
+
+    m = _RE_PASSAGE.search(full)
+    if m:
+        passage = m.group(1)
+
+    return market, container, passage
+
+
+def _build_query_text(market: str | None, container: str | None, passage: str | None, q: str | None) -> str | None:
+    market = (market or "").strip()
+    container = (container or "").strip()
+    passage = (passage or "").strip()
+    q = (q or "").strip()
+
+    if market:
+        parts = [market]
+        if container:
+            parts.append(f"контейнер {container}")
+        if passage:
+            parts.append(f"{passage} проход")
+        return ", ".join(parts)
+
+    if q:
+        return q
+
+    return None
+
+
+@extend_schema(tags=["Гео"])
+class AutocompleteView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    @extend_schema(
+        summary="Автодополнение адреса на Дордое (2ГИС)",
+        description=(
+            "Поиск по базару Дордой через 2ГИС. Можно передавать market/container/passage "
+            "или свободный текст q. Результаты ограничены районом Дордоя."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="market",
+                required=False,
+                type=str,
+                description="Название базара (Мурас спорт, Алкан базары, и т.п.)",
+            ),
+            OpenApiParameter(
+                name="container",
+                required=False,
+                type=str,
+                description="Номер контейнера (например, 74)",
+            ),
+            OpenApiParameter(
+                name="passage",
+                required=False,
+                type=str,
+                description="Номер прохода (например, 8)",
+            ),
+            OpenApiParameter(
+                name="q",
+                required=False,
+                type=str,
+                description="Свободный текст, если не используешь market/container/passage",
+            ),
+        ],
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string"},
+                                "address": {"type": "string"},
+                                "market": {"type": "string", "nullable": True},
+                                "container": {"type": "string", "nullable": True},
+                                "passage": {"type": "string", "nullable": True},
+                                "lat": {"type": "number", "format": "float"},
+                                "lon": {"type": "number", "format": "float"},
+                            },
+                        },
+                    }
+                },
+            },
+            400: {
+                "type": "object",
+                "properties": {
+                    "detail": {"type": "string"},
+                },
+            },
+        },
+        examples=[
+            OpenApiExample(
+                "По market/container/passage",
+                value={"market": "Алкан базары", "container": "74", "passage": "8"},
+            ),
+            OpenApiExample(
+                "По свободному тексту",
+                value={"q": "Контейнер 74, 8 проход"},
+            ),
+        ],
+    )
+    def get(self, request):
+        market = request.query_params.get("market")
+        container = request.query_params.get("container")
+        passage = request.query_params.get("passage")
+        q = request.query_params.get("q")
+
+        query_text = _build_query_text(market, container, passage, q)
+        if not query_text:
+            return Response(
+                {"detail": "нужно хотя бы одно из: market или q"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        url = "https://catalog.api.2gis.com/3.0/items/geocode"
+        params = {
+            "key": TWOGIS_API_KEY,
+            "q": query_text,
+            "fields": "items.point,items.full_address_name",
+            "page_size": 5,
+            "point": f"{DORDOI_LON},{DORDOI_LAT}",
+            "radius": DORDOI_RADIUS,
+            "sort": "distance",
+            "search_nearby": "true",
+            "locale": "ru_KG",
+        }
+
+        try:
+            r = requests.get(url, params=params, timeout=5)
+        except requests.RequestException:
+            return Response(
+                {"detail": "2gis_request_failed"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        if r.status_code != 200:
+            return Response(
+                {
+                    "detail": "2gis_error",
+                    "status_code": r.status_code,
+                    "body": r.text[:200],
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        try:
+            data = r.json()
+        except ValueError:
+            return Response(
+                {
+                    "detail": "2gis_bad_json",
+                    "body": r.text[:200],
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        items = (data.get("result") or {}).get("items") or []
+
+        results = []
+        for item in items:
+            name = item.get("name") or ""
+            addr = item.get("full_address_name") or ""
+            point = item.get("point") or {}
+            lon = point.get("lon")
+            lat = point.get("lat")
+
+            mkt, cont, pas = _split_market_container_passage(name, addr)
+
+            results.append(
+                {
+                    "title": name or addr,
+                    "address": addr,
+                    "market": mkt,
+                    "container": cont,
+                    "passage": pas,
+                    "lat": lat,
+                    "lon": lon,
+                }
+            )
+
+        return Response({"results": results})
+
+
+@extend_schema(
+    tags=["Статистика"],
+    summary="Дневная статистика курьера",
+    parameters=[
+        OpenApiParameter(
+            name="date",
+            description="Дата в формате YYYY-MM-DD (по умолчанию сегодня)",
+            required=False,
+            type=str,
+        ),
+    ],
+    responses={
+        200: {
+            "type": "object",
+            "properties": {
+                "date": {"type": "string", "example": "2025-09-24"},
+                "gross_total": {"type": "integer", "example": 7000},
+                "earned": {"type": "integer", "example": 6080},
+                "commission": {"type": "integer", "example": 920},
+                "clients": {"type": "integer", "example": 8},
+                "change_percent_vs_prev": {
+                    "type": "integer",
+                    "nullable": True,
+                    "example": 23,
+                },
+            },
+        }
+    },
+)
+class CarrierDailyStatsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if getattr(user, "role", None) != User.Roles.CARRIER:
+            return Response(
+                {"detail": "only_for_carrier"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        date_str = request.query_params.get("date")
+        if date_str:
+            try:
+                day = _date.fromisoformat(date_str)
+            except ValueError:
+                return Response(
+                    {"detail": "bad_date_format"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            day = timezone.localdate()
+
+        data = carrier_daily_stats_with_change(
+            carrier_id=user.id,
+            day=day,
+        )
+        return Response(data)

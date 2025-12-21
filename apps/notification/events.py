@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+from django.contrib.auth import get_user_model
 import logging
 import uuid
 from typing import Iterable, Any
@@ -236,3 +236,51 @@ def notify_shipment_canceled(shipment, *, reason: str = "") -> None:
         ttl="600s",
         collapse_key=f"shipment_cancel_{shipment.id}",
     )
+
+
+
+
+
+User = get_user_model()
+
+
+def broadcast_to_role(
+    *,
+    role: str,
+    app: str,
+    title: str,
+    body: str,
+    channel: str = "system",
+    deep_link: str = "",
+    type_: str = "manual",
+    silent: bool = False,
+    ttl: str = "600s",
+    collapse_key: str | None = None,
+) -> int:
+    base = _base_data(
+        app=app,
+        type_=type_,
+        title=title,
+        body=body,
+        channel=channel,
+        deep_link=deep_link,
+        silent=silent,
+    )
+
+    user_ids = (
+        FCMToken.objects
+        .filter(user__role=role, is_active=True)
+        .values_list("user_id", flat=True)
+        .distinct()
+    )
+
+    sent = 0
+    for uid in user_ids:
+        _send_to_user(
+            uid,
+            dict(base),
+            ttl=ttl,
+            collapse_key=collapse_key,
+        )
+        sent += 1
+    return sent

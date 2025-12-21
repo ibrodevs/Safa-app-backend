@@ -4,8 +4,10 @@ from .views import *
 
 router = DefaultRouter()
 router.register("shipments", ShipmentViewSet, basename="shipments")
-router.register(r"geo", GeoViewSet, basename="geo")
+router.register("segments", CourierSegmentViewSet, basename="segments")
 
 urlpatterns = [
-    path("api/reverse/", ReverseGeocodeView.as_view()),
+    path("geo/reverse/", ReverseGeocodeView.as_view()),
+    path("geo/autocomplete/",   AutocompleteView.as_view()),
+    path("stats/", CarrierDailyStatsView.as_view(), name="carrier-daily-stats"),
     path("", include(router.urls))]

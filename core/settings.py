@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
-
+from decimal import Decimal
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
@@ -14,7 +14,12 @@ SECRET_KEY = os.getenv(
 
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
 
-ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",")
+ALLOWED_HOSTS = [
+    "dordoi-go.tech",
+    "www.dordoi-go.tech",
+    "164.92.182.171",
+    "localhost",
+]
 
 
 CSRF_TRUSTED_ORIGINS = [
@@ -45,6 +50,7 @@ INSTALLED_APPS = [
     'apps.notification'
 ]
 
+SECURE_CROSS_ORIGIN_OPENER_POLICY = None
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -177,3 +183,4 @@ OSRM_URL = "https://router.project-osrm.org"
 FCM_PROJECT_ID = "dogoapp-7b7a2"
 
 FCM_SERVICE_ACCOUNT_FILE = BASE_DIR / "firebase" / "dogoapp-7b7a2-firebase-adminsdk-fbsvc-61e2b5bc29.json"
+PLATFORM_COMMISSION_PCT = Decimal("0.10")

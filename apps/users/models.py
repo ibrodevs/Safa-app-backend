@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager
-from django.core.validators import RegexValidator
+from django.core.validators import RegexValidator, MaxValueValidator, MinValueValidator
 from django.utils import timezone
 
 phone_re = RegexValidator(
@@ -81,6 +81,8 @@ class CourierKYC(models.Model):
 
 class UserProfile(models.Model):
     user   = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+    rate = models.PositiveIntegerField(default=0, null=True, blank=True, verbose_name='Оценка',validators=[MinValueValidator(0), MaxValueValidator(100)])
+    client_rate_count = models.CharField(max_length=155, null=True, blank=True, verbose_name='Сколько клиентов оценили')
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

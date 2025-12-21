@@ -10,6 +10,7 @@ router = routers.DefaultRouter()
 urlpatterns = [
     path("register/", RegisterView.as_view(), name='reg'),
     path('token/', TokenObtainPairView.as_view(), name='login'),
+    path("kyc/cancel/", CourierKYCCancelView.as_view(), name="courier-kyc-cancel"),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('debug-code/', DebugRequestCodeView.as_view(), name='debug-code'),
     path("selfie/", SelfieWithIdCardView.as_view(), name="kyc-selfie"),
