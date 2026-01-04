@@ -83,6 +83,8 @@ class Shipment(models.Model):
         verbose_name="Рейтинг начислен",
     )
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name="Статус")
+    is_paid = models.BooleanField(default=False, verbose_name="Оплачено")
+    paid_at = models.DateTimeField(null=True, blank=True, verbose_name="Оплачено в")
     current_stop_index = models.PositiveSmallIntegerField(default=1, verbose_name="Индекс цели")
     eta_to_next_min = models.DecimalField(max_digits=6, decimal_places=1, default=0, verbose_name="ETA, мин")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")

@@ -106,6 +106,8 @@ class ShipmentDetailSerializer(serializers.ModelSerializer):
             "courier_income",
             "created_at",
             "finished_at",
+            "is_paid",
+            "paid_at"
         ]
         read_only_fields = fields
 
@@ -159,7 +161,8 @@ class ShipmentCardSerializer(serializers.ModelSerializer):
         model = Shipment
         fields = [
             "id", "public_code", "title", "estimated_fare",
-            "quantity", "fragile",
+            "quantity", "fragile", "is_paid",
+            "paid_at",
             "stops_count", "status", "created_at",
         ]
 

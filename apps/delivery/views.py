@@ -30,6 +30,7 @@ from drf_spectacular.utils import (
 )
 from datetime import date as _date
 import logging
+import uuid
 from .models import Shipment, ShipmentStop, CourierSegment
 from .serializer import (
     CourierSegmentSerializer,
@@ -44,7 +45,7 @@ from .serializer import (
 from .geo import polyline_len_km, haversine_m, bbox_deltas
 from .pagination import StandardResultsSetPagination
 from apps.users.models import User
-
+from apps.payments.models import *
 logger = logging.getLogger(__name__)
 
 
@@ -343,6 +344,49 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             return self.get_paginated_response(serializer.data)
 
         return response.Response(serializer.data)
+
+
+
+
+    @action(detail=True, methods=["post"], url_path="pay/finik")
+    def pay_finik(self, request, pk=None):
+        s = self.get_object()
+
+        if s.client_id != request.user.id:
+            return response.Response({"detail": "only_for_client"}, status=status.HTTP_403_FORBIDDEN)
+
+        if s.is_paid:
+            return response.Response({"detail": "already_paid"}, status=status.HTTP_409_CONFLICT)
+
+        amount = int(s.final_fare or s.estimated_fare or 0)
+        if amount <= 0:
+            return response.Response({"detail": "bad_amount"}, status=status.HTTP_400_BAD_REQUEST)
+
+        finik_request_id = uuid.uuid4().hex
+
+        attempt = PaymentAttempt.objects.create(
+            provider="FINIK",
+            shipment=s,
+            amount=amount,
+            currency=getattr(settings, "FINIK_CURRENCY", "KGS"),
+            finik_request_id=finik_request_id,
+            status=PaymentAttempt.Status.PENDING,
+        )
+
+        callback_url = settings.FINIK_CALLBACK_URL
+
+        return response.Response({
+            "paymentId": str(attempt.id),
+            "finikRequestId": finik_request_id,
+            "callbackUrl": callback_url,
+            "requiredFields": {
+                "paymentId": str(attempt.id),
+                "shipmentId": str(s.id),
+            },
+            "amount": amount,
+            "currency": attempt.currency,
+        }, status=status.HTTP_201_CREATED)
+
 
 
 

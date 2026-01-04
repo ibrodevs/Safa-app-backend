@@ -47,7 +47,8 @@ INSTALLED_APPS = [
 
     'apps.users',
     'apps.delivery',
-    'apps.notification'
+    'apps.notification',
+    'apps.payments'
 ]
 
 SECURE_CROSS_ORIGIN_OPENER_POLICY = None
@@ -184,3 +185,7 @@ FCM_PROJECT_ID = "dogoapp-7b7a2"
 
 FCM_SERVICE_ACCOUNT_FILE = BASE_DIR / "firebase" / "dogoapp-7b7a2-firebase-adminsdk-fbsvc-61e2b5bc29.json"
 PLATFORM_COMMISSION_PCT = Decimal("0.10")
+
+FINIK_WEBHOOK_TOKEN = os.getenv("FINIK_WEBHOOK_TOKEN", "")
+FINIK_CURRENCY = os.getenv("FINIK_CURRENCY", "KGS")
+FINIK_CALLBACK_URL = os.getenv("FINIK_CALLBACK_URL", "")

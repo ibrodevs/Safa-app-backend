@@ -1,9 +1,9 @@
 from __future__ import annotations
-
+from django.utils import timezone
 from rest_framework import generics, permissions, status, serializers, viewsets
 from rest_framework.response import Response
 from rest_framework.decorators import action
-
+from drf_spectacular.utils import OpenApiParameter, OpenApiTypes
 from drf_spectacular.utils import (
     extend_schema,
     extend_schema_view,
@@ -58,6 +58,30 @@ class FCMUnregisterView(generics.GenericAPIView):
     list=extend_schema(
         tags=["Уведомления"],
         summary="История уведомлений текущего пользователя",
+        parameters=[
+            OpenApiParameter(
+                name="is_read",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Фильтр прочитанности: 0 — непрочитанные, 1 — прочитанные",
+                enum=["0", "1"],
+            ),
+            OpenApiParameter(
+                name="page",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Номер страницы",
+            ),
+            OpenApiParameter(
+                name="page_size",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Размер страницы",
+            ),
+        ],
         responses=NotificationSerializer(many=True),
     ),
     retrieve=extend_schema(
