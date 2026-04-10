@@ -6,16 +6,23 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y \
+# postgresql-client нужен для pg_isready в entrypoint.sh
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    libpq-dev \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-COPY req.txt /app/
-
+# Устанавливаем зависимости
+COPY req.txt .
 RUN pip install --no-cache-dir -r req.txt
 
-COPY . /app/
+# Копируем проект
+COPY . .
 
-EXPOSE 8000
+# Права на entrypoint
+RUN chmod +x /app/docker/entrypoint.sh
 
-CMD ["sh", "-c", "python manage.py migrate && daphne -b 0.0.0.0 -p 8000 core.asgi:application"]
+EXPOSE 8001
+
+ENTRYPOINT ["sh", "/app/docker/entrypoint.sh"]
