@@ -19,7 +19,7 @@ ALLOWED_HOSTS = [
     "www.dordoi-go.tech",
     "164.92.182.171",
     "localhost",
-    "127.0.0.1",
+    "46.101.255.131"
 ]
 
 
@@ -187,9 +187,6 @@ FCM_PROJECT_ID = "dogoapp-7b7a2"
 FCM_SERVICE_ACCOUNT_FILE = BASE_DIR / "firebase" / "dogoapp-7b7a2-firebase-adminsdk-fbsvc-61e2b5bc29.json"
 PLATFORM_COMMISSION_PCT = Decimal("0.10")
 
+FINIK_WEBHOOK_TOKEN = os.getenv("FINIK_WEBHOOK_TOKEN", "")
 FINIK_CURRENCY = os.getenv("FINIK_CURRENCY", "KGS")
 FINIK_CALLBACK_URL = os.getenv("FINIK_CALLBACK_URL", "")
-
-DELIVERY_BASE_PRICE = 50
-DELIVERY_PER_KM_PRICE = 20
-DELIVERY_MIN_FARE = 50
