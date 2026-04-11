@@ -3,7 +3,7 @@ from django import forms
 from django.core.exceptions import ValidationError
 
 from .models import (
-    CourierSegment,
+    GlobalDeliveryConfig,
     Shipment,
     ShipmentStop,
     CourierPosition,
@@ -47,26 +47,29 @@ class ContainerAdmin(admin.ModelAdmin):
         return obj.passage.bazar.name
 
 
-@admin.register(CourierSegment)
-class CourierSegmentAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "name",
-        "slug",
-        "is_active",
-        "base_price",
-        "per_km_price",
-        "min_fare",
-        "fragile_pct",
-        "size_s_multiplier",
-        "size_m_multiplier",
-        "size_l_multiplier",
-        "per_unit",
+@admin.register(GlobalDeliveryConfig)
+class GlobalDeliveryConfigAdmin(admin.ModelAdmin):
+    list_display = ("base_price", "per_km_price", "min_fare", "updated_at")
+    
+    fieldsets = (
+        ("Настройки тарификации", {
+            "fields": ("base_price", "per_km_price", "min_fare"),
+            "description": "Эти значения используются для расчета стоимости всех новых заказов."
+        }),
+        ("Системная информация", {
+            "fields": ("updated_at",),
+            "classes": ("collapse",)
+        }),
     )
-    list_editable = ("is_active",)
-    search_fields = ("name", "slug")
-    list_filter = ("is_active",)
-    ordering = ("order", "name")
+    readonly_fields = ("updated_at",)
+
+    def has_add_permission(self, request):
+        if GlobalDeliveryConfig.objects.exists():
+            return False
+        return super().has_add_permission(request)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 class ShipmentStopInlineForm(forms.ModelForm):
@@ -111,7 +114,7 @@ class ShipmentStopInline(admin.TabularInline):
 
 @admin.action(description="Пересчитать стоимость")
 def reestimate_action(modeladmin, request, queryset):
-    for s in queryset.select_related("segment").prefetch_related("stops"):
+    for s in queryset.prefetch_related("stops"):
         # Если не все точки заполнены координатами, estimate() даст 0км — это ок.
         s.estimate()
         s.save(update_fields=["distance_km", "estimated_fare"])
@@ -139,16 +142,13 @@ class ShipmentAdmin(admin.ModelAdmin):
         "title",
         "client",
         "carrier",
-        "segment",
         "status",
-        "size",
-        "fragile",
         "distance_km",
         "estimated_fare",
         "final_fare",
         "created_at",
     )
-    list_filter = ("status", "size", "fragile", "segment")
+    list_filter = ("status",)
     search_fields = ("title", "client__first_name", "client__phone_number")
     date_hierarchy = "created_at"
     readonly_fields = (
@@ -159,15 +159,14 @@ class ShipmentAdmin(admin.ModelAdmin):
         "eta_to_next_min",
         "created_at",
     )
-    autocomplete_fields = ("client", "carrier", "segment")
+    autocomplete_fields = ("client", "carrier")
     inlines = (ShipmentStopInline,)
     actions = (reestimate_action, complete_action, cancel_action)
-    list_select_related = ("client", "carrier", "segment")
+    list_select_related = ("client", "carrier")
     ordering = ("-created_at",)
 
     fieldsets = (
         ("Основное", {"fields": ("title", "description", "client", "carrier", "status")}),
-        ("Тариф", {"fields": ("segment", "size", "quantity", "fragile")}),
         (
             "Расчёт",
             {

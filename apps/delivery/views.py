@@ -30,13 +30,12 @@ from apps.notification.events import notify_shipment_status
 from apps.payments.models import PaymentAttempt
 from apps.users.models import User, UserProfile
 from .geocoding import twogis_autocomplete
-from .geo import polyline_len_km
-from .models import Bazar, Container, CourierSegment, Passage, Shipment
+from .geo import polyline_len_km, is_in_bishkek
+from .models import Bazar, Container, GlobalDeliveryConfig, Passage, Shipment
 from .pagination import StandardResultsSetPagination
 from .serializer import (
     BazarSerializer,
     ContainerSerializer,
-    CourierSegmentSerializer,
     PassageSerializer,
     QuoteInSerializer,
     QuoteOutSerializer,
@@ -86,23 +85,7 @@ def _increment_carrier_rating(shipment: Shipment) -> None:
     profile.save(update_fields=["rate", "client_rate_count"])
 
 
-@extend_schema_view(
-    list=extend_schema(
-        tags=["Shipments"],
-        summary="Список активных тарифных сегментов доставки",
-        description="Возвращает все активные сегменты (тарифы) для доставки.",
-        responses=CourierSegmentSerializer(many=True),
-    ),
-    retrieve=extend_schema(
-        tags=["Shipments"],
-        summary="Детали тарифного сегмента",
-        responses=CourierSegmentSerializer,
-    ),
-)
-class CourierSegmentViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = CourierSegment.objects.filter(is_active=True).order_by("order", "name")
-    serializer_class = CourierSegmentSerializer
-    permission_classes = [permissions.IsAuthenticated]
+
 
 
 @extend_schema_view(
@@ -202,7 +185,7 @@ class ContainerViewSet(viewsets.ReadOnlyModelViewSet):
     ),
 )
 class ShipmentViewSet(viewsets.ModelViewSet):
-    queryset = Shipment.objects.select_related("client", "carrier", "segment").prefetch_related("stops")
+    queryset = Shipment.objects.select_related("client", "carrier").prefetch_related("stops")
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardResultsSetPagination
 
@@ -342,8 +325,6 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         ser.is_valid(raise_exception=True)
         data = ser.validated_data
 
-        seg = get_object_or_404(CourierSegment, id=data["segment_id"], is_active=True)
-
         stops = list(data["stops"])
         if data.get("return_to_start"):
             stops.append(stops[0])
@@ -358,23 +339,14 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         geoms = [(p["lat"], p["lon"]) for p in stops]
         dist_km = Decimal(str(polyline_len_km(geoms))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-        mult = Decimal(
-            seg.size_m_multiplier
-            if data["size"] == "M"
-            else seg.size_s_multiplier
-            if data["size"] == "S"
-            else seg.size_l_multiplier
-        )
-        if data["fragile"]:
-            mult *= Decimal("1.00") + Decimal(seg.fragile_pct or 0) / Decimal("100")
+        config = GlobalDeliveryConfig.get_config()
+        base_price = Decimal(config.base_price)
+        per_km_price = Decimal(config.per_km_price)
+        min_fare = Decimal(config.min_fare)
 
-        cost = (Decimal(seg.base_price) + Decimal(seg.per_km_price) * dist_km) * mult
-
-        if seg.per_unit:
-            cost *= Decimal(data.get("quantity", 1))
-
+        cost = base_price + per_km_price * dist_km
         cost = cost.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        min_fare = Decimal(seg.min_fare or 0)
+        
         if cost < min_fare:
             cost = min_fare
 
@@ -383,7 +355,6 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             extra={
                 "request_id": rid,
                 "user_id": request.user.id,
-                "segment_id": seg.id,
                 "distance_km": str(dist_km),
                 "estimated_fare": int(cost),
             },
@@ -432,16 +403,28 @@ class ShipmentViewSet(viewsets.ModelViewSet):
     def nearby(self, request):
         rid = _rid(request)
         try:
-            lat = float(request.query_params["lat"])
-            lon = float(request.query_params["lon"])
-        except (KeyError, ValueError):
-            logger.warning(
-                "nearby_bad_coords",
-                extra={"request_id": rid, "user_id": request.user.id},
-            )
-            return response.Response({"detail": "lat и lon обязательны"}, status=status.HTTP_400_BAD_REQUEST)
+            lat = float(request.query_params.get("lat", 0))
+            lon = float(request.query_params.get("lon", 0))
+        except (ValueError):
+            lat, lon = 0.0, 0.0
 
-        qs = Shipment.objects.filter(status=Shipment.Status.PENDING, carrier__isnull=True).order_by("created_at")
+        # Поиск завершенных заказов или тех, что в ожидании.
+        # Теперь фильтруем по Бишкеку и показываем всем онлайн курьерам.
+        qs = (
+            Shipment.objects.filter(status=Shipment.Status.PENDING, carrier__isnull=True)
+            .prefetch_related("stops")
+            .order_by("created_at")
+        )
+
+        # Оставляем только заказы, где первая точка (забор) в Бишкеке
+        filtered_ids = []
+        for s in qs:
+            first_stop = s.stops.order_by("position").first()
+            if first_stop and first_stop.lat and first_stop.lon:
+                if is_in_bishkek(float(first_stop.lat), float(first_stop.lon)):
+                    filtered_ids.append(s.id)
+        
+        qs = qs.filter(id__in=filtered_ids)
 
         page = self.paginate_queryset(qs)
         serializer = self.get_serializer(
@@ -452,7 +435,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
 
         logger.info(
             "nearby_listed",
-            extra={"request_id": rid, "user_id": request.user.id, "lat": lat, "lon": lon},
+            extra={"request_id": rid, "user_id": request.user.id, "lat": lat, "lon": lon, "count": qs.count()},
         )
         if page is not None:
             return self.get_paginated_response(serializer.data)
@@ -794,3 +777,16 @@ class CarrierDailyStatsView(APIView):
         data = carrier_daily_stats_with_change(carrier_id=user.id, day=day)
         logger.info("carrier_stats_ok", extra={"request_id": rid, "user_id": user.id, "date": str(day)})
         return Response(data)
+
+
+@extend_schema(tags=["Служба поддержки"])
+class SupportView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        return Response({
+            "phone": "+996 555 123 456",
+            "telegram": "@dogo_support",
+            "working_hours": "24/7",
+            "message": "Мы всегда на связи!"
+        })

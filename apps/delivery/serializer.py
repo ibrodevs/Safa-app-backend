@@ -9,7 +9,13 @@ from rest_framework import serializers
 
 from apps.delivery.geo import haversine_m
 from .geocoding import GeocodeNotFound, twogis_resolve_best
-from .models import Bazar, Container, CourierSegment, Passage, Shipment, ShipmentStop
+from .models import (
+    Bazar,
+    Container,
+    Passage,
+    Shipment,
+    ShipmentStop,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -171,12 +177,6 @@ def get_or_create_container_ui(
         return obj
 
 
-class CourierSegmentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = CourierSegment
-        fields = ["id", "name", "icon", "description"]
-
-
 class BazarSerializer(serializers.ModelSerializer):
     class Meta:
         model = Bazar
@@ -294,15 +294,12 @@ class ShipmentCreateSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "title",
-            "segment",
-            "size",
-            "quantity",
-            "fragile",
             "description",
             "stops",
             "return_to_start",
             "estimated_fare",
         ]
+        extra_kwargs = {}
 
     def validate(self, attrs):
         stops = attrs.get("stops") or []
@@ -441,7 +438,6 @@ class ShipmentCreateSerializer(serializers.ModelSerializer):
 
 
 class ShipmentDetailSerializer(serializers.ModelSerializer):
-    segment = CourierSegmentSerializer(read_only=True)
     stops = ShipmentStopReadSerializer(many=True, read_only=True)
     stops_count = serializers.SerializerMethodField()
     public_code = serializers.CharField(read_only=True)
@@ -455,10 +451,6 @@ class ShipmentDetailSerializer(serializers.ModelSerializer):
             "public_code",
             "status",
             "title",
-            "segment",
-            "size",
-            "quantity",
-            "fragile",
             "description",
             "stops",
             "stops_count",
@@ -496,10 +488,6 @@ class CoordsSerializer(serializers.Serializer):
 
 
 class QuoteInSerializer(serializers.Serializer):
-    segment_id = serializers.IntegerField()
-    size = serializers.ChoiceField(choices=["S", "M", "L"], default="M")
-    fragile = serializers.BooleanField(default=False)
-    quantity = serializers.IntegerField(min_value=1, default=1)
     stops = serializers.ListField(child=CoordsSerializer(), min_length=2, max_length=4)
     return_to_start = serializers.BooleanField(default=False)
 
@@ -528,8 +516,6 @@ class ShipmentCardSerializer(serializers.ModelSerializer):
             "public_code",
             "title",
             "estimated_fare",
-            "quantity",
-            "fragile",
             "is_paid",
             "paid_at",
             "stops_count",
@@ -552,8 +538,6 @@ class ShipmentNearbySerializer(serializers.ModelSerializer):
             "public_code",
             "title",
             "estimated_fare",
-            "quantity",
-            "fragile",
             "status",
             "created_at",
             "distance_m",

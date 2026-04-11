@@ -26,3 +26,10 @@ def bbox_deltas(lat: float, radius_m: int) -> tuple[float, float]:
     denom = max(cos(radians(lat)), 1e-6)
     d_lon = radius_m / (EARTH_R_M * denom) * 180.0 / 3.141592653589793
     return d_lat, d_lon
+
+BISHKEK_LAT = 42.8714
+BISHKEK_LON = 74.5880
+BISHKEK_RADIUS_M = 20_000
+
+def is_in_bishkek(lat: float, lon: float) -> bool:
+    return haversine_m(BISHKEK_LAT, BISHKEK_LON, lat, lon) <= BISHKEK_RADIUS_M

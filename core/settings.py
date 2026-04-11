@@ -19,6 +19,7 @@ ALLOWED_HOSTS = [
     "www.dordoi-go.tech",
     "164.92.182.171",
     "localhost",
+    "127.0.0.1",
 ]
 
 
@@ -83,25 +84,25 @@ ASGI_APPLICATION = 'core.asgi.application'
 WSGI_APPLICATION = 'core.wsgi.application'
 
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("POSTGRES_DB", "dogo"),
-        "USER": os.getenv("POSTGRES_USER", "dogo"),
-        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "dogo_pass_123"),
-        "HOST": os.getenv("POSTGRES_HOST", "db"),
-        "PORT": os.getenv("POSTGRES_PORT", "5432"),
-    }
-}
-
-
-
 # DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
+#     "default": {
+#         "ENGINE": "django.db.backends.postgresql",
+#         "NAME": os.getenv("POSTGRES_DB", "dogo"),
+#         "USER": os.getenv("POSTGRES_USER", "dogo"),
+#         "PASSWORD": os.getenv("POSTGRES_PASSWORD", "dogo_pass_123"),
+#         "HOST": os.getenv("POSTGRES_HOST", "db"),
+#         "PORT": os.getenv("POSTGRES_PORT", "5432"),
 #     }
 # }
+
+
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
 
 CHANNEL_BACKEND = os.getenv("CHANNEL_BACKEND", "memory")  
 
@@ -186,6 +187,9 @@ FCM_PROJECT_ID = "dogoapp-7b7a2"
 FCM_SERVICE_ACCOUNT_FILE = BASE_DIR / "firebase" / "dogoapp-7b7a2-firebase-adminsdk-fbsvc-61e2b5bc29.json"
 PLATFORM_COMMISSION_PCT = Decimal("0.10")
 
-FINIK_WEBHOOK_TOKEN = os.getenv("FINIK_WEBHOOK_TOKEN", "")
 FINIK_CURRENCY = os.getenv("FINIK_CURRENCY", "KGS")
 FINIK_CALLBACK_URL = os.getenv("FINIK_CALLBACK_URL", "")
+
+DELIVERY_BASE_PRICE = 50
+DELIVERY_PER_KM_PRICE = 20
+DELIVERY_MIN_FARE = 50

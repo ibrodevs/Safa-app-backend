@@ -78,53 +78,28 @@ class Container(models.Model):
         return self.display_title
 
 
-class CourierSegment(models.Model):
-    name = models.CharField(max_length=64, unique=True, verbose_name="Название")
-    slug = models.SlugField(max_length=32, unique=True, verbose_name="Код")
-    is_active = models.BooleanField(default=True, verbose_name="Активен")
-    order = models.PositiveSmallIntegerField(default=0, verbose_name="Порядок в UI")
-    icon = models.ImageField(null=True, blank=True, verbose_name="Иконка")
-
-    base_price = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        validators=[MinValueValidator(0)],
-        verbose_name="Базовая цена",
-    )
-    per_km_price = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        validators=[MinValueValidator(0)],
-        verbose_name="Цена за км",
-    )
-    min_fare = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Минималка")
-    description = models.TextField(verbose_name=("Описание"), null=True, blank=True)
-
-    fragile_pct = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        default=Decimal("0.00"),
-        verbose_name="Наценка за хрупкость, %",
-    )
-    size_s_multiplier = models.DecimalField(
-        max_digits=5, decimal_places=2, default=Decimal("1.00"), verbose_name="Множитель для S (мал.)"
-    )
-    size_m_multiplier = models.DecimalField(
-        max_digits=5, decimal_places=2, default=Decimal("1.00"), verbose_name="Множитель для M (сред.)"
-    )
-    size_l_multiplier = models.DecimalField(
-        max_digits=5, decimal_places=2, default=Decimal("1.15"), verbose_name="Множитель для L (больш.)"
-    )
-
-    per_unit = models.BooleanField(default=True, verbose_name="Цена за единицу")
+class GlobalDeliveryConfig(models.Model):
+    """Глобальные настройки доставки (Одиночка)"""
+    base_price = models.DecimalField(max_digits=10, decimal_places=2, default=50, verbose_name="Базовая стоимость")
+    per_km_price = models.DecimalField(max_digits=10, decimal_places=2, default=20, verbose_name="Стоимость за км")
+    min_fare = models.DecimalField(max_digits=10, decimal_places=2, default=50, verbose_name="Минималка")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Изменено")
 
     class Meta:
-        ordering = ["order", "name"]
-        verbose_name = "Сегмент тарифа"
-        verbose_name_plural = "Сегменты тарифа"
+        verbose_name = "Глобальные настройки цен"
+        verbose_name_plural = "Глобальные настройки цен"
 
     def __str__(self) -> str:
-        return self.name
+        return "Настройки цен"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get_config(cls) -> "GlobalDeliveryConfig":
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
 
 
 class Shipment(models.Model):
@@ -134,11 +109,6 @@ class Shipment(models.Model):
         IN_TRANSIT = "in_transit", "В пути"
         COMPLETED = "completed", "Завершено"
         CANCELED = "canceled", "Отменено"
-
-    class Size(models.TextChoices):
-        S = "S", "Маленькая"
-        M = "M", "Средняя"
-        L = "L", "Большая"
 
     client = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -156,11 +126,7 @@ class Shipment(models.Model):
     )
 
     title = models.CharField(max_length=155, verbose_name="Название посылки")
-    segment = models.ForeignKey(CourierSegment, on_delete=models.PROTECT, related_name="shipments", verbose_name="Тариф")
 
-    size = models.CharField(max_length=1, choices=Size.choices, default=Size.M, verbose_name="Размер")
-    quantity = models.PositiveIntegerField(default=1, verbose_name="Кол-во")
-    fragile = models.BooleanField(default=False, verbose_name="Хрупкая")
     description = models.CharField(max_length=255, blank=True, verbose_name="Описание")
 
     distance_km = models.DecimalField(max_digits=7, decimal_places=2, default=0, verbose_name="Дистанция, км")
@@ -201,13 +167,6 @@ class Shipment(models.Model):
         km = Decimal(str(polyline_len_km(self._route_points())))
         return km.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-    def _size_multiplier(self) -> Decimal:
-        if self.size == self.Size.S:
-            return Decimal(self.segment.size_s_multiplier or 1)
-        if self.size == self.Size.L:
-            return Decimal(self.segment.size_l_multiplier or 1)
-        return Decimal(self.segment.size_m_multiplier or 1)
-
     def next_stop(self) -> Optional["ShipmentStop"]:
         stops = list(self.stops.order_by("position"))
         if self.current_stop_index >= len(stops):
@@ -223,15 +182,18 @@ class Shipment(models.Model):
 
     def estimate(self) -> int:
         self.distance_km = self.route_distance_km()
-        base = Decimal(self.segment.base_price) + Decimal(self.segment.per_km_price) * Decimal(self.distance_km)
-        mult = self._size_multiplier()
-        if self.fragile:
-            mult *= (Decimal("1") + Decimal(self.segment.fragile_pct or 0) / Decimal("100"))
-        cost = base * mult
-        if self.segment.per_unit:
-            cost *= Decimal(self.quantity or 1)
+        
+        config = GlobalDeliveryConfig.get_config()
+        base_price = Decimal(config.base_price)
+        per_km_price = Decimal(config.per_km_price)
+        min_fare = Decimal(config.min_fare)
+
+        cost = base_price + per_km_price * Decimal(self.distance_km)
         cost = cost.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        cost = max(cost, Decimal(self.segment.min_fare or 0))
+        
+        if cost < min_fare:
+            cost = min_fare
+
         self.estimated_fare = int(cost.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
         return self.estimated_fare
 
