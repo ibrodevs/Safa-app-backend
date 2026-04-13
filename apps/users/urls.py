@@ -17,6 +17,7 @@ urlpatterns = [
     path('whatsapp-code/', RequestCodeWhatsAppView.as_view(), name='wha_code'),
     path('verify/', VerifyCodeView.as_view(), name='verify'),
     path('profile/', UserProfileView.as_view(), name='profile'),
+    path('delete-account/', DeleteAccountView.as_view(), name='delete-account'),
     path('carrier-wait/', CarrierLoginView.as_view(), name='carrier-wait'),
     path('profile/<int:pk>', UserProfileView.as_view(), name='profile_id'),
     path("", include(router.urls)),

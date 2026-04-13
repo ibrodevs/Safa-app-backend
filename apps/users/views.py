@@ -17,6 +17,7 @@ from rest_framework.parsers import MultiPartParser, JSONParser, FormParser
 from apps.users.utlis import *
 from rest_framework.exceptions import MethodNotAllowed
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.utils import timezone
 import logging
 
 logger = logging.getLogger(__name__)
@@ -391,5 +392,69 @@ class CourierKYCCancelView(generics.GenericAPIView):
 
         return Response(
             {"detail": "Заявка курьера и профиль удалены."},
+            status=status.HTTP_200_OK,
+        )
+
+@extend_schema(
+    tags=["Профили"],
+    summary="Удаление собственного аккаунта (Soft Delete)",
+    responses={
+        200: OpenApiResponse(description="Аккаунт успешно деактивирован"),
+        401: OpenApiResponse(description="Не авторизован"),
+    },
+)
+class DeleteAccountView(generics.GenericAPIView):
+    """
+    Деактивирует аккаунт текущего пользователя, анонимизируя личные данные.
+    Это позволяет сохранить целостность базы данных (заказы, платежи).
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        user = request.user
+        timestamp = timezone.now().strftime("%Y%m%d%H%M%S")
+        old_phone = user.phone_number
+        
+        logger.info(
+            "Account deletion requested (Soft Delete)",
+            extra={
+                "user_id": user.id,
+                "phone_number": old_phone,
+            },
+        )
+
+        # Анонимизация данных
+        user.is_active = False
+        user.phone_number = f"deleted_{timestamp}_{old_phone}"
+        user.first_name = "Удаленный пользователь"
+        user.email = None
+        user.city = None
+        user.otp = None
+        user.is_verify = False
+        
+        # Обработка профиля, если он существует
+        if hasattr(user, 'profile'):
+            profile = user.profile
+            profile.rate = 0
+            profile.client_rate_count = "0"
+            profile.save()
+
+        # Удаление аватара, если есть
+        if user.avatar:
+            user.avatar.delete(save=False)
+            user.avatar = None
+
+        user.save()
+
+        logger.info(
+            "Account successfully de-activated/anonymized",
+            extra={
+                "user_id": user.id,
+                "new_phone_placeholder": user.phone_number,
+            },
+        )
+
+        return Response(
+            {"detail": "Ваш аккаунт успешно удален. Благодарим за использование нашего сервиса!"},
             status=status.HTTP_200_OK,
         )
