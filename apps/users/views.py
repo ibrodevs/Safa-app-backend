@@ -84,11 +84,12 @@ class RequestCodeWhatsAppView(generics.GenericAPIView):
             timeout=int(getattr(settings, "OTP_TTL_SECONDS", 300)),
         )
 
-        try:
-            chatflow_send_text(phone, _otp_text(code)) 
-        except ChatFlowError as e:
-            cache.delete(f"otp:{phone}")  
-            return Response({"detail": f"WhatsApp send failed: {e}"}, status=502)
+        if not is_static_otp_phone(phone):
+            try:
+                chatflow_send_text(phone, _otp_text(code)) 
+            except ChatFlowError as e:
+                cache.delete(f"otp:{phone}")  
+                return Response({"detail": f"WhatsApp send failed: {e}"}, status=502)
 
         return Response({"detail": "sent_whatsapp", "phone": phone}, status=200)
 
