@@ -180,7 +180,7 @@ def get_or_create_container_ui(
 class BazarSerializer(serializers.ModelSerializer):
     class Meta:
         model = Bazar
-        fields = ["id", "name"]
+        fields = ["id", "name", "price_from", "price_to", "top_left_lat", "top_left_lon", "bottom_right_lat", "bottom_right_lon"]
 
 
 class PassageSerializer(serializers.ModelSerializer):

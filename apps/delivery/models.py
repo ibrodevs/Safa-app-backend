@@ -15,6 +15,12 @@ ARRIVAL_RADIUS_M = 50
 
 class Bazar(models.Model):
     name = models.CharField(max_length=155, unique=True, verbose_name="Базар")
+    price_from = models.PositiveIntegerField(null=True, blank=True, verbose_name="Цена от")
+    price_to = models.PositiveIntegerField(null=True, blank=True, verbose_name="Цена до")
+    top_left_lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, verbose_name="Широта (верх-лево)")
+    top_left_lon = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, verbose_name="Долгота (верх-лево)")
+    bottom_right_lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, verbose_name="Широта (низ-право)")
+    bottom_right_lon = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, verbose_name="Долгота (низ-право)")
 
     class Meta:
         ordering = ["name"]
@@ -183,6 +189,44 @@ class Shipment(models.Model):
     def estimate(self) -> int:
         self.distance_km = self.route_distance_km()
         
+        bazar_prices = []
+        bazaars_with_coords = None
+        
+        all_stops_in_bazar = True
+
+        for stop in self.stops.all():
+            stop_matched = False
+            
+            if stop.container_id and stop.container.passage.bazar.price_from is not None:
+                bazar_prices.append(stop.container.passage.bazar.price_from)
+                stop_matched = True
+            elif stop.lat is not None and stop.lon is not None:
+                if bazaars_with_coords is None:
+                    bazaars_with_coords = Bazar.objects.filter(
+                        top_left_lat__isnull=False,
+                        top_left_lon__isnull=False,
+                        bottom_right_lat__isnull=False,
+                        bottom_right_lon__isnull=False
+                    )
+                
+                # Проверка вхождения координаты в прямоугольник базара
+                for bazar in bazaars_with_coords:
+                    if (bazar.bottom_right_lat <= stop.lat <= bazar.top_left_lat) and \
+                       (bazar.top_left_lon <= stop.lon <= bazar.bottom_right_lon):
+                        if bazar.price_from is not None:
+                            bazar_prices.append(bazar.price_from)
+                            stop_matched = True
+                        break
+                        
+            if not stop_matched:
+                all_stops_in_bazar = False
+
+        # Если ВСЕ точки маршрута находятся внутри базаров - берем максимальную цену базара
+        if all_stops_in_bazar and bazar_prices:
+            self.estimated_fare = max(bazar_prices)
+            return self.estimated_fare
+
+        # Иначе (кто-то за пределами базара) - считаем по километражу
         config = GlobalDeliveryConfig.get_config()
         base_price = Decimal(config.base_price)
         per_km_price = Decimal(config.per_km_price)

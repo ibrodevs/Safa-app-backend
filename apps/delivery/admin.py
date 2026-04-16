@@ -15,9 +15,10 @@ from .models import (
 
 @admin.register(Bazar)
 class BazarAdmin(admin.ModelAdmin):
-    list_display = ("id", "name")
+    list_display = ("id", "name", "price_from", "price_to")
     search_fields = ("name",)
     ordering = ("name",)
+    fields = ("name", "price_from", "price_to", "top_left_lat", "top_left_lon", "bottom_right_lat", "bottom_right_lon")
 
 
 @admin.register(Passage)

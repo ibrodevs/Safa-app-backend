@@ -425,7 +425,7 @@ class DeleteAccountView(generics.GenericAPIView):
 
         # Анонимизация данных
         user.is_active = False
-        user.phone_number = f"deleted_{timestamp}_{old_phone}"
+        user.phone_number = f"del{user.id}"
         user.first_name = "Удаленный пользователь"
         user.email = None
         user.city = None
