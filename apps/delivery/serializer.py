@@ -245,15 +245,15 @@ class ShipmentStopInSerializer(serializers.Serializer):
         container = _norm(attrs.get("container"))
         q = _norm(attrs.get("q"))
 
+        has_title = bool(title)
         has_coords = lat is not None and lon is not None
         has_container_key = bool(bazar and passage and container)
         has_search = bool(q)
 
-        if not has_coords and not has_container_key and not has_search:
-            raise serializers.ValidationError("Нужны либо coords, либо bazar+passage+container, либо q")
-
-        if has_coords and not title:
-            raise serializers.ValidationError("Для coords нужен title")
+        if not has_title and not has_coords and not has_container_key and not has_search:
+            raise serializers.ValidationError(
+                "Нужно хотя бы одно из: title, lat+lon, bazar+passage+container, q"
+            )
 
         if (bazar or passage or container) and not has_container_key:
             raise serializers.ValidationError("Для контейнера нужны все поля: bazar, passage, container")
@@ -352,7 +352,11 @@ class ShipmentCreateSerializer(serializers.ModelSerializer):
                     continue
 
                 if lat is not None and lon is not None:
-                    resolved.append({"kind": "coords", "title": title, "lat": lat, "lon": lon})
+                    resolved.append({"kind": "coords", "title": title or "", "lat": lat, "lon": lon})
+                    continue
+
+                if title:
+                    resolved.append({"kind": "coords", "title": title, "lat": None, "lon": None})
                     continue
 
                 if q:
