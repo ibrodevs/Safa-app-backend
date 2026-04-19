@@ -79,10 +79,16 @@ def _increment_carrier_rating(shipment: Shipment) -> None:
         return
     if getattr(carrier, "role", None) != User.Roles.CARRIER:
         return
-    profile, _ = UserProfile.objects.get_or_create(user=carrier)
-    profile.rate = int(profile.rate or 0) + 1
-    profile.client_rate_count = int(profile.client_rate_count or 0) + 1
-    profile.save(update_fields=["rate", "client_rate_count"])
+    try:
+        profile, _ = UserProfile.objects.get_or_create(user=carrier)
+        profile.rate = int(profile.rate or 0) + 1
+        profile.client_rate_count = str(int(profile.client_rate_count or 0) + 1)
+        profile.save(update_fields=["rate", "client_rate_count"])
+    except Exception as e:
+        logger.exception(
+            "increment_carrier_rating_failed", 
+            extra={"shipment_id": shipment.id, "carrier_id": carrier.id, "error": str(e)}
+        )
 
 
 

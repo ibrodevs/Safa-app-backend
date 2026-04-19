@@ -35,7 +35,7 @@ class TestEdgeCases:
         assert fare == int(config.min_fare)
 
     def test_config_update_immediate_effect(self, db):
-        user = User.objects.create(phone_number="996555555555", first_name="ConfigTest")
+        user = User.objects.create(phone_number="996555555556", first_name="ConfigTest")
         shipment = Shipment.objects.create(client=user, title="Price Change Test")
         ShipmentStop.objects.create(shipment=shipment, position=0, lat=42.87, lon=74.58)
         ShipmentStop.objects.create(shipment=shipment, position=1, lat=42.90, lon=74.58) # ~3.3km

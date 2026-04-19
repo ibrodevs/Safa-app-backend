@@ -21,13 +21,21 @@ def apply_rating_for_completed_shipment(shipment: Shipment) -> None:
 
         profile, _ = UserProfile.objects.get_or_create(user_id=s.carrier_id)
 
-        current_rate = profile.rate or 0
-        current_clients = profile.client_rate_count or 0
+        try:
+            current_rate = int(profile.rate or 0)
+            current_clients = int(profile.client_rate_count or 0)
 
-        new_rate = min(100, current_rate + 1)
-        profile.rate = new_rate
-        profile.client_rate_count = current_clients + 1
-        profile.save(update_fields=["rate", "client_rate_count"])
+            new_rate = min(100, current_rate + 1)
+            profile.rate = new_rate
+            profile.client_rate_count = str(current_clients + 1)
+            profile.save(update_fields=["rate", "client_rate_count"])
 
-        s.rating_applied = True
-        s.save(update_fields=["rating_applied"])
+            s.rating_applied = True
+            s.save(update_fields=["rating_applied"])
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.exception(
+                "apply_rating_failed", 
+                extra={"shipment_id": shipment.id, "carrier_id": s.carrier_id, "error": str(e)}
+            )
