@@ -80,8 +80,8 @@ def _increment_carrier_rating(shipment: Shipment) -> None:
     if getattr(carrier, "role", None) != User.Roles.CARRIER:
         return
     profile, _ = UserProfile.objects.get_or_create(user=carrier)
-    profile.rate = (profile.rate or 0) + 1
-    profile.client_rate_count = (profile.client_rate_count or 0) + 1
+    profile.rate = int(profile.rate or 0) + 1
+    profile.client_rate_count = int(profile.client_rate_count or 0) + 1
     profile.save(update_fields=["rate", "client_rate_count"])
 
 
