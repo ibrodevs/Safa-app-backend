@@ -45,6 +45,13 @@ class RegisterSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         role = attrs.get("role", User.Roles.CLIENT)
         if role == User.Roles.CARRIER:
+            from apps.users.utlis import is_static_otp_phone
+            phone = attrs.get("phone_number")
+            
+            # Если это тестовый номер, разрешаем регистрацию без фото паспорта
+            if is_static_otp_phone(phone):
+                return attrs
+
             if not attrs.get("id_front") or not attrs.get("id_back"):
                 raise serializers.ValidationError(
                     {"non_field_errors": ["Для перевозчика загрузите лицевую и обратную сторону документа."]}
