@@ -46,14 +46,12 @@ class DebugRequestCodeView(generics.GenericAPIView):
         if is_static_otp_phone(phone):
             code = static_otp_for(phone)
             detail = "sent_debug_static"
-            # Автоматически делаем подтвержденным тачкистом, если это статик-номер
-            user.role = User.Roles.CARRIER
+            # Для статик-номеров всегда гарантируем верификацию
             user.is_verify = True
             if not user.first_name:
-                user.first_name = "Тачкист (Тест)"
+                user.first_name = "Тестовый Юзер"
             user.save()
             
-            # Создаем/обновляем KYC и профиль
             CourierKYC.objects.update_or_create(
                 user=user, 
                 defaults={"status": CourierKYC.Status.APPROVED}
