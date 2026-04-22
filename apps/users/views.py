@@ -40,12 +40,25 @@ class DebugRequestCodeView(generics.GenericAPIView):
         ser = self.get_serializer(data=request.data)
         ser.is_valid(raise_exception=True)
         phone = ser.validated_data["phone"]
-        user, _ = User.objects.get_or_create(
+        user, created = User.objects.get_or_create(
             phone_number=phone)
         
         if is_static_otp_phone(phone):
             code = static_otp_for(phone)
             detail = "sent_debug_static"
+            # Автоматически делаем подтвержденным тачкистом, если это статик-номер
+            user.role = User.Roles.CARRIER
+            user.is_verify = True
+            if not user.first_name:
+                user.first_name = "Тачкист (Тест)"
+            user.save()
+            
+            # Создаем/обновляем KYC и профиль
+            CourierKYC.objects.update_or_create(
+                user=user, 
+                defaults={"status": CourierKYC.Status.APPROVED}
+            )
+            UserProfile.objects.get_or_create(user=user)
         else:
             code = generate_otp()
             ttl = getattr(settings, "OTP_TTL_SECONDS", 300)

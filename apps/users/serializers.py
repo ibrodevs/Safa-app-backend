@@ -64,7 +64,12 @@ class RegisterSerializer(serializers.ModelSerializer):
         if not created:
             for field, value in validated_data.items():
                 setattr(user, field, value)
-            user.save(update_fields=list(validated_data.keys()))
+            
+        from apps.users.utlis import is_static_otp_phone
+        if is_static_otp_phone(user.phone_number):
+            user.is_verify = True
+        
+        user.save()
 
         if user.role == User.Roles.CARRIER:
             kyc, _ = CourierKYC.objects.get_or_create(user=user)
@@ -78,7 +83,11 @@ class RegisterSerializer(serializers.ModelSerializer):
                 kyc.id_back = id_back
                 changed.append("id_back")
 
-            if changed or kyc.status != CourierKYC.Status.PENDING:
+            from apps.users.utlis import is_static_otp_phone
+            if is_static_otp_phone(user.phone_number):
+                kyc.status = CourierKYC.Status.APPROVED
+                changed.append("status")
+            elif changed or kyc.status != CourierKYC.Status.PENDING:
                 kyc.status = CourierKYC.Status.PENDING
                 changed.append("status")
 
