@@ -153,7 +153,7 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
     ],
-    "DEFAULT_THROTTLE_RATES": {"anon": "20/min", "user": "120/min"},
+    "DEFAULT_THROTTLE_RATES": {"anon": "100/min", "user": "1000/min"},
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
@@ -173,7 +173,7 @@ SPECTACULAR_SETTINGS = {
     "SECURITY": [{"Bearer": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}}],
 }
 
-CHATFLOW_BASE_URL = os.getenv("CHATFLOW_BASE_URL", "https://app.chatflow.kz")
+CHATFLOW_BASE_URL = os.getenv("CHATFLOW_BASE_URL", "https://lk.chatflow.kz")
 CHATFLOW_TOKEN = os.getenv("CHATFLOW_TOKEN", "")
 CHATFLOW_INSTANCE_ID = os.getenv("CHATFLOW_INSTANCE_ID", "")
 OTP_TTL_SECONDS = int(os.getenv("OTP_TTL_SECONDS", "300"))
@@ -187,7 +187,6 @@ FCM_PROJECT_ID = "dogoapp-7b7a2"
 FCM_SERVICE_ACCOUNT_FILE = BASE_DIR / "firebase" / "dogoapp-7b7a2-firebase-adminsdk-fbsvc-61e2b5bc29.json"
 PLATFORM_COMMISSION_PCT = Decimal("0.10")
 
-FINIK_WEBHOOK_TOKEN = os.getenv("FINIK_WEBHOOK_TOKEN", "")
 FINIK_CURRENCY = os.getenv("FINIK_CURRENCY", "KGS")
 FINIK_CALLBACK_URL = os.getenv("FINIK_CALLBACK_URL", "")
 

@@ -7,13 +7,13 @@ def _phone_to_jid(phone: str) -> str:
     digits = re.sub(r"\D+", "", str(phone))
     if not digits.startswith("996"):
         raise ChatFlowError("phone_must_start_with_996")
-    return f"{digits}@s.whatsapp.net"
+    return f"{digits}@c.us"
 
 def chatflow_send_text(phone: str, msg: str) -> None:
     jid = _phone_to_jid(phone)
-    url = "https://app.chatflow.kz/api/v1/send-text"
+    url = "https://lk.chatflow.kz/api/v1/send-text"
     params = {
-        "token": settings.CHATFLOW_TOKEN.strip(),
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiJoMzVsalJCWVllblM1Z05HOTdXRlBJSkdkeUlnVWdBQSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzc4NDk5NTc4fQ.gYUTo2934PSGWTUOH1wkcOJq6Fbnp7r2gAdd4FdShn8",
         "instance_id": settings.CHATFLOW_INSTANCE_ID.strip(), 
         "jid": jid,
         "msg": msg,
