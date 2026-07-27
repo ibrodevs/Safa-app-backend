@@ -74,6 +74,11 @@ def _otp_text(code: str) -> str:
     ttl_min = max(1, int(getattr(settings, "OTP_TTL_SECONDS", 300)) // 60)
     return f"Код подтверждения: {code}\nНикому его не сообщайте. Действует {ttl_min} мин."
 
+
+def _demo_otp_code() -> str:
+    return str(getattr(settings, "DEMO_OTP_CODE", "") or "").strip()
+
+
 @extend_schema(tags=["Аутентификация"])
 class RequestCodeWhatsAppView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
@@ -88,12 +93,16 @@ class RequestCodeWhatsAppView(generics.GenericAPIView):
         except ValueError as e:
             return Response({"detail": str(e)}, status=400)
 
-        code = generate_otp(phone=phone)
+        demo_code = _demo_otp_code()
+        code = demo_code or generate_otp(phone=phone)
         cache.set(
             f"otp:{phone}",
             {"code": code, "attempts": 0, "sent_at": timezone.now()},
             timeout=int(getattr(settings, "OTP_TTL_SECONDS", 300)),
         )
+
+        if demo_code:
+            return Response({"detail": "sent_demo", "phone": phone}, status=200)
 
         if not is_static_otp_phone(phone):
             try:
@@ -120,7 +129,12 @@ class VerifyCodeView(generics.GenericAPIView):
 
         code = str(ser.validated_data["code"]).strip()
 
-        if is_static_otp_phone(phone):
+        demo_code = _demo_otp_code()
+        if demo_code:
+            if code != demo_code:
+                return Response({"detail": "Неверный код."}, status=400)
+            cache.delete(f"otp:{phone}")
+        elif is_static_otp_phone(phone):
             expected = str(generate_otp(phone=phone))
             if code != expected:
                 return Response({"detail": "Неверный код."}, status=400)
