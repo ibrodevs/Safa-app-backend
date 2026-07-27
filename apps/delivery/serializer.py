@@ -167,7 +167,7 @@ def get_or_create_container_ui(
             extra={
                 "request_id": request_id,
                 "user_id": user_id,
-                "created": created,
+                "container_created": created,
                 "container_id": obj.id,
                 "bazar": obj.passage.bazar.name,
                 "passage": obj.passage.number,
