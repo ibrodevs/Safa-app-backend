@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import Mapping, Any, Optional
 
 import requests
@@ -16,6 +17,21 @@ SCOPES = ["https://www.googleapis.com/auth/firebase.messaging"]
 
 _session = requests.Session()
 _credentials: Optional[service_account.Credentials] = None
+
+
+def _fcm_config_error() -> str | None:
+    project_id = str(getattr(settings, "FCM_PROJECT_ID", "") or "").strip()
+    service_account_file = str(
+        getattr(settings, "FCM_SERVICE_ACCOUNT_FILE", "") or ""
+    ).strip()
+
+    if not project_id:
+        return "FCM_PROJECT_ID is empty"
+    if not service_account_file:
+        return "FCM_SERVICE_ACCOUNT_FILE is empty"
+    if not Path(service_account_file).is_file():
+        return f"FCM_SERVICE_ACCOUNT_FILE does not exist: {service_account_file}"
+    return None
 
 
 def _get_credentials() -> service_account.Credentials:
@@ -47,6 +63,11 @@ def send_data_message(
     `data`-ключи обязательно строковые.
     """
     if not token:
+        return
+
+    config_error = _fcm_config_error()
+    if config_error:
+        logger.warning("FCM send skipped: %s", config_error)
         return
 
     project_id = settings.FCM_PROJECT_ID
