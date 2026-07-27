@@ -140,6 +140,10 @@ ENV/
 env.bak/
 venv.bak/
 
+# Service account / cloud credentials
+firebase/*.json
+*.pem
+
 # Spyder project settings
 .spyderproject
 .spyproject

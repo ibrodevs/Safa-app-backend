@@ -30,12 +30,14 @@ class UserSerializer(serializers.ModelSerializer):
 class RegisterSerializer(serializers.ModelSerializer):
     id_front = serializers.ImageField(write_only=True, required=False, allow_null=True)
     id_back  = serializers.ImageField(write_only=True, required=False, allow_null=True)
+    password = serializers.CharField(write_only=True, min_length=6, required=True)
+    password_confirm = serializers.CharField(write_only=True, required=True)
 
     class Meta:
         model = User
         fields = (
             "phone_number", "first_name", "avatar",
-            "role", "id_front", "id_back",
+            "role", "id_front", "id_back", "password", "password_confirm",
         )
         extra_kwargs = {
             "phone_number": {"validators": [phone_re]},
@@ -43,6 +45,11 @@ class RegisterSerializer(serializers.ModelSerializer):
         }
 
     def validate(self, attrs):
+        password = attrs.get("password")
+        password_confirm = attrs.pop("password_confirm", None)
+        if password != password_confirm:
+            raise serializers.ValidationError({"password_confirm": "Пароли не совпадают."})
+
         role = attrs.get("role", User.Roles.CLIENT)
         if role == User.Roles.CARRIER:
             from apps.users.utlis import is_static_otp_phone
@@ -61,6 +68,7 @@ class RegisterSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         id_front = validated_data.pop("id_front", None)
         id_back  = validated_data.pop("id_back", None)
+        password = validated_data.pop("password")
         phone    = validated_data["phone_number"]
 
         user, created = User.objects.get_or_create(
@@ -71,6 +79,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         if not created:
             for field, value in validated_data.items():
                 setattr(user, field, value)
+        user.set_password(password)
             
         from apps.users.utlis import is_static_otp_phone
         if is_static_otp_phone(user.phone_number):

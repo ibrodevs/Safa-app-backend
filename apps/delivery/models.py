@@ -116,6 +116,11 @@ class Shipment(models.Model):
         COMPLETED = "completed", "Завершено"
         CANCELED = "canceled", "Отменено"
 
+    class ServiceType(models.TextChoices):
+        AMANAT = "amanat", "Аманат"
+        CARS = "cars", "Тачки"
+        DELIVERY = "delivery", "Доставка"
+
     client = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -132,6 +137,12 @@ class Shipment(models.Model):
     )
 
     title = models.CharField(max_length=155, verbose_name="Название посылки")
+    service_type = models.CharField(
+        max_length=20,
+        choices=ServiceType.choices,
+        default=ServiceType.DELIVERY,
+        verbose_name="Тип услуги",
+    )
 
     description = models.CharField(max_length=255, blank=True, verbose_name="Описание")
 

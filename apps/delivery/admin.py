@@ -32,7 +32,7 @@ class PassageAdmin(admin.ModelAdmin):
 
 @admin.register(Container)
 class ContainerAdmin(admin.ModelAdmin):
-    list_display = ("id", "number", "passage", "bazar_name", "title", "is_active")
+    list_display = ("id", "number", "passage", "bazar_name", "title", "lat", "lon", "is_active")
     list_filter = ("is_active", "passage__bazar")
     search_fields = (
         "number",
@@ -41,6 +41,7 @@ class ContainerAdmin(admin.ModelAdmin):
         "passage__bazar__name",
     )
     autocomplete_fields = ("passage",)
+    fields = ("passage", "number", "title", "lat", "lon", "is_active")
     ordering = ("passage__bazar__name", "passage__number", "number")
 
     @admin.display(description="Базар")
@@ -144,12 +145,13 @@ class ShipmentAdmin(admin.ModelAdmin):
         "client",
         "carrier",
         "status",
+        "service_type",
         "distance_km",
         "estimated_fare",
         "final_fare",
         "created_at",
     )
-    list_filter = ("status",)
+    list_filter = ("status", "service_type")
     search_fields = ("title", "client__first_name", "client__phone_number")
     date_hierarchy = "created_at"
     readonly_fields = (
@@ -167,7 +169,7 @@ class ShipmentAdmin(admin.ModelAdmin):
     ordering = ("-created_at",)
 
     fieldsets = (
-        ("Основное", {"fields": ("title", "description", "client", "carrier", "status")}),
+        ("Основное", {"fields": ("title", "service_type", "description", "client", "carrier", "status")}),
         (
             "Расчёт",
             {

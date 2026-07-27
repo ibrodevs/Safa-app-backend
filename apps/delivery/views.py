@@ -9,8 +9,8 @@ import requests
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Q
-from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import (
     OpenApiExample,
@@ -149,6 +149,10 @@ class PassageViewSet(viewsets.ReadOnlyModelViewSet):
             OpenApiParameter(name="bazar_id", required=False, type=int, description="Фильтр по базару"),
             OpenApiParameter(name="passage_id", required=False, type=int, description="Фильтр по проходу"),
             OpenApiParameter(name="q", required=False, type=str, description="Поиск (номер/название/проход/базар)"),
+            OpenApiParameter(name="min_lat", required=False, type=float, description="Нижняя граница видимой области"),
+            OpenApiParameter(name="max_lat", required=False, type=float, description="Верхняя граница видимой области"),
+            OpenApiParameter(name="min_lon", required=False, type=float, description="Левая граница видимой области"),
+            OpenApiParameter(name="max_lon", required=False, type=float, description="Правая граница видимой области"),
         ],
     ),
 )
@@ -178,6 +182,22 @@ class ContainerViewSet(viewsets.ReadOnlyModelViewSet):
                 | Q(passage__number__icontains=q)
                 | Q(passage__bazar__name__icontains=q)
             )
+        try:
+            min_lat = self.request.query_params.get("min_lat")
+            max_lat = self.request.query_params.get("max_lat")
+            min_lon = self.request.query_params.get("min_lon")
+            max_lon = self.request.query_params.get("max_lon")
+            if all(v not in (None, "") for v in (min_lat, max_lat, min_lon, max_lon)):
+                lat_a, lat_b = float(min_lat), float(max_lat)
+                lon_a, lon_b = float(min_lon), float(max_lon)
+                qs = qs.filter(
+                    lat__gte=min(lat_a, lat_b),
+                    lat__lte=max(lat_a, lat_b),
+                    lon__gte=min(lon_a, lon_b),
+                    lon__lte=max(lon_a, lon_b),
+                )
+        except (TypeError, ValueError):
+            pass
         return qs
 
 
@@ -259,16 +279,27 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             )
             return response.Response({"detail": "only_for_carrier"}, status=status.HTTP_403_FORBIDDEN)
 
-        shipment = get_object_or_404(
-            Shipment,
-            pk=pk,
-            status=Shipment.Status.PENDING,
-            carrier__isnull=True,
-        )
+        with transaction.atomic():
+            shipment = (
+                Shipment.objects.select_for_update()
+                .select_related("client", "carrier")
+                .prefetch_related("stops")
+                .filter(pk=pk)
+                .first()
+            )
+            if not shipment:
+                return response.Response({"detail": "not_found"}, status=status.HTTP_404_NOT_FOUND)
+            if shipment.client_id == user.id:
+                return response.Response(
+                    {"detail": "client_cannot_accept_own_shipment"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            if shipment.status != Shipment.Status.PENDING or shipment.carrier_id is not None:
+                return response.Response({"detail": "already_accepted"}, status=status.HTTP_409_CONFLICT)
 
-        shipment.carrier = user
-        shipment.status = Shipment.Status.ASSIGNED
-        shipment.save(update_fields=["carrier", "status"])
+            shipment.carrier = user
+            shipment.status = Shipment.Status.ASSIGNED
+            shipment.save(update_fields=["carrier", "status"])
 
         _broadcast(shipment)
         notify_shipment_status(shipment)
@@ -295,6 +326,32 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         new_status = request.data.get("status")
 
         old_status = s.status
+        allowed = {
+            Shipment.Status.PENDING: {Shipment.Status.CANCELED},
+            Shipment.Status.ASSIGNED: {
+                Shipment.Status.PENDING,
+                Shipment.Status.IN_TRANSIT,
+                Shipment.Status.CANCELED,
+            },
+            Shipment.Status.IN_TRANSIT: {Shipment.Status.COMPLETED, Shipment.Status.CANCELED},
+            Shipment.Status.COMPLETED: set(),
+            Shipment.Status.CANCELED: set(),
+        }
+
+        if new_status not in Shipment.Status.values:
+            return response.Response({"detail": "bad_status"}, status=status.HTTP_400_BAD_REQUEST)
+        if s.client_id == request.user.id and new_status not in {
+            Shipment.Status.CANCELED,
+            Shipment.Status.PENDING,
+        }:
+            return response.Response(
+                {"detail": "only_carrier_can_set_this_status"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if s.carrier_id and s.carrier_id != request.user.id and not request.user.is_staff:
+            return response.Response({"detail": "only_assigned_carrier"}, status=status.HTTP_403_FORBIDDEN)
+        if new_status not in allowed.get(old_status, set()):
+            return response.Response({"detail": "status_transition_not_allowed"}, status=status.HTTP_409_CONFLICT)
 
         if new_status == Shipment.Status.COMPLETED:
             _complete_shipment_if_needed(s)
@@ -520,6 +577,10 @@ class ShipmentViewSet(viewsets.ModelViewSet):
     def advance(self, request, pk=None):
         rid = _rid(request)
         s = self.get_object()
+        if s.carrier_id != request.user.id and not request.user.is_staff:
+            return response.Response({"detail": "only_assigned_carrier"}, status=status.HTTP_403_FORBIDDEN)
+        if s.status not in (Shipment.Status.ASSIGNED, Shipment.Status.IN_TRANSIT):
+            return response.Response({"detail": "status_transition_not_allowed"}, status=status.HTTP_409_CONFLICT)
         prev_index = s.current_stop_index
         prev_status = s.status
 
@@ -530,6 +591,8 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 _increment_carrier_rating(s)
                 notify_shipment_status(s)
         else:
+            if s.status == Shipment.Status.ASSIGNED:
+                s.status = Shipment.Status.IN_TRANSIT
             s.current_stop_index += 1
             if s.current_stop_index >= s.stops.count():
                 if s.status != Shipment.Status.COMPLETED:
@@ -537,7 +600,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                     _increment_carrier_rating(s)
                     notify_shipment_status(s)
             else:
-                s.save(update_fields=["current_stop_index"])
+                s.save(update_fields=["current_stop_index", "status"])
                 notify_shipment_status(s)
 
         _broadcast(s)

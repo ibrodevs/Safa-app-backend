@@ -294,6 +294,7 @@ class ShipmentCreateSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "title",
+            "service_type",
             "description",
             "stops",
             "return_to_start",
@@ -455,6 +456,7 @@ class ShipmentDetailSerializer(serializers.ModelSerializer):
             "public_code",
             "status",
             "title",
+            "service_type",
             "description",
             "stops",
             "stops_count",
@@ -519,6 +521,7 @@ class ShipmentCardSerializer(serializers.ModelSerializer):
             "id",
             "public_code",
             "title",
+            "service_type",
             "estimated_fare",
             "is_paid",
             "paid_at",

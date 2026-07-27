@@ -3,23 +3,29 @@ from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
 from decimal import Decimal
+import dj_database_url
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 
-SECRET_KEY = os.getenv(
-    "DJANGO_SECRET_KEY",
-    "django-insecure-7dxs7b+%pq5ko2ru*s@z_1=rgm8tlk2k($t0al*w$%b^d^a1b3", 
-)
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
 
-ALLOWED_HOSTS = [
+if not DEBUG and not SECRET_KEY:
+    raise RuntimeError("DJANGO_SECRET_KEY is required when DJANGO_DEBUG=0")
+
+if not SECRET_KEY:
+    SECRET_KEY = "dev-only-change-me"
+
+ALLOWED_HOSTS = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",") if h.strip()] or [
     "dordoi-go.tech",
     "www.dordoi-go.tech",
     "164.92.182.171",
     "localhost",
-    "46.101.255.131"
+    "46.101.255.131",
+    "127.0.0.1",
 ]
 
 
@@ -84,16 +90,33 @@ ASGI_APPLICATION = 'core.asgi.application'
 WSGI_APPLICATION = 'core.wsgi.application'
 
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("POSTGRES_DB", "dogo"),
-        "USER": os.getenv("POSTGRES_USER", "dogo"),
-        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "dogo_pass_123"),
-        "HOST": os.getenv("POSTGRES_HOST", "db"),
-        "PORT": os.getenv("POSTGRES_PORT", "5432"),
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+
+if DATABASE_URL:
+    DATABASES = {
+        "default": dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=int(os.getenv("DB_CONN_MAX_AGE", "60")),
+        )
     }
-}
+elif os.getenv("DJANGO_USE_SQLITE", "0") == "1":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.getenv("POSTGRES_DB", "dogo"),
+            "USER": os.getenv("POSTGRES_USER", "dogo"),
+            "PASSWORD": os.getenv("POSTGRES_PASSWORD", "dogo_pass_123"),
+            "HOST": os.getenv("POSTGRES_HOST", "localhost"),
+            "PORT": os.getenv("POSTGRES_PORT", "5432"),
+        }
+    }
 
 
 
@@ -142,13 +165,18 @@ STATIC_ROOT = BASE_DIR / 'static_root'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+SECURE_SSL_REDIRECT = os.getenv("DJANGO_SECURE_SSL_REDIRECT", "0") == "1"
+SESSION_COOKIE_SECURE = os.getenv("DJANGO_SESSION_COOKIE_SECURE", "0") == "1"
+CSRF_COOKIE_SECURE = os.getenv("DJANGO_CSRF_COOKIE_SECURE", "0") == "1"
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = "users.User"
 
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ("rest_framework_simplejwt.authentication.JWTAuthentication",),
-    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.AllowAny",),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
@@ -182,14 +210,19 @@ OTP_TTL_SECONDS = int(os.getenv("OTP_TTL_SECONDS", "300"))
 OSRM_URL = "https://router.project-osrm.org"
 
 
-FCM_PROJECT_ID = "dogoapp-7b7a2"
+FCM_PROJECT_ID = os.getenv("FCM_PROJECT_ID", "dogoapp-7b7a2")
 
-FCM_SERVICE_ACCOUNT_FILE = BASE_DIR / "firebase" / "dogoapp-7b7a2-firebase-adminsdk-fbsvc-61e2b5bc29.json"
-PLATFORM_COMMISSION_PCT = Decimal("0.10")
+FCM_SERVICE_ACCOUNT_FILE = os.getenv(
+    "FCM_SERVICE_ACCOUNT_FILE",
+    str(BASE_DIR / "firebase" / "dogoapp-7b7a2-firebase-adminsdk-fbsvc-61e2b5bc29.json"),
+)
+PLATFORM_COMMISSION_PCT = Decimal(os.getenv("PLATFORM_COMMISSION_PCT", "0.10"))
 
 FINIK_CURRENCY = os.getenv("FINIK_CURRENCY", "KGS")
 FINIK_CALLBACK_URL = os.getenv("FINIK_CALLBACK_URL", "")
 
-STATIC_OTP = {
-    "996555555555": "1111",
-}
+STATIC_OTP = dict(
+    item.split(":", 1)
+    for item in os.getenv("STATIC_OTP", "996555555555:1111").split(",")
+    if ":" in item
+)
