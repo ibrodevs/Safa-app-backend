@@ -284,8 +284,16 @@ class ShipmentStopReadSerializer(serializers.ModelSerializer):
         return obj.container.display_title if obj.container_id else None
 
 
+MAX_SHIPMENT_STOPS = 10
+
+
 class ShipmentCreateSerializer(serializers.ModelSerializer):
-    stops = serializers.ListField(child=ShipmentStopInSerializer(), min_length=2, max_length=4, write_only=True)
+    stops = serializers.ListField(
+        child=ShipmentStopInSerializer(),
+        min_length=2,
+        max_length=MAX_SHIPMENT_STOPS,
+        write_only=True,
+    )
     return_to_start = serializers.BooleanField(default=False, write_only=True)
     estimated_fare = serializers.IntegerField(read_only=True)
 
@@ -305,10 +313,17 @@ class ShipmentCreateSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         stops = attrs.get("stops") or []
         rts = attrs.get("return_to_start", False)
-        if not isinstance(stops, list) or len(stops) < 2 or len(stops) > 4:
-            raise serializers.ValidationError({"stops": "Нужно 2–4 точки"})
-        if rts and len(stops) >= 4:
-            raise serializers.ValidationError({"return_to_start": "С возвратом максимум 3 исходные точки"})
+        service_type = attrs.get("service_type", Shipment.ServiceType.DELIVERY)
+        max_stops = MAX_SHIPMENT_STOPS if service_type == Shipment.ServiceType.CARS else 2
+
+        if not isinstance(stops, list) or len(stops) < 2 or len(stops) > max_stops:
+            if service_type == Shipment.ServiceType.CARS:
+                raise serializers.ValidationError({"stops": f"Нужно 2–{MAX_SHIPMENT_STOPS} точек"})
+            raise serializers.ValidationError({"stops": "Для этой услуги нужны ровно 2 точки"})
+        if rts and len(stops) >= MAX_SHIPMENT_STOPS:
+            raise serializers.ValidationError(
+                {"return_to_start": f"С возвратом максимум {MAX_SHIPMENT_STOPS - 1} исходных точек"}
+            )
         return attrs
 
     def create(self, validated_data):
@@ -494,15 +509,17 @@ class CoordsSerializer(serializers.Serializer):
 
 
 class QuoteInSerializer(serializers.Serializer):
-    stops = serializers.ListField(child=CoordsSerializer(), min_length=2, max_length=4)
+    stops = serializers.ListField(child=CoordsSerializer(), min_length=2, max_length=MAX_SHIPMENT_STOPS)
     return_to_start = serializers.BooleanField(default=False)
 
     def validate(self, attrs):
         stops = attrs.get("stops") or []
         if len(stops) < 2:
-            raise serializers.ValidationError({"stops": "Нужно 2–4 точки"})
-        if attrs.get("return_to_start") and len(stops) >= 4:
-            raise serializers.ValidationError({"return_to_start": "С возвратом максимум 3 исходные точки"})
+            raise serializers.ValidationError({"stops": f"Нужно 2–{MAX_SHIPMENT_STOPS} точек"})
+        if attrs.get("return_to_start") and len(stops) >= MAX_SHIPMENT_STOPS:
+            raise serializers.ValidationError(
+                {"return_to_start": f"С возвратом максимум {MAX_SHIPMENT_STOPS - 1} исходных точек"}
+            )
         return attrs
 
 

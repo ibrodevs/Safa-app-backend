@@ -20,11 +20,11 @@ if not SECRET_KEY:
     SECRET_KEY = "dev-only-change-me"
 
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",") if h.strip()] or [
+    "safabackend21.pythonanywhere.com",
     "dordoi-go.tech",
     "www.dordoi-go.tech",
     "164.92.182.171",
     "localhost",
-    "46.101.255.131",
     "127.0.0.1",
 ]
 

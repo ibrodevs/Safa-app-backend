@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db import IntegrityError
 from apps.users.models import *
 
 phone_re = RegexValidator(
@@ -65,27 +66,29 @@ class RegisterSerializer(serializers.ModelSerializer):
                 )
         return attrs
 
+    def validate_phone_number(self, value):
+        if User.objects.filter(phone_number=value).exists():
+            raise serializers.ValidationError("Пользователь с таким номером уже зарегистрирован.")
+        return value
+
     def create(self, validated_data):
         id_front = validated_data.pop("id_front", None)
         id_back  = validated_data.pop("id_back", None)
         password = validated_data.pop("password")
-        phone    = validated_data["phone_number"]
 
-        user, created = User.objects.get_or_create(
-            phone_number=phone,
-            defaults=validated_data,
-        )
-
-        if not created:
-            for field, value in validated_data.items():
-                setattr(user, field, value)
+        user = User(**validated_data)
         user.set_password(password)
             
         from apps.users.utlis import is_static_otp_phone
         if is_static_otp_phone(user.phone_number):
             user.is_verify = True
         
-        user.save()
+        try:
+            user.save()
+        except IntegrityError:
+            raise serializers.ValidationError(
+                {"phone_number": "Пользователь с таким номером уже зарегистрирован."}
+            )
 
         if user.role == User.Roles.CARRIER:
             kyc, _ = CourierKYC.objects.get_or_create(user=user)

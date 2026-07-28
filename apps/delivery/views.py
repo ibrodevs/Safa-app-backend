@@ -244,7 +244,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             return qs.none()
         if user.is_superuser or user.is_staff:
             return qs
-        return qs.filter(Q(client=user) | Q(carrier=user)).distinct()
+        return qs.exclude(title__startswith="DEMO ").filter(Q(client=user) | Q(carrier=user)).distinct()
 
     def perform_create(self, serializer):
         rid = _rid(self.request)
@@ -475,6 +475,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         # Теперь фильтруем по Бишкеку и показываем всем онлайн курьерам.
         qs = (
             Shipment.objects.filter(status=Shipment.Status.PENDING, carrier__isnull=True)
+            .exclude(title__startswith="DEMO ")
             .prefetch_related("stops")
             .order_by("created_at")
         )
