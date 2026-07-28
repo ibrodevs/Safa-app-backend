@@ -46,4 +46,12 @@ jobs:
         run: python manage.py migrate --noinput
 
       - name: Run market map tests
-        run: pytest apps/delivery/test_market_map.py -q
+        run: pytest apps/delivery/test_market_map.py -vv --tb=short --junitxml=market-map-results.xml
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: market-map-test-report
+          path: market-map-results.xml
+          if-no-files-found: error
