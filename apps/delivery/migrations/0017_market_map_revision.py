@@ -7,7 +7,7 @@ import apps.delivery.map_validation
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("delivery", "0016_add_shipment_service_type"),
+        ("delivery", "0016_shipment_service_type"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
