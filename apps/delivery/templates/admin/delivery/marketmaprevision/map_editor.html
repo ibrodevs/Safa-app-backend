@@ -1,0 +1,150 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'delivery/admin/market_map_editor.css' %}">
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Главная</a>
+  &rsaquo; <a href="{{ changelist_url }}">Карты базаров</a>
+  &rsaquo; {{ bazar.name }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="market-map-editor"
+     data-save-url="{{ save_url }}"
+     data-publish-url="{{ publish_url }}"
+     data-bazar-id="{{ bazar.id }}"
+     data-bazar-name="{{ bazar.name }}">
+  <div class="market-map-header">
+    <div>
+      <h1>{{ title }}</h1>
+      <p>
+        Черновик v{{ revision.version }}.
+        Изменения увидят пользователи только после публикации.
+      </p>
+    </div>
+    <div class="market-map-actions">
+      <button type="button" class="button" id="market-map-save">Сохранить черновик</button>
+      <button type="button" class="button default" id="market-map-publish">Опубликовать</button>
+    </div>
+  </div>
+
+  {% if not google_maps_api_key %}
+    <div class="messagelist market-map-warning">
+      <div class="warning">
+        Не задан GOOGLE_MAPS_BROWSER_API_KEY. Добавьте браузерный Google Maps API key в .env и перезагрузите приложение.
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="market-map-layout">
+    <aside class="market-map-sidebar">
+      <section class="market-map-panel">
+        <h2>Инструменты</h2>
+        <div class="market-map-tools" role="toolbar" aria-label="Инструменты рисования">
+          <button type="button" class="button active" data-map-tool="select">Выбор</button>
+          <button type="button" class="button" data-map-tool="polygon">Зона</button>
+          <button type="button" class="button" data-map-tool="line">Ряд / проход</button>
+          <button type="button" class="button" data-map-tool="marker">Контейнер</button>
+        </div>
+        <div class="market-map-draw-actions" hidden>
+          <button type="button" class="button default" id="market-map-finish">Завершить</button>
+          <button type="button" class="button" id="market-map-cancel">Отменить</button>
+        </div>
+        <p class="help">
+          Для зоны или ряда ставьте точки кликами по карте, затем нажмите «Завершить».
+          Выбранные объекты можно двигать и редактировать за вершины.
+        </p>
+      </section>
+
+      <section class="market-map-panel">
+        <h2>Свойства объекта</h2>
+        <div class="form-row">
+          <label for="market-feature-kind">Тип</label>
+          <select id="market-feature-kind">
+            <option value="bazar">Граница базара</option>
+            <option value="district">Район</option>
+            <option value="sector">Сектор</option>
+            <option value="row">Ряд</option>
+            <option value="passage">Проход</option>
+            <option value="container">Контейнер</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="market-feature-name">Название / номер</label>
+          <input id="market-feature-name" type="text" maxlength="160" placeholder="Например: Восточный сектор">
+        </div>
+        <div class="form-row">
+          <label for="market-feature-passage">Проход</label>
+          <select id="market-feature-passage">
+            <option value="">Не выбран</option>
+            {% for passage in passages %}
+              <option value="{{ passage.id }}">{{ passage.number }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="market-feature-container">Существующий контейнер</label>
+          <select id="market-feature-container">
+            <option value="">Новый объект</option>
+            {% for container in containers %}
+              <option value="{{ container.id }}" data-passage-id="{{ container.passage_id }}" data-number="{{ container.number }}">
+                {{ container.number }}{% if container.title %} — {{ container.title }}{% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="market-feature-title">Подпись контейнера</label>
+          <input id="market-feature-title" type="text" maxlength="150" placeholder="Например: Электроника">
+        </div>
+        <div class="market-map-grid-fields">
+          <div class="form-row">
+            <label for="market-feature-min-zoom">Показывать с масштаба</label>
+            <input id="market-feature-min-zoom" type="number" min="0" max="22" value="14">
+          </div>
+          <div class="form-row">
+            <label for="market-feature-stroke-width">Толщина линии</label>
+            <input id="market-feature-stroke-width" type="number" min="1" max="12" value="2">
+          </div>
+          <div class="form-row">
+            <label for="market-feature-stroke">Цвет линии</label>
+            <input id="market-feature-stroke" type="color" value="#e47f26">
+          </div>
+          <div class="form-row">
+            <label for="market-feature-fill">Цвет заливки</label>
+            <input id="market-feature-fill" type="color" value="#ff8656">
+          </div>
+        </div>
+        <div class="market-map-property-actions">
+          <button type="button" class="button default" id="market-feature-apply">Применить</button>
+          <button type="button" class="button deletelink" id="market-feature-delete">Удалить</button>
+        </div>
+      </section>
+
+      <section class="market-map-panel">
+        <h2>Объекты</h2>
+        <div id="market-feature-list" class="market-feature-list"></div>
+      </section>
+    </aside>
+
+    <div class="market-map-stage">
+      <div id="market-map-canvas" aria-label="Редактор карты базара"></div>
+      <div id="market-map-status" role="status" aria-live="polite">Загрузка карты…</div>
+    </div>
+  </div>
+</div>
+
+{{ initial_geojson|json_script:"market-map-initial-geojson" }}
+{{ passages|json_script:"market-map-passages" }}
+{{ containers|json_script:"market-map-containers" }}
+<script src="{% static 'delivery/admin/market_map_editor.js' %}"></script>
+{% if google_maps_api_key %}
+<script async defer src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key|urlencode }}&callback=initMarketMapEditor&v=weekly"></script>
+{% endif %}
+{% endblock %}

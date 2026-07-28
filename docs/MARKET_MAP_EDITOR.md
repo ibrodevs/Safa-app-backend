@@ -1,0 +1,82 @@
+# Market Map Editor
+
+Редактор позволяет администратору рисовать поверх Google Maps:
+
+- границу базара;
+- районы и секторы;
+- ряды и проходы;
+- точки контейнеров.
+
+Карта хранится как версионный GeoJSON. Мобильное приложение получает только опубликованную версию, поэтому незавершённое редактирование не влияет на пользователей.
+
+## Настройка Google Maps
+
+Создайте отдельный Browser API key в Google Cloud Console и ограничьте его:
+
+- API restriction: Maps JavaScript API;
+- Website restriction: домен административной панели.
+
+Добавьте в `.env`:
+
+```env
+GOOGLE_MAPS_BROWSER_API_KEY=your-browser-key
+```
+
+Не используйте Android/iOS ключ мобильного приложения в Django Admin.
+
+## Развёртывание
+
+```bash
+cd ~/DoGO
+git pull origin main
+source .venv/bin/activate
+python manage.py migrate
+python manage.py collectstatic --noinput
+python manage.py check
+pytest apps/delivery/test_market_map.py
+```
+
+После этого перезагрузите Web app в PythonAnywhere.
+
+## Работа в админке
+
+1. Откройте `Админка → Delivery → Карты базаров`.
+2. Нажмите `Карта: <название базара>`.
+3. Выберите инструмент: зона, ряд/проход или контейнер.
+4. Нарисуйте объект и заполните его свойства.
+5. Нажмите `Сохранить черновик`.
+6. После проверки нажмите `Опубликовать`.
+
+При публикации backend:
+
+- проверяет структуру GeoJSON;
+- проверяет координаты и самопересечения полигонов;
+- проверяет, что контейнеры находятся внутри границы базара;
+- обновляет координаты существующих контейнеров;
+- создаёт новый контейнер, если выбран проход и указан новый номер;
+- архивирует предыдущую опубликованную версию.
+
+## API мобильной карты
+
+```http
+GET /api/delivery/map/features/
+GET /api/delivery/map/features/?bazar_id=1&zoom=17
+GET /api/delivery/map/features/?min_lon=74.60&min_lat=42.90&max_lon=74.66&max_lat=42.96&zoom=16
+```
+
+Ответ — стандартный `FeatureCollection`:
+
+```json
+{
+  "type": "FeatureCollection",
+  "features": [],
+  "versions": {"1": 3},
+  "count": 0
+}
+```
+
+Endpoint требует JWT, поддерживает `ETag` и короткое клиентское кеширование.
+
+## Ограничения текущего этапа
+
+Хранилище основано на `JSONField`, поэтому работает как с SQLite на PythonAnywhere, так и с PostgreSQL. При переходе на большую карту и десятки тысяч объектов рекомендуется перенести геометрию в PostGIS, не меняя внешний GeoJSON API.
