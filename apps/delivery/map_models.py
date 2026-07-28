@@ -113,6 +113,14 @@ class MarketMapRevision(models.Model):
             raise ValidationError("Публиковать можно только черновик")
 
         locked.geojson = validate_feature_collection(locked.geojson)
+        boundaries = [
+            feature
+            for feature in locked.geojson.get("features", [])
+            if (feature.get("properties") or {}).get("kind") == "bazar"
+        ]
+        if len(boundaries) != 1:
+            raise ValidationError("Перед публикацией нарисуйте одну границу базара")
+
         locked._sync_containers()
         MarketMapRevision.objects.filter(
             bazar=locked.bazar,
@@ -181,6 +189,13 @@ class MarketMapRevision(models.Model):
 
 
 def build_initial_geojson(bazar: Bazar) -> dict[str, Any]:
+    """Build a non-blocking draft from legacy rectangle and container fields.
+
+    Old data may contain containers outside the legacy rectangle. The editor must
+    still open so an administrator can redraw the real boundary; strict spatial
+    validation is applied when the draft is saved or published.
+    """
+
     features: list[dict[str, Any]] = []
     if all(
         value is not None
@@ -205,7 +220,8 @@ def build_initial_geojson(bazar: Bazar) -> dict[str, Any]:
                     "bazar_id": bazar.id,
                     "min_zoom": 10,
                     "stroke_color": "#FF8656",
-                    "fill_color": "#FF865633",
+                    "fill_color": "#FF8656",
+                    "fill_opacity": 0.2,
                     "stroke_width": 3,
                 },
                 "geometry": {
@@ -221,8 +237,8 @@ def build_initial_geojson(bazar: Bazar) -> dict[str, Any]:
             }
         )
 
-    for container in bazar.passages.select_related("bazar").prefetch_related("containers"):
-        for item in container.containers.filter(is_active=True):
+    for passage in bazar.passages.select_related("bazar").prefetch_related("containers"):
+        for item in passage.containers.filter(is_active=True):
             features.append(
                 {
                     "type": "Feature",
@@ -238,6 +254,7 @@ def build_initial_geojson(bazar: Bazar) -> dict[str, Any]:
                         "min_zoom": 17,
                         "stroke_color": "#E47F26",
                         "fill_color": "#FF8656",
+                        "fill_opacity": 1,
                         "is_active": item.is_active,
                     },
                     "geometry": {
@@ -247,4 +264,4 @@ def build_initial_geojson(bazar: Bazar) -> dict[str, Any]:
                 }
             )
 
-    return validate_feature_collection({"type": "FeatureCollection", "features": features})
+    return {"type": "FeatureCollection", "features": features}
