@@ -45,62 +45,66 @@
   <div class="market-map-layout">
     <aside class="market-map-sidebar">
       <section class="market-map-panel">
-        <h2>Разделы создания</h2>
+        <h2>Режим</h2>
         <div class="market-map-tools" role="toolbar" aria-label="Инструменты рисования">
           <button type="button" class="button active" data-map-tool="select">Выбор / редактирование</button>
-        </div>
-        <div class="market-kind-sections">
-          <section class="market-kind-section market-tool-bazar">
-            <div>
-              <h3>Граница базара</h3>
-              <p>Один внешний контур всего базара.</p>
-            </div>
-            <button type="button" class="button" data-map-tool="draw" data-map-kind="bazar">Создать границу</button>
-          </section>
-          <section class="market-kind-section market-tool-district">
-            <div>
-              <h3>Район</h3>
-              <p>Крупная зона внутри границы базара.</p>
-            </div>
-            <button type="button" class="button" data-map-tool="draw" data-map-kind="district">Создать район</button>
-          </section>
-          <section class="market-kind-section market-tool-sector">
-            <div>
-              <h3>Сектор</h3>
-              <p>Более мелкая зона внутри района.</p>
-            </div>
-            <button type="button" class="button" data-map-tool="draw" data-map-kind="sector">Создать сектор</button>
-          </section>
-          <section class="market-kind-section market-tool-row">
-            <div>
-              <h3>Ряд</h3>
-              <p>Линия ряда. Отрисовывается отдельно от проходов.</p>
-            </div>
-            <button type="button" class="button" data-map-tool="draw" data-map-kind="row">Создать ряд</button>
-          </section>
-          <section class="market-kind-section market-tool-passage">
-            <div>
-              <h3>Проход</h3>
-              <p>Основная линия прохода между рядами.</p>
-            </div>
-            <button type="button" class="button" data-map-tool="draw" data-map-kind="passage">Создать проход</button>
-          </section>
-          <section class="market-kind-section market-tool-container">
-            <div>
-              <h3>Контейнеры</h3>
-              <p>Отдельные точки контейнеров с привязкой к проходу.</p>
-            </div>
-            <button type="button" class="button" data-map-tool="draw" data-map-kind="container">Создать контейнер</button>
-          </section>
         </div>
         <div class="market-map-draw-actions" hidden>
           <button type="button" class="button default" id="market-map-finish">Завершить</button>
           <button type="button" class="button" id="market-map-cancel">Отменить</button>
         </div>
         <p class="help">
-          Выберите конкретный тип слоя. Граница, район и сектор рисуются площадью,
-          ряд и проход — линией, контейнер — точкой. Двойной клик завершает линию или площадь.
+          Выберите отдельное окно создания. Граница, район, сектор и контейнер рисуются площадью,
+          ряд и проход — линией. Двойной клик завершает линию или площадь.
         </p>
+      </section>
+
+      <section class="market-map-panel market-kind-section market-tool-bazar">
+        <div>
+          <h2>Граница базара</h2>
+          <p>Один внешний контур всего базара.</p>
+        </div>
+        <button type="button" class="button" data-map-tool="draw" data-map-kind="bazar">Создать границу</button>
+      </section>
+
+      <section class="market-map-panel market-kind-section market-tool-district">
+        <div>
+          <h2>Район</h2>
+          <p>Крупная зона внутри границы базара.</p>
+        </div>
+        <button type="button" class="button" data-map-tool="draw" data-map-kind="district">Создать район</button>
+      </section>
+
+      <section class="market-map-panel market-kind-section market-tool-sector">
+        <div>
+          <h2>Сектор</h2>
+          <p>Более мелкая зона внутри района.</p>
+        </div>
+        <button type="button" class="button" data-map-tool="draw" data-map-kind="sector">Создать сектор</button>
+      </section>
+
+      <section class="market-map-panel market-kind-section market-tool-row">
+        <div>
+          <h2>Ряд</h2>
+          <p>Линия ряда. Отрисовывается отдельно от проходов.</p>
+        </div>
+        <button type="button" class="button" data-map-tool="draw" data-map-kind="row">Создать ряд</button>
+      </section>
+
+      <section class="market-map-panel market-kind-section market-tool-passage">
+        <div>
+          <h2>Проход</h2>
+          <p>Основная линия прохода между рядами.</p>
+        </div>
+        <button type="button" class="button" data-map-tool="draw" data-map-kind="passage">Создать проход</button>
+      </section>
+
+      <section class="market-map-panel market-kind-section market-tool-container">
+        <div>
+          <h2>Контейнеры</h2>
+          <p>Прямоугольники контейнеров с привязкой к проходу.</p>
+        </div>
+        <button type="button" class="button" data-map-tool="draw" data-map-kind="container">Создать контейнер</button>
       </section>
 
       <section class="market-map-panel">

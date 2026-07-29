@@ -9,7 +9,12 @@ from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.utils import timezone
 
-from .map_validation import STYLE_DEFAULTS, empty_feature_collection, validate_feature_collection
+from .map_validation import (
+    STYLE_DEFAULTS,
+    empty_feature_collection,
+    representative_point,
+    validate_feature_collection,
+)
 from .models import Bazar, Container, Passage
 
 
@@ -140,11 +145,9 @@ class MarketMapRevision(models.Model):
             properties = feature.get("properties") or {}
             if properties.get("kind") != "container":
                 continue
-            coordinates = (feature.get("geometry") or {}).get("coordinates") or []
-            if len(coordinates) < 2:
-                continue
-            lon = Decimal(str(coordinates[0])).quantize(Decimal("0.000001"))
-            lat = Decimal(str(coordinates[1])).quantize(Decimal("0.000001"))
+            center = representative_point(feature.get("geometry") or {})
+            lon = Decimal(str(center[0])).quantize(Decimal("0.000001"))
+            lat = Decimal(str(center[1])).quantize(Decimal("0.000001"))
 
             container = None
             container_id = properties.get("container_id")
@@ -250,11 +253,25 @@ def build_initial_geojson(bazar: Bazar) -> dict[str, Any]:
                         **STYLE_DEFAULTS["container"],
                         "is_active": item.is_active,
                     },
-                    "geometry": {
-                        "type": "Point",
-                        "coordinates": [float(item.lon), float(item.lat)],
-                    },
+                    "geometry": container_rectangle(float(item.lon), float(item.lat)),
                 }
             )
 
     return {"type": "FeatureCollection", "features": features}
+
+
+def container_rectangle(lon: float, lat: float, *, half_width: float = 0.000018, half_height: float = 0.000012) -> dict[str, Any]:
+    left = lon - half_width
+    right = lon + half_width
+    bottom = lat - half_height
+    top = lat + half_height
+    return {
+        "type": "Polygon",
+        "coordinates": [[
+            [left, top],
+            [right, top],
+            [right, bottom],
+            [left, bottom],
+            [left, top],
+        ]],
+    }

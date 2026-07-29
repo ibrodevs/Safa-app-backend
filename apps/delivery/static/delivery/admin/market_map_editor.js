@@ -81,7 +81,7 @@
     },
     container: {
       label: 'Контейнер',
-      family: 'point',
+      family: 'polygon',
       name: 'Новый контейнер',
       minZoom: 17,
       strokeWidth: 2,
@@ -89,7 +89,7 @@
       fillColor: '#ef4444',
       fillOpacity: 1,
       zIndex: 100,
-      hint: 'Поставьте точку в центре контейнера.',
+      hint: 'Кликните по центру контейнера — редактор создаст прямоугольник.',
     },
   };
 
@@ -135,6 +135,20 @@
 
   function expectedFamily(kind) {
     return KIND_CONFIG[kind]?.family || 'polygon';
+  }
+
+  function containerRectangle(latLng) {
+    const halfWidth = 0.000018;
+    const halfHeight = 0.000012;
+    const lng = latLng.lng();
+    const lat = latLng.lat();
+    return [
+      [lng - halfWidth, lat + halfHeight],
+      [lng + halfWidth, lat + halfHeight],
+      [lng + halfWidth, lat - halfHeight],
+      [lng - halfWidth, lat - halfHeight],
+      [lng - halfWidth, lat + halfHeight],
+    ];
   }
 
   function defaultProperties(kind) {
@@ -406,7 +420,7 @@
     const kind = item.feature.properties.kind;
     const family = geometryFamily(item.feature.geometry.type);
     const expected = expectedFamily(kind);
-    if (expected !== family) {
+    if (expected !== family && !(kind === 'container' && family === 'point')) {
       setStatus(`Тип «${featureKindLabel(kind)}» не подходит для геометрии ${item.feature.geometry.type}`, 'error');
       return;
     }
@@ -566,19 +580,20 @@
       return;
     }
     const family = expectedFamily(kind);
-    if (family === 'point') {
+    if (kind === 'container') {
       const properties = defaultProperties(kind);
       const id = makeId(kind);
       addFeature({
         type: 'Feature',
         id,
         properties,
-        geometry: { type: 'Point', coordinates: [event.latLng.lng(), event.latLng.lat()] },
+        geometry: { type: 'Polygon', coordinates: [containerRectangle(event.latLng)] },
       }, { select: true });
       setTool('select');
       setStatus(`${featureKindLabel(kind)} добавлен. Заполните его свойства.`, 'success');
       return;
     }
+    if (family === 'point') return;
     state.drawing.push(event.latLng);
     updatePreview();
   }

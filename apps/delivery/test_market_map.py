@@ -50,6 +50,21 @@ def container_feature(bazar_id: int, passage_id: int, container_id: int):
     }
 
 
+def container_rectangle_feature(bazar_id: int, passage_id: int, container_id: int):
+    feature = container_feature(bazar_id, passage_id, container_id)
+    feature["geometry"] = {
+        "type": "Polygon",
+        "coordinates": [[
+            [74.6229, 42.9411],
+            [74.6231, 42.9411],
+            [74.6231, 42.9409],
+            [74.6229, 42.9409],
+            [74.6229, 42.9411],
+        ]],
+    }
+    return feature
+
+
 def line_feature(kind: str, name: str):
     return {
         "type": "Feature",
@@ -180,6 +195,45 @@ def test_new_container_can_be_created_from_published_feature():
     created = Container.objects.get(passage=passage, number="705")
     assert float(created.lat) == pytest.approx(42.941)
     assert float(created.lon) == pytest.approx(74.623)
+
+
+@pytest.mark.django_db
+def test_rectangular_container_syncs_center_coordinates():
+    user = User.objects.create_user(
+        phone_number="996700777003",
+        password="pass12345",
+        first_name="Admin",
+        is_verify=True,
+        is_staff=True,
+    )
+    bazar = Bazar.objects.create(name="Дордой")
+    passage = Passage.objects.create(bazar=bazar, number="1")
+    container = Container.objects.create(
+        passage=passage,
+        number="101",
+        title="Текстиль",
+        lat="42.930000",
+        lon="74.610000",
+    )
+    revision = MarketMapRevision.objects.create(
+        bazar=bazar,
+        version=1,
+        geojson={
+            "type": "FeatureCollection",
+            "features": [
+                polygon_feature(bazar.id),
+                container_rectangle_feature(bazar.id, passage.id, container.id),
+            ],
+        },
+        created_by=user,
+    )
+
+    revision.publish(user=user)
+
+    container.refresh_from_db()
+    assert float(container.lat) == pytest.approx(42.941)
+    assert float(container.lon) == pytest.approx(74.623)
+    assert revision.geojson["features"][1]["geometry"]["type"] == "Polygon"
 
 
 @pytest.mark.django_db

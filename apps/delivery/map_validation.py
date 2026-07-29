@@ -177,9 +177,12 @@ def _normalize_geometry(geometry: Any, *, kind: str, label: str) -> dict[str, An
     coordinates = geometry.get("coordinates")
 
     if kind == "container":
-        if geometry_type != "Point":
-            raise ValidationError(f"{label}: контейнер должен иметь геометрию Point")
-        normalized = _point(coordinates, label=f"{label}.coordinates")
+        if geometry_type == "Point":
+            normalized = _point(coordinates, label=f"{label}.coordinates")
+        elif geometry_type == "Polygon":
+            normalized = _polygon(coordinates, label=f"{label}.coordinates")
+        else:
+            raise ValidationError(f"{label}: контейнер должен быть Point или Polygon")
     elif kind in POLYGON_KINDS:
         if geometry_type == "Polygon":
             normalized = _polygon(coordinates, label=f"{label}.coordinates")
@@ -257,6 +260,20 @@ def point_in_geometry(point: list[float], geometry: dict[str, Any]) -> bool:
     return False
 
 
+def representative_point(geometry: dict[str, Any]) -> list[float]:
+    geometry_type = geometry.get("type")
+    coordinates = geometry.get("coordinates") or []
+    if geometry_type == "Point":
+        return [float(coordinates[0]), float(coordinates[1])]
+
+    points = list(_iter_points(coordinates))
+    if not points:
+        raise ValidationError("Геометрия не содержит координат")
+    lons = [point[0] for point in points]
+    lats = [point[1] for point in points]
+    return [(min(lons) + max(lons)) / 2, (min(lats) + max(lats)) / 2]
+
+
 def validate_feature_collection(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict) or value.get("type") != "FeatureCollection":
         raise ValidationError("Карта должна быть GeoJSON FeatureCollection")
@@ -327,8 +344,8 @@ def validate_feature_collection(value: Any) -> dict[str, Any]:
     if bazar_geometries:
         boundary = bazar_geometries[0]
         for feature in container_features:
-            point = feature["geometry"]["coordinates"]
-            if not point_in_geometry(point, boundary):
+            points = list(_iter_points(feature["geometry"]["coordinates"]))
+            if not points or any(not point_in_geometry(point, boundary) for point in points):
                 raise ValidationError(
                     f"Контейнер '{feature['properties']['name']}' находится за границей базара"
                 )

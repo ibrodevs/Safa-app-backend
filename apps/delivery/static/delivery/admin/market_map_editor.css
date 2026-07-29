@@ -75,12 +75,6 @@
 .market-tool-row { --tool-color: #7c3aed; }
 .market-tool-passage { --tool-color: #d97706; }
 .market-tool-container { --tool-color: #dc2626; }
-.market-kind-sections {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 10px;
-}
 .market-kind-section {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -96,7 +90,7 @@
   border-color: var(--tool-color, #417690);
   background: color-mix(in srgb, var(--tool-color, #417690) 10%, transparent);
 }
-.market-kind-section h3 {
+.market-kind-section h2 {
   margin: 0 0 3px;
   font-size: 14px;
 }
