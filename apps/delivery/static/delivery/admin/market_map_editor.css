@@ -70,6 +70,7 @@
 .market-map-draw-actions { margin-top: 10px; }
 .market-map-property-actions { margin-top: 12px; }
 .market-map-panel .help { margin: 10px 0 0; color: var(--map-muted); }
+.market-map-panel .market-map-inline-help { margin-top: 5px; font-size: 12px; }
 
 .market-map-panel .form-row {
   padding: 0;
@@ -138,6 +139,20 @@
 .market-feature-list button:hover,
 .market-feature-list button.active { border-color: #417690; background: rgba(65, 118, 144, 0.1); }
 .market-feature-list small { display: block; margin-top: 2px; color: var(--map-muted); }
+.market-feature-group {
+  margin: 8px 0 2px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--map-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.market-feature-list button[data-kind="bazar"] { border-left: 4px solid #ff6b35; }
+.market-feature-list button[data-kind="district"] { border-left: 4px solid #2563eb; }
+.market-feature-list button[data-kind="sector"] { border-left: 4px solid #16a34a; }
+.market-feature-list button[data-kind="row"] { border-left: 4px solid #7c3aed; }
+.market-feature-list button[data-kind="passage"] { border-left: 4px solid #d97706; }
+.market-feature-list button[data-kind="container"] { border-left: 4px solid #dc2626; }
 
 @media (max-width: 960px) {
   .market-map-layout { grid-template-columns: 1fr; }

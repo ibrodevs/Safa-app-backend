@@ -14,6 +14,7 @@
 
   const byId = (id) => document.getElementById(id);
   const root = () => byId('market-map-editor');
+  const KIND_ORDER = ['bazar', 'district', 'sector', 'row', 'passage', 'container'];
 
   const KIND_CONFIG = {
     bazar: {
@@ -116,6 +117,13 @@
 
   function featureKindLabel(kind) {
     return KIND_CONFIG[kind]?.label || kind;
+  }
+
+  function existingFeatureByKind(kind) {
+    for (const item of state.items.values()) {
+      if (item.feature.properties.kind === kind) return item.feature.id;
+    }
+    return null;
   }
 
   function geometryFamily(type) {
@@ -242,7 +250,13 @@
       clickable: true,
       zIndex: Number(feature.properties.z_index || KIND_CONFIG.container.zIndex),
     });
-    marker.addListener('click', () => selectFeature(feature.id));
+    marker.addListener('click', (event) => {
+      if (state.tool === 'draw') {
+        mapClick(event);
+        return;
+      }
+      selectFeature(feature.id);
+    });
     marker.addListener('dragend', () => refreshList());
     return marker;
   }
@@ -253,7 +267,13 @@
       path: feature.geometry.coordinates.map((point) => ({ lat: Number(point[1]), lng: Number(point[0]) })),
       ...overlayStyle(feature.properties, false),
     });
-    line.addListener('click', () => selectFeature(feature.id));
+    line.addListener('click', (event) => {
+      if (state.tool === 'draw') {
+        mapClick(event);
+        return;
+      }
+      selectFeature(feature.id);
+    });
     return line;
   }
 
@@ -263,7 +283,13 @@
       paths: coordinates.map((ring) => ring.slice(0, -1).map((point) => ({ lat: Number(point[1]), lng: Number(point[0]) }))),
       ...overlayStyle(feature.properties, false),
     });
-    polygon.addListener('click', () => selectFeature(feature.id));
+    polygon.addListener('click', (event) => {
+      if (state.tool === 'draw') {
+        mapClick(event);
+        return;
+      }
+      selectFeature(feature.id);
+    });
     return polygon;
   }
 
@@ -331,6 +357,7 @@
     }
     state.selectedId = state.items.has(id) ? id : null;
     if (!state.selectedId) {
+      updatePropertyVisibility(null);
       refreshList();
       return;
     }
@@ -360,6 +387,14 @@
     byId('market-feature-stroke-width').value = Number(properties.stroke_width ?? 2);
     byId('market-feature-stroke').value = String(properties.stroke_color || '#e47f26').slice(0, 7);
     byId('market-feature-fill').value = String(properties.fill_color || '#ff8656').slice(0, 7);
+    updatePropertyVisibility(properties.kind || 'district');
+  }
+
+  function updatePropertyVisibility(kind) {
+    const isContainer = kind === 'container';
+    document.querySelectorAll('[data-kind-scope="container"]').forEach((row) => {
+      row.hidden = !isContainer;
+    });
   }
 
   function applyForm() {
@@ -368,7 +403,7 @@
       setStatus('Сначала выберите объект на карте', 'error');
       return;
     }
-    const kind = byId('market-feature-kind').value;
+    const kind = item.feature.properties.kind;
     const family = geometryFamily(item.feature.geometry.type);
     const expected = expectedFamily(kind);
     if (expected !== family) {
@@ -384,9 +419,6 @@
     const properties = item.feature.properties;
     properties.kind = kind;
     properties.name = name;
-    properties.passage_id = Number(byId('market-feature-passage').value || 0) || null;
-    properties.container_id = Number(byId('market-feature-container').value || 0) || null;
-    properties.title = byId('market-feature-title').value.trim();
     properties.min_zoom = Math.max(0, Math.min(22, Number(byId('market-feature-min-zoom').value || 0)));
     properties.stroke_width = Math.max(1, Math.min(12, Number(byId('market-feature-stroke-width').value || 2)));
     properties.stroke_color = byId('market-feature-stroke').value;
@@ -395,12 +427,20 @@
     properties.z_index = KIND_CONFIG[kind]?.zIndex ?? properties.z_index ?? 1;
     properties.line_pattern = KIND_CONFIG[kind]?.linePattern || properties.line_pattern || 'solid';
     if (kind === 'container') {
+      properties.passage_id = Number(byId('market-feature-passage').value || 0) || null;
+      properties.container_id = Number(byId('market-feature-container').value || 0) || null;
+      properties.title = byId('market-feature-title').value.trim();
       const selectedOption = byId('market-feature-container').selectedOptions[0];
       properties.number = selectedOption?.dataset.number || name;
       if (!properties.passage_id && selectedOption?.dataset.passageId) {
         properties.passage_id = Number(selectedOption.dataset.passageId);
         byId('market-feature-passage').value = String(properties.passage_id);
       }
+    } else {
+      delete properties.passage_id;
+      delete properties.container_id;
+      delete properties.title;
+      delete properties.number;
     }
     item.overlays.forEach((overlay) => {
       if (overlay instanceof google.maps.Marker) {
@@ -427,19 +467,31 @@
     const sorted = Array.from(state.items.values()).sort((a, b) => {
       const ak = a.feature.properties.kind || '';
       const bk = b.feature.properties.kind || '';
-      return ak.localeCompare(bk) || String(a.feature.properties.name || '').localeCompare(String(b.feature.properties.name || ''));
+      const ai = KIND_ORDER.indexOf(ak);
+      const bi = KIND_ORDER.indexOf(bk);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi) ||
+        String(a.feature.properties.name || '').localeCompare(String(b.feature.properties.name || ''));
     });
-    sorted.forEach((item) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = item.feature.id === state.selectedId ? 'active' : '';
-      const name = document.createElement('span');
-      name.textContent = item.feature.properties.name || item.feature.id;
-      const type = document.createElement('small');
-      type.textContent = featureKindLabel(item.feature.properties.kind);
-      button.append(name, type);
-      button.addEventListener('click', () => selectFeature(item.feature.id));
-      list.append(button);
+    KIND_ORDER.forEach((kind) => {
+      const group = sorted.filter((item) => item.feature.properties.kind === kind);
+      if (!group.length) return;
+      const heading = document.createElement('div');
+      heading.className = 'market-feature-group';
+      heading.textContent = featureKindLabel(kind);
+      list.append(heading);
+      group.forEach((item) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = item.feature.id === state.selectedId ? 'active' : '';
+        button.dataset.kind = item.feature.properties.kind || '';
+        const name = document.createElement('span');
+        name.textContent = item.feature.properties.name || item.feature.id;
+        const type = document.createElement('small');
+        type.textContent = item.feature.geometry.type;
+        button.append(name, type);
+        button.addEventListener('click', () => selectFeature(item.feature.id));
+        list.append(button);
+      });
     });
     if (!sorted.length) {
       const empty = document.createElement('p');
@@ -459,6 +511,14 @@
 
   function setTool(tool, kind = null) {
     clearPreview();
+    if (tool === 'draw' && kind === 'bazar') {
+      const existing = existingFeatureByKind('bazar');
+      if (existing) {
+        selectFeature(existing);
+        setStatus('Граница базара уже есть. Отредактируйте её или удалите перед созданием новой.', 'error');
+        return;
+      }
+    }
     state.tool = tool;
     state.drawingKind = tool === 'draw' ? kind : null;
     document.querySelectorAll('[data-map-tool]').forEach((button) => {
@@ -495,10 +555,16 @@
       return;
     }
     const kind = state.drawingKind || 'district';
+    if (kind === 'bazar' && existingFeatureByKind('bazar')) {
+      selectFeature(existingFeatureByKind('bazar'));
+      setTool('select');
+      setStatus('На карте может быть только одна граница базара.', 'error');
+      return;
+    }
     const family = expectedFamily(kind);
     if (family === 'point') {
       const properties = defaultProperties(kind);
-      const id = makeId('container');
+      const id = makeId(kind);
       addFeature({
         type: 'Feature',
         id,
@@ -604,13 +670,6 @@
       if (!option?.value) return;
       byId('market-feature-passage').value = option.dataset.passageId || '';
       byId('market-feature-name').value = option.dataset.number || byId('market-feature-name').value;
-    });
-    byId('market-feature-kind')?.addEventListener('change', (event) => {
-      const defaults = defaultProperties(event.target.value);
-      byId('market-feature-min-zoom').value = defaults.min_zoom;
-      byId('market-feature-stroke-width').value = defaults.stroke_width;
-      byId('market-feature-stroke').value = defaults.stroke_color;
-      byId('market-feature-fill').value = defaults.fill_color;
     });
     byId('market-map-save')?.addEventListener('click', () => persist(root().dataset.saveUrl, false));
     byId('market-map-publish')?.addEventListener('click', () => {

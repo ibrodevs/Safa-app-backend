@@ -69,7 +69,7 @@
         <h2>Свойства объекта</h2>
         <div class="form-row">
           <label for="market-feature-kind">Тип</label>
-          <select id="market-feature-kind">
+          <select id="market-feature-kind" disabled>
             <option value="bazar">Граница базара</option>
             <option value="district">Район</option>
             <option value="sector">Сектор</option>
@@ -77,12 +77,13 @@
             <option value="passage">Проход</option>
             <option value="container">Контейнер</option>
           </select>
+          <p class="help market-map-inline-help">Тип фиксируется выбранным инструментом рисования.</p>
         </div>
         <div class="form-row">
           <label for="market-feature-name">Название / номер</label>
           <input id="market-feature-name" type="text" maxlength="160" placeholder="Например: Восточный сектор">
         </div>
-        <div class="form-row">
+        <div class="form-row" data-kind-scope="container">
           <label for="market-feature-passage">Проход</label>
           <select id="market-feature-passage">
             <option value="">Не выбран</option>
@@ -91,7 +92,7 @@
             {% endfor %}
           </select>
         </div>
-        <div class="form-row">
+        <div class="form-row" data-kind-scope="container">
           <label for="market-feature-container">Существующий контейнер</label>
           <select id="market-feature-container">
             <option value="">Новый объект</option>
@@ -102,7 +103,7 @@
             {% endfor %}
           </select>
         </div>
-        <div class="form-row">
+        <div class="form-row" data-kind-scope="container">
           <label for="market-feature-title">Подпись контейнера</label>
           <input id="market-feature-title" type="text" maxlength="150" placeholder="Например: Электроника">
         </div>
