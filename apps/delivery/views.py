@@ -373,7 +373,12 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 {"detail": "only_carrier_can_set_this_status"},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        if s.carrier_id and s.carrier_id != request.user.id and not request.user.is_staff:
+        if (
+            s.carrier_id
+            and s.carrier_id != request.user.id
+            and s.client_id != request.user.id
+            and not request.user.is_staff
+        ):
             return response.Response({"detail": "only_assigned_carrier"}, status=status.HTTP_403_FORBIDDEN)
         if new_status not in allowed.get(old_status, set()):
             return response.Response({"detail": "status_transition_not_allowed"}, status=status.HTTP_409_CONFLICT)
