@@ -5,7 +5,7 @@ on:
     branches:
       - agent/full-system-hardening
     paths:
-      - tool/apply_full_system_hardening.py
+      - tool/apply_backend_hardening_v2.py
       - .github/workflows/apply-full-system-hardening.yml
 
 permissions:
@@ -21,7 +21,7 @@ jobs:
           fetch-depth: 0
 
       - name: Apply verified patch
-        run: python tool/apply_full_system_hardening.py
+        run: python tool/apply_backend_hardening_v2.py
 
       - name: Commit generated changes
         run: |
