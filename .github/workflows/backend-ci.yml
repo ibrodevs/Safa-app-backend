@@ -1,0 +1,58 @@
+name: Backend full-system checks
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - agent/full-system-hardening
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_DEBUG: '1'
+      DJANGO_SECRET_KEY: test-secret-key
+      DJANGO_USE_SQLITE: '1'
+      CHANNEL_BACKEND: memory
+      ENABLE_DEBUG_OTP_ENDPOINT: '0'
+      STATIC_OTP: ''
+      GOOGLE_MAPS_BROWSER_API_KEY: test-key
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: req.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r req.txt
+          pip install pytest pytest-django
+
+      - name: Check migrations
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Run Django checks
+        run: python manage.py check
+
+      - name: Apply migrations
+        run: python manage.py migrate --noinput
+
+      - name: Run full test suite
+        run: python -m pytest -vv --tb=short --junitxml=backend-results.xml
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-report
+          path: backend-results.xml
+          if-no-files-found: warn
