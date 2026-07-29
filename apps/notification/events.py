@@ -76,7 +76,7 @@ def notify_shipment_offer_for_carrier(shipment) -> None:
     dropoff = stops[-1] if len(stops) > 1 else pickup
 
     title = "Новая доставка рядом"
-    body = f"{shipment.title} · {shipment.estimated_fare} с"
+    body = f"{shipment.title} · {shipment.estimated_fare} сом"
 
     base = _base_data(
         app="carrier",
@@ -90,12 +90,8 @@ def notify_shipment_offer_for_carrier(shipment) -> None:
     extra = {
         "shipment_id": str(shipment.id),
         "public_code": shipment.public_code,
-        "segment": shipment.segment.slug,
-        "segment_name": shipment.segment.name,
+        "service_type": shipment.service_type,
         "estimated_fare": str(shipment.estimated_fare),
-        "size": shipment.size,
-        "quantity": str(shipment.quantity),
-        "fragile": "1" if shipment.fragile else "0",
         "pickup_title": pickup.title if pickup else "",
         "pickup_lat": str(pickup.lat) if pickup else "",
         "pickup_lon": str(pickup.lon) if pickup else "",
@@ -107,13 +103,15 @@ def notify_shipment_offer_for_carrier(shipment) -> None:
     data = {**base, **extra}
     collapse_key = f"shipment_offer_{shipment.id}"
 
-    if shipment.carrier_id:
-        _send_to_user(
-            shipment.carrier_id,
-            data,
-            ttl="15s",
-            collapse_key=collapse_key,
-        )
+    carrier_ids = (
+        FCMToken.objects.filter(user__role=User.Roles.CARRIER, is_active=True)
+        .values_list("user_id", flat=True)
+        .distinct()
+    )
+    for carrier_id in carrier_ids:
+        if carrier_id == shipment.client_id:
+            continue
+        _send_to_user(carrier_id, dict(data), ttl="15s", collapse_key=collapse_key)
 
 
 def notify_shipment_status(shipment) -> None:

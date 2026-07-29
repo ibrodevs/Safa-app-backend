@@ -26,7 +26,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.notification.events import notify_shipment_status
+from apps.notification.events import notify_shipment_offer_for_carrier, notify_shipment_status
 from apps.payments.models import PaymentAttempt
 from apps.users.models import User, UserProfile
 from .geocoding import twogis_autocomplete
@@ -74,20 +74,32 @@ def _complete_shipment_if_needed(s: Shipment) -> None:
 
 
 def _increment_carrier_rating(shipment: Shipment) -> None:
-    carrier = shipment.carrier
-    if not carrier:
-        return
-    if getattr(carrier, "role", None) != User.Roles.CARRIER:
+    if shipment.rating_applied:
         return
     try:
-        profile, _ = UserProfile.objects.get_or_create(user=carrier)
-        profile.rate = int(profile.rate or 0) + 1
-        profile.client_rate_count = str(int(profile.client_rate_count or 0) + 1)
-        profile.save(update_fields=["rate", "client_rate_count"])
+        with transaction.atomic():
+            locked = (
+                Shipment.objects.select_for_update()
+                .select_related("carrier")
+                .get(pk=shipment.pk)
+            )
+            if locked.rating_applied:
+                shipment.rating_applied = True
+                return
+            carrier = locked.carrier
+            if not carrier or getattr(carrier, "role", None) != User.Roles.CARRIER:
+                return
+            profile, _ = UserProfile.objects.select_for_update().get_or_create(user=carrier)
+            profile.rate = int(profile.rate or 0) + 1
+            profile.client_rate_count = str(int(profile.client_rate_count or 0) + 1)
+            profile.save(update_fields=["rate", "client_rate_count"])
+            locked.rating_applied = True
+            locked.save(update_fields=["rating_applied"])
+            shipment.rating_applied = True
     except Exception as e:
         logger.exception(
-            "increment_carrier_rating_failed", 
-            extra={"shipment_id": shipment.id, "carrier_id": carrier.id, "error": str(e)}
+            "increment_carrier_rating_failed",
+            extra={"shipment_id": shipment.id, "carrier_id": shipment.carrier_id, "error": str(e)},
         )
 
 
@@ -251,6 +263,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         try:
             shipment = serializer.save()
             _broadcast(shipment)
+            notify_shipment_offer_for_carrier(shipment)
             logger.info(
                 "shipment_created",
                 extra={"request_id": rid, "shipment_id": shipment.id, "user_id": self.request.user.id},
@@ -261,6 +274,18 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 extra={"request_id": rid, "user_id": self.request.user.id},
             )
             raise
+
+    def destroy(self, request, *args, **kwargs):
+        shipment = self.get_object()
+        if shipment.client_id != request.user.id and not request.user.is_staff:
+            return response.Response({"detail": "only_for_client"}, status=status.HTTP_403_FORBIDDEN)
+        if shipment.status in (Shipment.Status.COMPLETED, Shipment.Status.CANCELED):
+            return response.Response({"detail": "terminal_shipment"}, status=status.HTTP_409_CONFLICT)
+        shipment.status = Shipment.Status.CANCELED
+        shipment.save(update_fields=["status"])
+        notify_shipment_status(shipment)
+        _broadcast(shipment)
+        return response.Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(
         tags=["Shipments"],
@@ -355,9 +380,15 @@ class ShipmentViewSet(viewsets.ModelViewSet):
 
         if new_status == Shipment.Status.COMPLETED:
             _complete_shipment_if_needed(s)
+            _increment_carrier_rating(s)
+            notify_shipment_status(s)
         else:
             s.status = new_status
-            s.save(update_fields=["status"])
+            update_fields = ["status"]
+            if new_status == Shipment.Status.PENDING:
+                s.carrier = None
+                update_fields.append("carrier")
+            s.save(update_fields=update_fields)
             if new_status != old_status:
                 notify_shipment_status(s)
 
@@ -465,6 +496,8 @@ class ShipmentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="nearby")
     def nearby(self, request):
         rid = _rid(request)
+        if getattr(request.user, "role", None) != User.Roles.CARRIER:
+            return response.Response({"detail": "only_for_carrier"}, status=status.HTTP_403_FORBIDDEN)
         try:
             lat = float(request.query_params.get("lat", 0))
             lon = float(request.query_params.get("lon", 0))

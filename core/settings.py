@@ -12,6 +12,7 @@ load_dotenv(BASE_DIR / ".env")
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
+ENABLE_DEBUG_OTP_ENDPOINT = os.getenv("ENABLE_DEBUG_OTP_ENDPOINT", "0") == "1"
 
 if not DEBUG and not SECRET_KEY:
     raise RuntimeError("DJANGO_SECRET_KEY is required when DJANGO_DEBUG=0")
@@ -205,7 +206,9 @@ CHATFLOW_BASE_URL = os.getenv("CHATFLOW_BASE_URL", "https://lk.chatflow.kz")
 CHATFLOW_TOKEN = os.getenv("CHATFLOW_TOKEN", "")
 CHATFLOW_INSTANCE_ID = os.getenv("CHATFLOW_INSTANCE_ID", "")
 OTP_TTL_SECONDS = int(os.getenv("OTP_TTL_SECONDS", "300"))
+OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
 DEMO_OTP_CODE = os.getenv("DEMO_OTP_CODE", "").strip()
+YANDEX_API_KEY = os.getenv("YANDEX_API_KEY", "").strip()
 
 
 OSRM_URL = "https://router.project-osrm.org"
@@ -224,6 +227,6 @@ FINIK_CALLBACK_URL = os.getenv("FINIK_CALLBACK_URL", "")
 
 STATIC_OTP = dict(
     item.split(":", 1)
-    for item in os.getenv("STATIC_OTP", "996555555555:1111").split(",")
+    for item in os.getenv("STATIC_OTP", "").split(",")
     if ":" in item
 )
