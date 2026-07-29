@@ -48,17 +48,20 @@
         <h2>Инструменты</h2>
         <div class="market-map-tools" role="toolbar" aria-label="Инструменты рисования">
           <button type="button" class="button active" data-map-tool="select">Выбор</button>
-          <button type="button" class="button" data-map-tool="polygon">Зона</button>
-          <button type="button" class="button" data-map-tool="line">Ряд / проход</button>
-          <button type="button" class="button" data-map-tool="marker">Контейнер</button>
+          <button type="button" class="button market-tool-bazar" data-map-tool="draw" data-map-kind="bazar">Граница базара</button>
+          <button type="button" class="button market-tool-district" data-map-tool="draw" data-map-kind="district">Район</button>
+          <button type="button" class="button market-tool-sector" data-map-tool="draw" data-map-kind="sector">Сектор</button>
+          <button type="button" class="button market-tool-row" data-map-tool="draw" data-map-kind="row">Ряд</button>
+          <button type="button" class="button market-tool-passage" data-map-tool="draw" data-map-kind="passage">Проход</button>
+          <button type="button" class="button market-tool-container" data-map-tool="draw" data-map-kind="container">Контейнер</button>
         </div>
         <div class="market-map-draw-actions" hidden>
           <button type="button" class="button default" id="market-map-finish">Завершить</button>
           <button type="button" class="button" id="market-map-cancel">Отменить</button>
         </div>
         <p class="help">
-          Для зоны или ряда ставьте точки кликами по карте, затем нажмите «Завершить».
-          Выбранные объекты можно двигать и редактировать за вершины.
+          Выберите конкретный тип слоя. Граница, район и сектор рисуются площадью,
+          ряд и проход — линией, контейнер — точкой. Двойной клик завершает линию или площадь.
         </p>
       </section>
 

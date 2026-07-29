@@ -9,7 +9,7 @@ from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.utils import timezone
 
-from .map_validation import empty_feature_collection, validate_feature_collection
+from .map_validation import STYLE_DEFAULTS, empty_feature_collection, validate_feature_collection
 from .models import Bazar, Container, Passage
 
 
@@ -218,11 +218,7 @@ def build_initial_geojson(bazar: Bazar) -> dict[str, Any]:
                     "kind": "bazar",
                     "name": bazar.name,
                     "bazar_id": bazar.id,
-                    "min_zoom": 10,
-                    "stroke_color": "#FF8656",
-                    "fill_color": "#FF8656",
-                    "fill_opacity": 0.2,
-                    "stroke_width": 3,
+                    **STYLE_DEFAULTS["bazar"],
                 },
                 "geometry": {
                     "type": "Polygon",
@@ -251,10 +247,7 @@ def build_initial_geojson(bazar: Bazar) -> dict[str, Any]:
                         "bazar_id": bazar.id,
                         "passage_id": item.passage_id,
                         "container_id": item.id,
-                        "min_zoom": 17,
-                        "stroke_color": "#E47F26",
-                        "fill_color": "#FF8656",
-                        "fill_opacity": 1,
+                        **STYLE_DEFAULTS["container"],
                         "is_active": item.is_active,
                     },
                     "geometry": {

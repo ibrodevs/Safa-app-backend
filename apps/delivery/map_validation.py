@@ -13,6 +13,59 @@ LINE_KINDS = {"row", "passage"}
 MAX_FEATURES = 5000
 MAX_POINTS_PER_GEOMETRY = 2500
 
+STYLE_DEFAULTS = {
+    "bazar": {
+        "min_zoom": 10,
+        "stroke_width": 4,
+        "stroke_color": "#ff6b35",
+        "fill_color": "#ff6b35",
+        "fill_opacity": 0.12,
+        "z_index": 10,
+    },
+    "district": {
+        "min_zoom": 13,
+        "stroke_width": 3,
+        "stroke_color": "#2563eb",
+        "fill_color": "#60a5fa",
+        "fill_opacity": 0.16,
+        "z_index": 20,
+    },
+    "sector": {
+        "min_zoom": 14,
+        "stroke_width": 2,
+        "stroke_color": "#16a34a",
+        "fill_color": "#4ade80",
+        "fill_opacity": 0.18,
+        "z_index": 30,
+    },
+    "row": {
+        "min_zoom": 16,
+        "stroke_width": 3,
+        "stroke_color": "#7c3aed",
+        "fill_color": "#a78bfa",
+        "fill_opacity": 0,
+        "z_index": 50,
+        "line_pattern": "dashed",
+    },
+    "passage": {
+        "min_zoom": 16,
+        "stroke_width": 5,
+        "stroke_color": "#d97706",
+        "fill_color": "#fbbf24",
+        "fill_opacity": 0,
+        "z_index": 60,
+        "line_pattern": "solid",
+    },
+    "container": {
+        "min_zoom": 17,
+        "stroke_width": 2,
+        "stroke_color": "#dc2626",
+        "fill_color": "#ef4444",
+        "fill_opacity": 1,
+        "z_index": 100,
+    },
+}
+
 
 def empty_feature_collection() -> dict[str, Any]:
     return {"type": "FeatureCollection", "features": []}
@@ -25,6 +78,16 @@ def _number(value: Any, *, label: str) -> float:
     if not math.isfinite(number):
         raise ValidationError(f"{label}: координата должна быть конечным числом")
     return number
+
+
+def _opacity(value: Any, *, fallback: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = fallback
+    if not math.isfinite(number):
+        return fallback
+    return max(0, min(1, number))
 
 
 def _point(value: Any, *, label: str) -> list[float]:
@@ -227,11 +290,25 @@ def validate_feature_collection(value: Any) -> dict[str, Any]:
             raise ValidationError(f"{label}: id '{feature_id}' повторяется")
         feature_ids.add(feature_id)
 
+        style = STYLE_DEFAULTS[kind]
         normalized_properties = deepcopy(properties)
         normalized_properties["kind"] = kind
         normalized_properties["name"] = name
-        normalized_properties["min_zoom"] = max(0, min(22, int(properties.get("min_zoom", 0) or 0)))
-        normalized_properties["stroke_width"] = max(1, min(12, int(properties.get("stroke_width", 2) or 2)))
+        normalized_properties["min_zoom"] = max(0, min(22, int(properties.get("min_zoom", style["min_zoom"]) or 0)))
+        normalized_properties["stroke_width"] = max(
+            1,
+            min(12, int(properties.get("stroke_width", style["stroke_width"]) or style["stroke_width"])),
+        )
+        normalized_properties["stroke_color"] = str(properties.get("stroke_color") or style["stroke_color"])
+        normalized_properties["fill_color"] = str(properties.get("fill_color") or style["fill_color"])
+        normalized_properties["fill_opacity"] = _opacity(
+            properties.get("fill_opacity", style["fill_opacity"]),
+            fallback=float(style["fill_opacity"]),
+        )
+        normalized_properties["z_index"] = int(properties.get("z_index", style["z_index"]) or style["z_index"])
+        if "line_pattern" in style:
+            pattern = str(properties.get("line_pattern") or style["line_pattern"]).strip().lower()
+            normalized_properties["line_pattern"] = pattern if pattern in {"solid", "dashed"} else style["line_pattern"]
         geometry = _normalize_geometry(raw.get("geometry"), kind=kind, label=label)
         feature = {
             "type": "Feature",

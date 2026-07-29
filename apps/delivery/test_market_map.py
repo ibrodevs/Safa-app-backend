@@ -50,6 +50,57 @@ def container_feature(bazar_id: int, passage_id: int, container_id: int):
     }
 
 
+def line_feature(kind: str, name: str):
+    return {
+        "type": "Feature",
+        "id": f"{kind}-1",
+        "properties": {"kind": kind, "name": name},
+        "geometry": {
+            "type": "LineString",
+            "coordinates": [[74.61, 42.93], [74.62, 42.94]],
+        },
+    }
+
+
+def zone_feature(kind: str, name: str):
+    feature = polygon_feature(1)
+    feature["id"] = f"{kind}-1"
+    feature["properties"] = {"kind": kind, "name": name}
+    return feature
+
+
+def test_map_kinds_receive_unique_default_styles():
+    collection = validate_feature_collection(
+        {
+            "type": "FeatureCollection",
+            "features": [
+                polygon_feature(1),
+                zone_feature("district", "Район A"),
+                zone_feature("sector", "Сектор 1"),
+                line_feature("row", "Ряд 7"),
+                line_feature("passage", "Проход 4"),
+                {
+                    **container_feature(1, 1, 1),
+                    "properties": {
+                        "kind": "container",
+                        "name": "Контейнер 101",
+                        "number": "101",
+                    },
+                },
+            ],
+        }
+    )
+
+    by_kind = {feature["properties"]["kind"]: feature["properties"] for feature in collection["features"]}
+
+    assert by_kind["bazar"]["stroke_color"] == "#ff6b35"
+    assert by_kind["district"]["stroke_color"] == "#2563eb"
+    assert by_kind["sector"]["stroke_color"] == "#16a34a"
+    assert by_kind["row"]["line_pattern"] == "dashed"
+    assert by_kind["passage"]["stroke_width"] == 5
+    assert by_kind["container"]["fill_color"] == "#ef4444"
+
+
 @pytest.mark.django_db
 def test_publish_syncs_container_and_returns_only_published_map():
     user = User.objects.create_user(

@@ -4,6 +4,7 @@
   const state = {
     map: null,
     tool: 'select',
+    drawingKind: null,
     items: new Map(),
     selectedId: null,
     drawing: [],
@@ -13,6 +14,83 @@
 
   const byId = (id) => document.getElementById(id);
   const root = () => byId('market-map-editor');
+
+  const KIND_CONFIG = {
+    bazar: {
+      label: 'Граница базара',
+      family: 'polygon',
+      name: () => root()?.dataset.bazarName || 'Базар',
+      minZoom: 10,
+      strokeWidth: 4,
+      strokeColor: '#ff6b35',
+      fillColor: '#ff6b35',
+      fillOpacity: 0.12,
+      zIndex: 10,
+      hint: 'Нарисуйте внешний контур всего базара.',
+    },
+    district: {
+      label: 'Район',
+      family: 'polygon',
+      name: 'Новый район',
+      minZoom: 13,
+      strokeWidth: 3,
+      strokeColor: '#2563eb',
+      fillColor: '#60a5fa',
+      fillOpacity: 0.16,
+      zIndex: 20,
+      hint: 'Обведите крупный район внутри базара.',
+    },
+    sector: {
+      label: 'Сектор',
+      family: 'polygon',
+      name: 'Новый сектор',
+      minZoom: 14,
+      strokeWidth: 2,
+      strokeColor: '#16a34a',
+      fillColor: '#4ade80',
+      fillOpacity: 0.18,
+      zIndex: 30,
+      hint: 'Обведите сектор меньшего уровня.',
+    },
+    row: {
+      label: 'Ряд',
+      family: 'line',
+      name: 'Новый ряд',
+      minZoom: 16,
+      strokeWidth: 3,
+      strokeColor: '#7c3aed',
+      fillColor: '#a78bfa',
+      fillOpacity: 0,
+      zIndex: 50,
+      linePattern: 'dashed',
+      hint: 'Проведите линию ряда по центру прохода.',
+    },
+    passage: {
+      label: 'Проход',
+      family: 'line',
+      name: 'Новый проход',
+      minZoom: 16,
+      strokeWidth: 5,
+      strokeColor: '#d97706',
+      fillColor: '#fbbf24',
+      fillOpacity: 0,
+      zIndex: 60,
+      linePattern: 'solid',
+      hint: 'Проведите основную линию прохода.',
+    },
+    container: {
+      label: 'Контейнер',
+      family: 'point',
+      name: 'Новый контейнер',
+      minZoom: 17,
+      strokeWidth: 2,
+      strokeColor: '#dc2626',
+      fillColor: '#ef4444',
+      fillOpacity: 1,
+      zIndex: 100,
+      hint: 'Поставьте точку в центре контейнера.',
+    },
+  };
 
   function readJsonScript(id, fallback) {
     const node = byId(id);
@@ -37,14 +115,7 @@
   }
 
   function featureKindLabel(kind) {
-    return {
-      bazar: 'Граница базара',
-      district: 'Район',
-      sector: 'Сектор',
-      row: 'Ряд',
-      passage: 'Проход',
-      container: 'Контейнер',
-    }[kind] || kind;
+    return KIND_CONFIG[kind]?.label || kind;
   }
 
   function geometryFamily(type) {
@@ -55,28 +126,23 @@
   }
 
   function expectedFamily(kind) {
-    if (kind === 'container') return 'point';
-    if (kind === 'row' || kind === 'passage') return 'line-or-polygon';
-    return 'polygon';
+    return KIND_CONFIG[kind]?.family || 'polygon';
   }
 
   function defaultProperties(kind) {
-    const bazarName = root()?.dataset.bazarName || 'Базар';
-    const defaults = {
-      bazar: { name: bazarName, min_zoom: 10, stroke_width: 3 },
-      district: { name: 'Новый район', min_zoom: 13, stroke_width: 2 },
-      sector: { name: 'Новый сектор', min_zoom: 14, stroke_width: 2 },
-      row: { name: 'Новый ряд', min_zoom: 16, stroke_width: 3 },
-      passage: { name: 'Новый проход', min_zoom: 16, stroke_width: 3 },
-      container: { name: 'Новый контейнер', min_zoom: 17, stroke_width: 2 },
-    }[kind];
+    const config = KIND_CONFIG[kind] || KIND_CONFIG.district;
+    const name = typeof config.name === 'function' ? config.name() : config.name;
     return {
       kind,
-      ...defaults,
+      name,
       bazar_id: Number(root()?.dataset.bazarId || 0),
-      stroke_color: '#e47f26',
-      fill_color: '#ff8656',
-      fill_opacity: kind === 'container' ? 1 : 0.2,
+      min_zoom: config.minZoom,
+      stroke_width: config.strokeWidth,
+      stroke_color: config.strokeColor,
+      fill_color: config.fillColor,
+      fill_opacity: config.fillOpacity,
+      z_index: config.zIndex,
+      line_pattern: config.linePattern || 'solid',
       is_active: true,
     };
   }
@@ -119,16 +185,43 @@
   }
 
   function overlayStyle(properties, selected) {
+    const kind = properties.kind || 'district';
+    const config = KIND_CONFIG[kind] || KIND_CONFIG.district;
+    const strokeWidth = Number(properties.stroke_width || config.strokeWidth || 2) + (selected ? 1 : 0);
+    const linePattern = properties.line_pattern || config.linePattern || 'solid';
+    const icons = linePattern === 'dashed'
+      ? [{
+          icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 },
+          offset: '0',
+          repeat: '14px',
+        }]
+      : null;
     return {
-      strokeColor: properties.stroke_color || '#e47f26',
-      strokeOpacity: 1,
-      strokeWeight: Number(properties.stroke_width || 2) + (selected ? 1 : 0),
-      fillColor: properties.fill_color || '#ff8656',
-      fillOpacity: selected ? Math.max(Number(properties.fill_opacity ?? 0.2), 0.28) : Number(properties.fill_opacity ?? 0.2),
+      strokeColor: properties.stroke_color || config.strokeColor,
+      strokeOpacity: linePattern === 'dashed' ? 0 : 1,
+      strokeWeight: strokeWidth,
+      fillColor: properties.fill_color || config.fillColor,
+      fillOpacity: selected
+        ? Math.max(Number(properties.fill_opacity ?? config.fillOpacity), 0.28)
+        : Number(properties.fill_opacity ?? config.fillOpacity),
+      icons,
       clickable: true,
       editable: selected,
       draggable: selected,
-      zIndex: selected ? 1000 : Number(properties.z_index || 1),
+      zIndex: selected ? 1000 : Number(properties.z_index || config.zIndex || 1),
+    };
+  }
+
+  function markerIcon(properties, selected = false) {
+    const fill = properties.fill_color || KIND_CONFIG.container.fillColor;
+    const stroke = properties.stroke_color || KIND_CONFIG.container.strokeColor;
+    return {
+      path: google.maps.SymbolPath.CIRCLE,
+      fillColor: fill,
+      fillOpacity: 1,
+      strokeColor: stroke,
+      strokeWeight: selected ? 3 : 2,
+      scale: selected ? 9 : 7,
     };
   }
 
@@ -138,8 +231,16 @@
       map: state.map,
       position: { lat: Number(coordinates[1]), lng: Number(coordinates[0]) },
       title: feature.properties.name,
+      icon: markerIcon(feature.properties),
+      label: {
+        text: String(feature.properties.number || '').slice(0, 4),
+        color: '#ffffff',
+        fontSize: '10px',
+        fontWeight: '700',
+      },
       draggable: false,
       clickable: true,
+      zIndex: Number(feature.properties.z_index || KIND_CONFIG.container.zIndex),
     });
     marker.addListener('click', () => selectFeature(feature.id));
     marker.addListener('dragend', () => refreshList());
@@ -214,6 +315,8 @@
     item.overlays.forEach((overlay) => {
       if (overlay instanceof google.maps.Marker) {
         overlay.setDraggable(selected);
+        overlay.setIcon(markerIcon(item.feature.properties, selected));
+        overlay.setZIndex(selected ? 1000 : Number(item.feature.properties.z_index || KIND_CONFIG.container.zIndex));
         overlay.setAnimation(selected ? google.maps.Animation.BOUNCE : null);
         if (selected) window.setTimeout(() => overlay.setAnimation(null), 500);
       } else {
@@ -268,7 +371,7 @@
     const kind = byId('market-feature-kind').value;
     const family = geometryFamily(item.feature.geometry.type);
     const expected = expectedFamily(kind);
-    if (expected !== family && !(expected === 'line-or-polygon' && (family === 'line' || family === 'polygon'))) {
+    if (expected !== family) {
       setStatus(`Тип «${featureKindLabel(kind)}» не подходит для геометрии ${item.feature.geometry.type}`, 'error');
       return;
     }
@@ -288,6 +391,9 @@
     properties.stroke_width = Math.max(1, Math.min(12, Number(byId('market-feature-stroke-width').value || 2)));
     properties.stroke_color = byId('market-feature-stroke').value;
     properties.fill_color = byId('market-feature-fill').value;
+    properties.fill_opacity = KIND_CONFIG[kind]?.fillOpacity ?? properties.fill_opacity ?? 0.2;
+    properties.z_index = KIND_CONFIG[kind]?.zIndex ?? properties.z_index ?? 1;
+    properties.line_pattern = KIND_CONFIG[kind]?.linePattern || properties.line_pattern || 'solid';
     if (kind === 'container') {
       const selectedOption = byId('market-feature-container').selectedOptions[0];
       properties.number = selectedOption?.dataset.number || name;
@@ -299,6 +405,13 @@
     item.overlays.forEach((overlay) => {
       if (overlay instanceof google.maps.Marker) {
         overlay.setTitle(name);
+        overlay.setIcon(markerIcon(properties, true));
+        overlay.setLabel({
+          text: String(properties.number || '').slice(0, 4),
+          color: '#ffffff',
+          fontSize: '10px',
+          fontWeight: '700',
+        });
       } else {
         overlay.setOptions(overlayStyle(properties, true));
       }
@@ -344,26 +457,30 @@
     if (actions) actions.hidden = true;
   }
 
-  function setTool(tool) {
+  function setTool(tool, kind = null) {
     clearPreview();
     state.tool = tool;
+    state.drawingKind = tool === 'draw' ? kind : null;
     document.querySelectorAll('[data-map-tool]').forEach((button) => {
-      button.classList.toggle('active', button.dataset.mapTool === tool);
+      const active = tool === 'select'
+        ? button.dataset.mapTool === 'select'
+        : button.dataset.mapTool === 'draw' && button.dataset.mapKind === kind;
+      button.classList.toggle('active', active);
     });
     if (state.map) {
       state.map.setOptions({ draggableCursor: tool === 'select' ? null : 'crosshair' });
     }
-    setStatus(tool === 'select' ? 'Выберите объект или инструмент рисования' : 'Ставьте точки кликами по карте');
+    const config = KIND_CONFIG[kind];
+    setStatus(tool === 'select' ? 'Выберите объект или инструмент рисования' : config?.hint || 'Ставьте точки кликами по карте');
   }
 
   function updatePreview() {
+    const properties = defaultProperties(state.drawingKind || 'district');
     if (!state.preview) {
       state.preview = new google.maps.Polyline({
         map: state.map,
         path: state.drawing,
-        strokeColor: '#e47f26',
-        strokeWeight: 3,
-        strokeOpacity: 0.95,
+        ...overlayStyle(properties, false),
       });
     } else {
       state.preview.setPath(state.drawing);
@@ -377,8 +494,10 @@
       selectFeature(null);
       return;
     }
-    if (state.tool === 'marker') {
-      const properties = defaultProperties('container');
+    const kind = state.drawingKind || 'district';
+    const family = expectedFamily(kind);
+    if (family === 'point') {
+      const properties = defaultProperties(kind);
       const id = makeId('container');
       addFeature({
         type: 'Feature',
@@ -387,7 +506,7 @@
         geometry: { type: 'Point', coordinates: [event.latLng.lng(), event.latLng.lat()] },
       }, { select: true });
       setTool('select');
-      setStatus('Контейнер добавлен. Заполните его свойства.', 'success');
+      setStatus(`${featureKindLabel(kind)} добавлен. Заполните его свойства.`, 'success');
       return;
     }
     state.drawing.push(event.latLng);
@@ -395,19 +514,20 @@
   }
 
   function finishDrawing() {
-    if (state.tool === 'line' && state.drawing.length < 2) {
+    const kind = state.drawingKind;
+    const family = expectedFamily(kind);
+    if (family === 'line' && state.drawing.length < 2) {
       setStatus('Для линии нужно минимум две точки', 'error');
       return;
     }
-    if (state.tool === 'polygon' && state.drawing.length < 3) {
-      setStatus('Для зоны нужно минимум три точки', 'error');
+    if (family === 'polygon' && state.drawing.length < 3) {
+      setStatus('Для площади нужно минимум три точки', 'error');
       return;
     }
-    if (state.tool !== 'line' && state.tool !== 'polygon') return;
+    if (state.tool !== 'draw' || !kind || family === 'point') return;
 
-    const kind = state.tool === 'line' ? 'row' : 'district';
     const coordinates = state.drawing.map((point) => [point.lng(), point.lat()]);
-    const geometry = state.tool === 'line'
+    const geometry = family === 'line'
       ? { type: 'LineString', coordinates }
       : { type: 'Polygon', coordinates: [[...coordinates, [...coordinates[0]]]] };
     const id = makeId(kind);
@@ -470,7 +590,7 @@
 
   function bindControls() {
     document.querySelectorAll('[data-map-tool]').forEach((button) => {
-      button.addEventListener('click', () => setTool(button.dataset.mapTool));
+      button.addEventListener('click', () => setTool(button.dataset.mapTool, button.dataset.mapKind || null));
     });
     byId('market-map-finish')?.addEventListener('click', finishDrawing);
     byId('market-map-cancel')?.addEventListener('click', () => setTool('select'));
@@ -484,6 +604,13 @@
       if (!option?.value) return;
       byId('market-feature-passage').value = option.dataset.passageId || '';
       byId('market-feature-name').value = option.dataset.number || byId('market-feature-name').value;
+    });
+    byId('market-feature-kind')?.addEventListener('change', (event) => {
+      const defaults = defaultProperties(event.target.value);
+      byId('market-feature-min-zoom').value = defaults.min_zoom;
+      byId('market-feature-stroke-width').value = defaults.stroke_width;
+      byId('market-feature-stroke').value = defaults.stroke_color;
+      byId('market-feature-fill').value = defaults.fill_color;
     });
     byId('market-map-save')?.addEventListener('click', () => persist(root().dataset.saveUrl, false));
     byId('market-map-publish')?.addEventListener('click', () => {
