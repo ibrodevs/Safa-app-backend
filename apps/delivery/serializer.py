@@ -304,6 +304,9 @@ class ShipmentCreateSerializer(serializers.ModelSerializer):
             "title",
             "service_type",
             "description",
+            "client_id",
+            "carrier_id",
+            "current_stop_index",
             "stops",
             "return_to_start",
             "estimated_fare",
@@ -446,7 +449,7 @@ class ShipmentCreateSerializer(serializers.ModelSerializer):
                         lon=stop["lon"],
                     )
 
-            shipment.current_stop_index = 1
+            shipment.current_stop_index = 0
             shipment.estimate()
             shipment.save(update_fields=["distance_km", "estimated_fare", "current_stop_index"])
 
@@ -473,6 +476,9 @@ class ShipmentDetailSerializer(serializers.ModelSerializer):
             "title",
             "service_type",
             "description",
+            "client_id",
+            "carrier_id",
+            "current_stop_index",
             "stops",
             "stops_count",
             "estimated_fare",

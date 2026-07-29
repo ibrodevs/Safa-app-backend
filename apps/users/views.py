@@ -1,4 +1,6 @@
 from django.shortcuts import render
+from django.conf import settings
+from django.http import Http404
 from rest_framework.generics import GenericAPIView
 from apps.users.models import *
 from apps.users.serializers import *
@@ -37,6 +39,8 @@ class DebugRequestCodeView(generics.GenericAPIView):
     serializer_class = RequestCodeSerializer
 
     def post(self, request, *args, **kwargs):
+        if not getattr(settings, "ENABLE_DEBUG_OTP_ENDPOINT", False):
+            raise Http404
         ser = self.get_serializer(data=request.data)
         ser.is_valid(raise_exception=True)
         phone = ser.validated_data["phone"]
@@ -197,8 +201,11 @@ class UserProfileView(GenericAPIView):
     def get_object(self):
         pk = self.kwargs.get("pk")
         if pk is None:
-            return self._self_profile()            
-        return self.get_queryset().get(pk=pk)     
+            return self._self_profile()
+        obj = self.get_queryset().get(pk=pk)
+        if not (self.request.user.is_staff or obj.user_id == self.request.user.id):
+            raise PermissionDenied("profile_access_denied")
+        return obj
 
 
     def get(self, request, *args, **kwargs):
