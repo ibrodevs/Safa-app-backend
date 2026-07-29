@@ -449,7 +449,7 @@ class ShipmentCreateSerializer(serializers.ModelSerializer):
                         lon=stop["lon"],
                     )
 
-            shipment.current_stop_index = 1
+            shipment.current_stop_index = 0
             shipment.estimate()
             shipment.save(update_fields=["distance_km", "estimated_fare", "current_stop_index"])
 

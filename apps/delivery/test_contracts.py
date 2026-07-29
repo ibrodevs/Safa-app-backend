@@ -38,3 +38,21 @@ class ShipmentContractTests(APITestCase):
         self.assertEqual(response.status_code, 204)
         self.shipment.refresh_from_db()
         self.assertEqual(self.shipment.status, Shipment.Status.CANCELED)
+
+
+    def test_two_stop_route_requires_start_then_complete(self):
+        self.client.force_authenticate(self.carrier)
+        self.shipment.current_stop_index = 0
+        self.shipment.save(update_fields=["current_stop_index"])
+
+        started = self.client.post(f"/api/delivery/shipments/{self.shipment.id}/advance/")
+        self.assertEqual(started.status_code, 200)
+        self.shipment.refresh_from_db()
+        self.assertEqual(self.shipment.status, Shipment.Status.IN_TRANSIT)
+        self.assertEqual(self.shipment.current_stop_index, 1)
+
+        completed = self.client.post(f"/api/delivery/shipments/{self.shipment.id}/advance/")
+        self.assertEqual(completed.status_code, 200)
+        self.shipment.refresh_from_db()
+        self.assertEqual(self.shipment.status, Shipment.Status.COMPLETED)
+        self.assertTrue(self.shipment.rating_applied)
