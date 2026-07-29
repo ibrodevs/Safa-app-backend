@@ -527,6 +527,10 @@
         : button.dataset.mapTool === 'draw' && button.dataset.mapKind === kind;
       button.classList.toggle('active', active);
     });
+    document.querySelectorAll('.market-kind-section').forEach((section) => {
+      const button = section.querySelector('[data-map-kind]');
+      section.classList.toggle('active', tool === 'draw' && button?.dataset.mapKind === kind);
+    });
     if (state.map) {
       state.map.setOptions({ draggableCursor: tool === 'select' ? null : 'crosshair' });
     }

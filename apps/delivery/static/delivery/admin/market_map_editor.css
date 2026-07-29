@@ -45,11 +45,13 @@
   flex-wrap: wrap;
 }
 .market-map-tools .active { outline: 2px solid #417690; outline-offset: 1px; }
-.market-map-tools [data-map-kind] {
+.market-map-tools [data-map-kind],
+.market-kind-section {
   position: relative;
-  padding-left: 24px;
 }
-.market-map-tools [data-map-kind]::before {
+.market-map-tools [data-map-kind] { padding-left: 24px; }
+.market-map-tools [data-map-kind]::before,
+.market-kind-section::before {
   content: "";
   position: absolute;
   left: 8px;
@@ -61,12 +63,48 @@
   background: var(--tool-color, #e47f26);
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.72);
 }
-.market-map-tools .market-tool-bazar { --tool-color: #ff6b35; }
-.market-map-tools .market-tool-district { --tool-color: #2563eb; }
-.market-map-tools .market-tool-sector { --tool-color: #16a34a; }
-.market-map-tools .market-tool-row { --tool-color: #7c3aed; }
-.market-map-tools .market-tool-passage { --tool-color: #d97706; }
-.market-map-tools .market-tool-container { --tool-color: #dc2626; }
+.market-kind-section::before {
+  top: 14px;
+  width: 12px;
+  height: 12px;
+  transform: none;
+}
+.market-tool-bazar { --tool-color: #ff6b35; }
+.market-tool-district { --tool-color: #2563eb; }
+.market-tool-sector { --tool-color: #16a34a; }
+.market-tool-row { --tool-color: #7c3aed; }
+.market-tool-passage { --tool-color: #d97706; }
+.market-tool-container { --tool-color: #dc2626; }
+.market-kind-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+.market-kind-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 10px 10px 28px;
+  border: 1px solid var(--map-border);
+  border-left: 4px solid var(--tool-color, #e47f26);
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.06);
+}
+.market-kind-section.active {
+  border-color: var(--tool-color, #417690);
+  background: color-mix(in srgb, var(--tool-color, #417690) 10%, transparent);
+}
+.market-kind-section h3 {
+  margin: 0 0 3px;
+  font-size: 14px;
+}
+.market-kind-section p {
+  margin: 0;
+  color: var(--map-muted);
+  font-size: 12px;
+}
 .market-map-draw-actions { margin-top: 10px; }
 .market-map-property-actions { margin-top: 12px; }
 .market-map-panel .help { margin: 10px 0 0; color: var(--map-muted); }
