@@ -1,0 +1,36 @@
+name: Apply backend hardening
+
+on:
+  push:
+    branches:
+      - agent/full-system-hardening
+    paths:
+      - tool/apply_full_system_hardening.py
+      - .github/workflows/apply-full-system-hardening.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/full-system-hardening
+          fetch-depth: 0
+
+      - name: Apply verified patch
+        run: python tool/apply_full_system_hardening.py
+
+      - name: Commit generated changes
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add core/settings.py .env.example apps/users/views.py apps/users/test_contracts.py apps/delivery/serializer.py apps/delivery/views.py apps/delivery/test_contracts.py apps/notification/events.py
+          git commit -m "apply backend full-system hardening"
+          git push origin HEAD:agent/full-system-hardening
