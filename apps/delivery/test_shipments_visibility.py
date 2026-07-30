@@ -73,11 +73,11 @@ def test_cars_shipment_accepts_long_route():
             "service_type": Shipment.ServiceType.CARS,
             "stops": [
                 {"title": f"Точка {i}", "lat": 42.87 + i * 0.001, "lon": 74.60 + i * 0.001}
-                for i in range(10)
+                for i in range(30)
             ],
         },
         format="json",
     )
 
     assert response.status_code == 201
-    assert Shipment.objects.get(id=response.data["id"]).stops.count() == 10
+    assert Shipment.objects.get(id=response.data["id"]).stops.count() == 30

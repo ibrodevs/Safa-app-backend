@@ -284,7 +284,7 @@ class ShipmentStopReadSerializer(serializers.ModelSerializer):
         return obj.container.display_title if obj.container_id else None
 
 
-MAX_SHIPMENT_STOPS = 10
+MAX_SHIPMENT_STOPS = 30
 
 
 class ShipmentCreateSerializer(serializers.ModelSerializer):
