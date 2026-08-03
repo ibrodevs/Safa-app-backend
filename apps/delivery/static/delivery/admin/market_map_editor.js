@@ -704,6 +704,21 @@
     });
   }
 
+  function focusedKind() {
+    const kind = root()?.dataset.focusKind || '';
+    return KIND_CONFIG[kind] ? kind : '';
+  }
+
+  function applyFocusedSection() {
+    const kind = focusedKind();
+    if (!kind) return;
+
+    document.querySelectorAll('.market-kind-section').forEach((section) => {
+      const button = section.querySelector('[data-map-kind]');
+      section.hidden = button?.dataset.mapKind !== kind;
+    });
+  }
+
   window.initMarketMapEditor = function initMarketMapEditor() {
     const canvas = byId('market-map-canvas');
     if (!canvas || !window.google?.maps) return;
@@ -721,10 +736,16 @@
     state.map.addListener('click', mapClick);
     state.map.addListener('dblclick', () => finishDrawing());
     bindControls();
+    applyFocusedSection();
     (initial.features || []).forEach((feature) => addFeature(feature));
     const bounds = allBounds();
     if (bounds) state.map.fitBounds(bounds, 48);
     refreshList();
-    setStatus('Карта готова. Изменения пока находятся в черновике.', 'success');
+    const kind = focusedKind();
+    if (kind) {
+      setTool('draw', kind);
+    } else {
+      setStatus('Карта готова. Изменения пока находятся в черновике.', 'success');
+    }
   };
 })();

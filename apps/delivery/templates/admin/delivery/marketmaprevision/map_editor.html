@@ -19,13 +19,17 @@
      data-save-url="{{ save_url }}"
      data-publish-url="{{ publish_url }}"
      data-bazar-id="{{ bazar.id }}"
-     data-bazar-name="{{ bazar.name }}">
+     data-bazar-name="{{ bazar.name }}"
+     data-focus-kind="{{ focus_kind }}">
   <div class="market-map-header">
     <div>
       <h1>{{ title }}</h1>
       <p>
         Черновик v{{ revision.version }}.
         Изменения увидят пользователи только после публикации.
+        {% if focus_kind_label %}
+          Открыт отдельный раздел: {{ focus_kind_label }}.
+        {% endif %}
       </p>
     </div>
     <div class="market-map-actions">

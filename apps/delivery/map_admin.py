@@ -12,9 +12,27 @@ from django.urls import path, reverse
 from django.utils.html import format_html
 from django.views.decorators.http import require_POST
 
-from .map_models import MarketMapRevision
+from .map_models import (
+    MarketBoundaryMapSection,
+    MarketContainerMapSection,
+    MarketDistrictMapSection,
+    MarketMapRevision,
+    MarketPassageMapSection,
+    MarketRowMapSection,
+    MarketSectorMapSection,
+)
 from .map_validation import validate_feature_collection
 from .models import Bazar, Container, Passage
+
+
+MAP_SECTION_LABELS = {
+    "bazar": "границу базара",
+    "district": "район",
+    "sector": "сектор",
+    "row": "ряд",
+    "passage": "проход",
+    "container": "контейнер",
+}
 
 
 @admin.register(MarketMapRevision)
@@ -86,6 +104,9 @@ class MarketMapRevisionAdmin(admin.ModelAdmin):
 
     def editor_view(self, request, bazar_id: int):
         bazar = self._bazar(request, bazar_id)
+        focus_kind = request.GET.get("kind", "")
+        if focus_kind not in MAP_SECTION_LABELS:
+            focus_kind = ""
         revision, _ = MarketMapRevision.get_or_create_draft(bazar=bazar, user=request.user)
         passages = list(
             Passage.objects.filter(bazar=bazar)
@@ -107,6 +128,8 @@ class MarketMapRevisionAdmin(admin.ModelAdmin):
             "title": f"Карта базара: {bazar.name}",
             "bazar": bazar,
             "revision": revision,
+            "focus_kind": focus_kind,
+            "focus_kind_label": MAP_SECTION_LABELS.get(focus_kind, ""),
             "initial_geojson": revision.geojson,
             "passages": passages,
             "containers": containers,
@@ -171,3 +194,93 @@ class MarketMapRevisionAdmin(admin.ModelAdmin):
                 "published_at": revision.published_at.isoformat() if revision.published_at else None,
             }
         )
+
+
+class MarketMapSectionAdmin(admin.ModelAdmin):
+    change_list_template = "admin/delivery/marketmaprevision/section_change_list.html"
+    kind = ""
+    section_title = ""
+    section_help = ""
+
+    list_display = ("bazar", "version", "status", "updated_at", "published_at", "created_by", "open_editor")
+    list_filter = ("status", "bazar")
+    search_fields = ("bazar__name",)
+    readonly_fields = (
+        "bazar",
+        "version",
+        "status",
+        "geojson",
+        "created_by",
+        "created_at",
+        "updated_at",
+        "published_at",
+    )
+    ordering = ("bazar__name", "-version")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_queryset(self, request):
+        return MarketMapRevision.objects.all()
+
+    @admin.display(description="Редактор")
+    def open_editor(self, obj: MarketMapRevision):
+        url = f'{reverse("admin:delivery_market_map_editor", args=(obj.bazar_id,))}?kind={self.kind}'
+        return format_html('<a class="button" href="{}">Открыть раздел</a>', url)
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = dict(extra_context or {})
+        extra_context.update(
+            {
+                "market_map_bazars": Bazar.objects.order_by("name"),
+                "market_map_kind": self.kind,
+                "market_map_section_title": self.section_title,
+                "market_map_section_help": self.section_help,
+            }
+        )
+        return super().changelist_view(request, extra_context=extra_context)
+
+
+@admin.register(MarketBoundaryMapSection)
+class MarketBoundaryMapSectionAdmin(MarketMapSectionAdmin):
+    kind = "bazar"
+    section_title = "Граница базара"
+    section_help = "Создавайте и редактируйте только внешний контур выбранного базара."
+
+
+@admin.register(MarketDistrictMapSection)
+class MarketDistrictMapSectionAdmin(MarketMapSectionAdmin):
+    kind = "district"
+    section_title = "Районы"
+    section_help = "Отдельный раздел для крупных зон внутри границы базара."
+
+
+@admin.register(MarketSectorMapSection)
+class MarketSectorMapSectionAdmin(MarketMapSectionAdmin):
+    kind = "sector"
+    section_title = "Секторы"
+    section_help = "Отдельный раздел для меньших зон внутри районов."
+
+
+@admin.register(MarketRowMapSection)
+class MarketRowMapSectionAdmin(MarketMapSectionAdmin):
+    kind = "row"
+    section_title = "Ряды"
+    section_help = "Отдельный раздел для линий рядов."
+
+
+@admin.register(MarketPassageMapSection)
+class MarketPassageMapSectionAdmin(MarketMapSectionAdmin):
+    kind = "passage"
+    section_title = "Проходы"
+    section_help = "Отдельный раздел для основных линий проходов."
+
+
+@admin.register(MarketContainerMapSection)
+class MarketContainerMapSectionAdmin(MarketMapSectionAdmin):
+    kind = "container"
+    section_title = "Контейнеры"
+    section_help = "Отдельный раздел для прямоугольников контейнеров и привязки к проходам."

@@ -260,6 +260,54 @@ def build_initial_geojson(bazar: Bazar) -> dict[str, Any]:
     return {"type": "FeatureCollection", "features": features}
 
 
+class MarketBoundaryMapSection(MarketMapRevision):
+    class Meta:
+        proxy = True
+        app_label = "delivery"
+        verbose_name = "Карта: граница базара"
+        verbose_name_plural = "Карта: границы базаров"
+
+
+class MarketDistrictMapSection(MarketMapRevision):
+    class Meta:
+        proxy = True
+        app_label = "delivery"
+        verbose_name = "Карта: район"
+        verbose_name_plural = "Карта: районы"
+
+
+class MarketSectorMapSection(MarketMapRevision):
+    class Meta:
+        proxy = True
+        app_label = "delivery"
+        verbose_name = "Карта: сектор"
+        verbose_name_plural = "Карта: секторы"
+
+
+class MarketRowMapSection(MarketMapRevision):
+    class Meta:
+        proxy = True
+        app_label = "delivery"
+        verbose_name = "Карта: ряд"
+        verbose_name_plural = "Карта: ряды"
+
+
+class MarketPassageMapSection(MarketMapRevision):
+    class Meta:
+        proxy = True
+        app_label = "delivery"
+        verbose_name = "Карта: проход"
+        verbose_name_plural = "Карта: проходы"
+
+
+class MarketContainerMapSection(MarketMapRevision):
+    class Meta:
+        proxy = True
+        app_label = "delivery"
+        verbose_name = "Карта: контейнер"
+        verbose_name_plural = "Карта: контейнеры"
+
+
 def container_rectangle(lon: float, lat: float, *, half_width: float = 0.000018, half_height: float = 0.000012) -> dict[str, Any]:
     left = lon - half_width
     right = lon + half_width
