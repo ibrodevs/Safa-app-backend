@@ -118,12 +118,12 @@
           </select>
           <p class="help market-map-inline-help">Тип фиксируется выбранным инструментом рисования.</p>
         </div>
-        <div class="form-row">
+        <div class="form-row" data-kind-scope="not-container">
           <label for="market-feature-name">Название / номер</label>
           <input id="market-feature-name" type="text" maxlength="160" placeholder="Например: Дордой / Проход 1 / A-101">
         </div>
         <div class="form-row" data-kind-scope="container">
-          <label for="market-feature-number">Номер контейнера</label>
+          <label for="market-feature-number">Номер или название</label>
           <input id="market-feature-number" type="text" maxlength="50" placeholder="Например: A-101">
         </div>
         <div class="form-row" data-kind-scope="container">
@@ -135,7 +135,7 @@
             {% endfor %}
           </select>
         </div>
-        <div class="form-row" data-kind-scope="container">
+        <div class="form-row" data-kind-scope="advanced-container">
           <label for="market-feature-container">Существующий контейнер</label>
           <select id="market-feature-container">
             <option value="">Новый объект</option>
@@ -147,15 +147,17 @@
           </select>
         </div>
         <div class="form-row" data-kind-scope="container">
-          <label for="market-feature-title">Подпись контейнера</label>
-          <input id="market-feature-title" type="text" maxlength="150" placeholder="Например: Электроника">
+          <label for="market-feature-title">Примечание</label>
+          <input id="market-feature-title" type="text" maxlength="150" placeholder="Необязательно">
         </div>
-        <div class="market-map-grid-fields">
-          <div class="form-row">
+        <details class="market-map-advanced-fields">
+          <summary>Дополнительно</summary>
+          <div class="market-map-grid-fields">
+          <div class="form-row" data-kind-scope="not-container">
             <label for="market-feature-min-zoom">Показывать с масштаба</label>
             <input id="market-feature-min-zoom" type="number" min="0" max="22" value="14">
           </div>
-          <div class="form-row">
+          <div class="form-row" data-kind-scope="not-container">
             <label for="market-feature-stroke-width">Толщина линии</label>
             <input id="market-feature-stroke-width" type="number" min="1" max="12" value="2">
           </div>
@@ -167,7 +169,8 @@
             <label for="market-feature-fill">Цвет заливки</label>
             <input id="market-feature-fill" type="color" value="#ff8656">
           </div>
-        </div>
+          </div>
+        </details>
         <div class="market-map-property-actions">
           <button type="button" class="button default" id="market-feature-apply">Применить</button>
           <button type="button" class="button" id="market-feature-duplicate" data-kind-scope="container">Дублировать</button>

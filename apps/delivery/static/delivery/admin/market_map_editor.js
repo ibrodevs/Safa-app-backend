@@ -556,6 +556,12 @@
     document.querySelectorAll('[data-kind-scope="container"]').forEach((row) => {
       row.hidden = !isContainer;
     });
+    document.querySelectorAll('[data-kind-scope="not-container"]').forEach((row) => {
+      row.hidden = isContainer;
+    });
+    document.querySelectorAll('[data-kind-scope="advanced-container"]').forEach((row) => {
+      row.hidden = true;
+    });
   }
 
   function applyForm() {
@@ -571,9 +577,12 @@
       setStatus(`Тип «${featureKindLabel(kind)}» не подходит для геометрии ${item.feature.geometry.type}`, 'error');
       return;
     }
-    const name = byId('market-feature-name').value.trim();
+    const containerNumber = byId('market-feature-number').value.trim();
+    const name = item.feature.properties.kind === 'container'
+      ? containerNumber
+      : byId('market-feature-name').value.trim();
     if (!name) {
-      setStatus('Введите название или номер объекта', 'error');
+      setStatus(kind === 'container' ? 'Введите номер или название контейнера' : 'Введите название объекта', 'error');
       return;
     }
 
@@ -592,8 +601,9 @@
       properties.container_id = Number(byId('market-feature-container').value || 0) || null;
       properties.title = byId('market-feature-title').value.trim();
       const selectedOption = byId('market-feature-container').selectedOptions[0];
-      properties.number = byId('market-feature-number').value.trim() || selectedOption?.dataset.number || name;
+      properties.number = containerNumber || selectedOption?.dataset.number || name;
       properties.name = properties.number;
+      byId('market-feature-name').value = properties.name;
       if (!properties.passage_id && selectedOption?.dataset.passageId) {
         properties.passage_id = Number(selectedOption.dataset.passageId);
         byId('market-feature-passage').value = String(properties.passage_id);
@@ -640,6 +650,14 @@
     const digits = match[2];
     const next = String(Number(digits) + 1).padStart(digits.length, '0');
     return `${prefix}${next}`;
+  }
+
+  function suggestedContainerNumber() {
+    const numbers = Array.from(state.items.values())
+      .filter((item) => (item.feature.properties || {}).kind === 'container')
+      .map((item) => item.feature.properties.number || item.feature.properties.name)
+      .filter(Boolean);
+    return numbers.length ? nextContainerNumber(numbers[numbers.length - 1]) : '';
   }
 
   function duplicateSelectedFeature() {
@@ -784,6 +802,11 @@
     const family = expectedFamily(kind);
     if (kind === 'container') {
       const properties = defaultProperties(kind);
+      const number = suggestedContainerNumber();
+      if (number) {
+        properties.name = number;
+        properties.number = number;
+      }
       const id = makeId(kind);
       addFeature({
         type: 'Feature',
@@ -1005,6 +1028,11 @@
       byId('market-feature-passage').value = option.dataset.passageId || '';
       byId('market-feature-name').value = option.dataset.number || byId('market-feature-name').value;
       byId('market-feature-number').value = option.dataset.number || byId('market-feature-number').value;
+    });
+    byId('market-feature-number')?.addEventListener('input', (event) => {
+      const item = state.items.get(state.selectedId);
+      if (!item || (item.feature.properties || {}).kind !== 'container') return;
+      byId('market-feature-name').value = event.target.value;
     });
     byId('market-map-save')?.addEventListener('click', () => persist(root().dataset.saveUrl, false));
     byId('market-map-publish')?.addEventListener('click', () => {

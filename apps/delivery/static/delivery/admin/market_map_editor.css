@@ -145,6 +145,15 @@
   grid-template-columns: 1fr 1fr;
   gap: 0 10px;
 }
+.market-map-advanced-fields {
+  margin-top: 8px;
+}
+.market-map-advanced-fields summary {
+  cursor: pointer;
+  color: var(--map-muted);
+  font-weight: 700;
+  margin-bottom: 10px;
+}
 
 .market-map-stage {
   position: relative;
