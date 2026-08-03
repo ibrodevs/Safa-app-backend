@@ -15,11 +15,8 @@ from django.views.decorators.http import require_POST
 from .map_models import (
     MarketBoundaryMapSection,
     MarketContainerMapSection,
-    MarketDistrictMapSection,
     MarketMapRevision,
     MarketPassageMapSection,
-    MarketRowMapSection,
-    MarketSectorMapSection,
 )
 from .map_validation import validate_feature_collection
 from .models import Bazar, Container, Passage
@@ -27,9 +24,6 @@ from .models import Bazar, Container, Passage
 
 MAP_SECTION_LABELS = {
     "bazar": "границу базара",
-    "district": "район",
-    "sector": "сектор",
-    "row": "ряд",
     "passage": "проход",
     "container": "контейнер",
 }
@@ -249,27 +243,6 @@ class MarketBoundaryMapSectionAdmin(MarketMapSectionAdmin):
     kind = "bazar"
     section_title = "Граница базара"
     section_help = "Создавайте и редактируйте только внешний контур выбранного базара."
-
-
-@admin.register(MarketDistrictMapSection)
-class MarketDistrictMapSectionAdmin(MarketMapSectionAdmin):
-    kind = "district"
-    section_title = "Районы"
-    section_help = "Отдельный раздел для крупных зон внутри границы базара."
-
-
-@admin.register(MarketSectorMapSection)
-class MarketSectorMapSectionAdmin(MarketMapSectionAdmin):
-    kind = "sector"
-    section_title = "Секторы"
-    section_help = "Отдельный раздел для меньших зон внутри районов."
-
-
-@admin.register(MarketRowMapSection)
-class MarketRowMapSectionAdmin(MarketMapSectionAdmin):
-    kind = "row"
-    section_title = "Ряды"
-    section_help = "Отдельный раздел для линий рядов."
 
 
 @admin.register(MarketPassageMapSection)

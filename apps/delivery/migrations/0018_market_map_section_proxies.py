@@ -22,42 +22,6 @@ class Migration(migrations.Migration):
             bases=("delivery.marketmaprevision",),
         ),
         migrations.CreateModel(
-            name="MarketDistrictMapSection",
-            fields=[],
-            options={
-                "verbose_name": "Карта: район",
-                "verbose_name_plural": "Карта: районы",
-                "proxy": True,
-                "indexes": [],
-                "constraints": [],
-            },
-            bases=("delivery.marketmaprevision",),
-        ),
-        migrations.CreateModel(
-            name="MarketSectorMapSection",
-            fields=[],
-            options={
-                "verbose_name": "Карта: сектор",
-                "verbose_name_plural": "Карта: секторы",
-                "proxy": True,
-                "indexes": [],
-                "constraints": [],
-            },
-            bases=("delivery.marketmaprevision",),
-        ),
-        migrations.CreateModel(
-            name="MarketRowMapSection",
-            fields=[],
-            options={
-                "verbose_name": "Карта: ряд",
-                "verbose_name_plural": "Карта: ряды",
-                "proxy": True,
-                "indexes": [],
-                "constraints": [],
-            },
-            bases=("delivery.marketmaprevision",),
-        ),
-        migrations.CreateModel(
             name="MarketPassageMapSection",
             fields=[],
             options={

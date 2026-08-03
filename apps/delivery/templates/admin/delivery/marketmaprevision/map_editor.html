@@ -58,8 +58,8 @@
           <button type="button" class="button" id="market-map-cancel">Отменить</button>
         </div>
         <p class="help">
-          Выберите отдельное окно создания. Граница, район, сектор и контейнер рисуются площадью,
-          ряд и проход — линией. Двойной клик завершает линию или площадь.
+          Выберите отдельное окно создания. Граница и контейнер рисуются площадью,
+          проход — линией. Двойной клик завершает линию или площадь.
         </p>
       </section>
 
@@ -69,30 +69,6 @@
           <p>Один внешний контур всего базара.</p>
         </div>
         <button type="button" class="button" data-map-tool="draw" data-map-kind="bazar">Создать границу</button>
-      </section>
-
-      <section class="market-map-panel market-kind-section market-tool-district">
-        <div>
-          <h2>Район</h2>
-          <p>Крупная зона внутри границы базара.</p>
-        </div>
-        <button type="button" class="button" data-map-tool="draw" data-map-kind="district">Создать район</button>
-      </section>
-
-      <section class="market-map-panel market-kind-section market-tool-sector">
-        <div>
-          <h2>Сектор</h2>
-          <p>Более мелкая зона внутри района.</p>
-        </div>
-        <button type="button" class="button" data-map-tool="draw" data-map-kind="sector">Создать сектор</button>
-      </section>
-
-      <section class="market-map-panel market-kind-section market-tool-row">
-        <div>
-          <h2>Ряд</h2>
-          <p>Линия ряда. Отрисовывается отдельно от проходов.</p>
-        </div>
-        <button type="button" class="button" data-map-tool="draw" data-map-kind="row">Создать ряд</button>
       </section>
 
       <section class="market-map-panel market-kind-section market-tool-passage">
@@ -128,6 +104,10 @@
         <div class="form-row">
           <label for="market-feature-name">Название / номер</label>
           <input id="market-feature-name" type="text" maxlength="160" placeholder="Например: Восточный сектор">
+        </div>
+        <div class="form-row" data-kind-scope="container">
+          <label for="market-feature-number">Номер контейнера</label>
+          <input id="market-feature-number" type="text" maxlength="50" placeholder="Например: A-101">
         </div>
         <div class="form-row" data-kind-scope="container">
           <label for="market-feature-passage">Проход</label>
@@ -173,6 +153,7 @@
         </div>
         <div class="market-map-property-actions">
           <button type="button" class="button default" id="market-feature-apply">Применить</button>
+          <button type="button" class="button" id="market-feature-duplicate" data-kind-scope="container">Дублировать</button>
           <button type="button" class="button deletelink" id="market-feature-delete">Удалить</button>
         </div>
       </section>

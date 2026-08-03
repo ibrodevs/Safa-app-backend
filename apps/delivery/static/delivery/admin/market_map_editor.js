@@ -247,6 +247,94 @@
     };
   }
 
+  function containerLabelText(properties) {
+    return String(properties.number || properties.name || '').trim();
+  }
+
+  function geometryCenter(geometry) {
+    const bounds = new google.maps.LatLngBounds();
+    let count = 0;
+    const visit = (coordinates) => {
+      if (Array.isArray(coordinates) && coordinates.length >= 2 && typeof coordinates[0] === 'number' && typeof coordinates[1] === 'number') {
+        bounds.extend({ lat: Number(coordinates[1]), lng: Number(coordinates[0]) });
+        count += 1;
+      } else if (Array.isArray(coordinates)) {
+        coordinates.forEach(visit);
+      }
+    };
+    visit(geometry.coordinates);
+    return count ? bounds.getCenter() : null;
+  }
+
+  function overlayCenter(overlay) {
+    if (overlay instanceof google.maps.Marker) return overlay.getPosition();
+    const bounds = new google.maps.LatLngBounds();
+    const paths = overlay.getPaths?.();
+    if (!paths) return null;
+    for (let i = 0; i < paths.getLength(); i += 1) {
+      const path = paths.getAt(i);
+      for (let j = 0; j < path.getLength(); j += 1) {
+        bounds.extend(path.getAt(j));
+      }
+    }
+    return bounds.isEmpty() ? null : bounds.getCenter();
+  }
+
+  function createContainerLabel(feature) {
+    if ((feature.properties || {}).kind !== 'container') return null;
+    const text = containerLabelText(feature.properties);
+    if (!text) return null;
+    const position = geometryCenter(feature.geometry);
+    if (!position) return null;
+
+    return new google.maps.Marker({
+      map: state.map,
+      position,
+      clickable: false,
+      zIndex: Number(feature.properties.z_index || KIND_CONFIG.container.zIndex) + 1,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 0,
+        fillOpacity: 0,
+        strokeOpacity: 0,
+      },
+      label: {
+        text,
+        color: '#111827',
+        fontSize: '12px',
+        fontWeight: '800',
+      },
+    });
+  }
+
+  function updateContainerLabel(item) {
+    if ((item.feature.properties || {}).kind !== 'container') {
+      if (item.label) item.label.setMap(null);
+      item.label = null;
+      return;
+    }
+
+    const text = containerLabelText(item.feature.properties);
+    const position = overlayCenter(item.overlays[0]) || geometryCenter(item.feature.geometry);
+    if (!text || !position) {
+      if (item.label) item.label.setMap(null);
+      item.label = null;
+      return;
+    }
+
+    if (!item.label) {
+      item.label = createContainerLabel(item.feature);
+    }
+    item.label.setPosition(position);
+    item.label.setZIndex(Number(item.feature.properties.z_index || KIND_CONFIG.container.zIndex) + 1);
+    item.label.setLabel({
+      text,
+      color: '#111827',
+      fontSize: '12px',
+      fontWeight: '800',
+    });
+  }
+
   function createMarker(feature) {
     const coordinates = feature.geometry.coordinates;
     const marker = new google.maps.Marker({
@@ -255,7 +343,7 @@
       title: feature.properties.name,
       icon: markerIcon(feature.properties),
       label: {
-        text: String(feature.properties.number || '').slice(0, 4),
+        text: containerLabelText(feature.properties),
         color: '#ffffff',
         fontSize: '10px',
         fontWeight: '700',
@@ -304,6 +392,14 @@
       }
       selectFeature(feature.id);
     });
+    polygon.addListener('mouseup', () => {
+      const item = state.items.get(feature.id);
+      if (item) updateContainerLabel(item);
+    });
+    polygon.addListener('dragend', () => {
+      const item = state.items.get(feature.id);
+      if (item) updateContainerLabel(item);
+    });
     return polygon;
   }
 
@@ -321,8 +417,9 @@
   function addFeature(rawFeature, { select = false } = {}) {
     const feature = normalizeFeature(rawFeature);
     if (state.items.has(feature.id)) removeFeature(feature.id);
-    const item = { feature, overlays: buildOverlays(feature) };
+    const item = { feature, overlays: buildOverlays(feature), label: null };
     state.items.set(feature.id, item);
+    updateContainerLabel(item);
     if (select) selectFeature(feature.id);
     refreshList();
     return feature.id;
@@ -363,6 +460,9 @@
         overlay.setOptions(overlayStyle(item.feature.properties, selected));
       }
     });
+    if (item.label) {
+      item.label.setZIndex(selected ? 1001 : Number(item.feature.properties.z_index || KIND_CONFIG.container.zIndex) + 1);
+    }
   }
 
   function selectFeature(id) {
@@ -385,6 +485,7 @@
     const item = state.items.get(id);
     if (!item) return;
     item.overlays.forEach((overlay) => overlay.setMap(null));
+    if (item.label) item.label.setMap(null);
     state.items.delete(id);
     if (state.selectedId === id) state.selectedId = null;
     refreshList();
@@ -394,6 +495,7 @@
     const properties = feature.properties || {};
     byId('market-feature-kind').value = properties.kind || 'district';
     byId('market-feature-name').value = properties.name || '';
+    byId('market-feature-number').value = properties.number || '';
     byId('market-feature-passage').value = properties.passage_id ? String(properties.passage_id) : '';
     byId('market-feature-container').value = properties.container_id ? String(properties.container_id) : '';
     byId('market-feature-title').value = properties.title || '';
@@ -445,7 +547,8 @@
       properties.container_id = Number(byId('market-feature-container').value || 0) || null;
       properties.title = byId('market-feature-title').value.trim();
       const selectedOption = byId('market-feature-container').selectedOptions[0];
-      properties.number = selectedOption?.dataset.number || name;
+      properties.number = byId('market-feature-number').value.trim() || selectedOption?.dataset.number || name;
+      properties.name = properties.number;
       if (!properties.passage_id && selectedOption?.dataset.passageId) {
         properties.passage_id = Number(selectedOption.dataset.passageId);
         byId('market-feature-passage').value = String(properties.passage_id);
@@ -461,7 +564,7 @@
         overlay.setTitle(name);
         overlay.setIcon(markerIcon(properties, true));
         overlay.setLabel({
-          text: String(properties.number || '').slice(0, 4),
+          text: containerLabelText(properties),
           color: '#ffffff',
           fontSize: '10px',
           fontWeight: '700',
@@ -470,8 +573,57 @@
         overlay.setOptions(overlayStyle(properties, true));
       }
     });
+    updateContainerLabel(item);
     refreshList();
     setStatus('Свойства объекта применены', 'success');
+  }
+
+  function cloneCoordinatesWithOffset(coordinates, deltaLng, deltaLat) {
+    if (Array.isArray(coordinates) && coordinates.length >= 2 && typeof coordinates[0] === 'number' && typeof coordinates[1] === 'number') {
+      return [coordinates[0] + deltaLng, coordinates[1] + deltaLat];
+    }
+    return Array.isArray(coordinates)
+      ? coordinates.map((item) => cloneCoordinatesWithOffset(item, deltaLng, deltaLat))
+      : coordinates;
+  }
+
+  function nextContainerNumber(value) {
+    const raw = String(value || '').trim();
+    const match = raw.match(/^(.*?)(\d+)$/);
+    if (!match) return raw ? `${raw}-copy` : '';
+    const prefix = match[1];
+    const digits = match[2];
+    const next = String(Number(digits) + 1).padStart(digits.length, '0');
+    return `${prefix}${next}`;
+  }
+
+  function duplicateSelectedFeature() {
+    const item = state.items.get(state.selectedId);
+    if (!item) {
+      setStatus('Сначала выберите контейнер для дублирования', 'error');
+      return;
+    }
+    if ((item.feature.properties || {}).kind !== 'container') {
+      setStatus('Дублировать можно только контейнеры', 'error');
+      return;
+    }
+
+    const source = serializeItem(item);
+    const number = nextContainerNumber(source.properties.number || source.properties.name);
+    const copy = JSON.parse(JSON.stringify(source));
+    copy.id = makeId('container');
+    copy.properties = {
+      ...copy.properties,
+      name: number || 'Новый контейнер',
+      number,
+      container_id: null,
+    };
+    copy.geometry.coordinates = cloneCoordinatesWithOffset(copy.geometry.coordinates, 0.000045, -0.00003);
+
+    addFeature(copy, { select: true });
+    populateForm(state.items.get(state.selectedId).feature);
+    byId('market-feature-number')?.focus();
+    setStatus('Контейнер продублирован. Проверьте номер и положение.', 'success');
   }
 
   function refreshList() {
@@ -684,11 +836,13 @@
       if (!state.selectedId) return;
       if (window.confirm('Удалить выбранный объект?')) removeFeature(state.selectedId);
     });
+    byId('market-feature-duplicate')?.addEventListener('click', duplicateSelectedFeature);
     byId('market-feature-container')?.addEventListener('change', (event) => {
       const option = event.target.selectedOptions[0];
       if (!option?.value) return;
       byId('market-feature-passage').value = option.dataset.passageId || '';
       byId('market-feature-name').value = option.dataset.number || byId('market-feature-name').value;
+      byId('market-feature-number').value = option.dataset.number || byId('market-feature-number').value;
     });
     byId('market-map-save')?.addEventListener('click', () => persist(root().dataset.saveUrl, false));
     byId('market-map-publish')?.addEventListener('click', () => {
