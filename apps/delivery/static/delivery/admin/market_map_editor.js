@@ -152,6 +152,15 @@
     ];
   }
 
+  function metersToLat(meters) {
+    return Number(meters || 0) / 111320;
+  }
+
+  function metersToLng(meters, lat) {
+    const cos = Math.max(0.2, Math.cos((Number(lat) || 0) * Math.PI / 180));
+    return Number(meters || 0) / (111320 * cos);
+  }
+
   function defaultProperties(kind) {
     const config = KIND_CONFIG[kind] || KIND_CONFIG.district;
     const name = typeof config.name === 'function' ? config.name() : config.name;
@@ -223,6 +232,47 @@
       [left, bottom],
       [left, top],
     ];
+  }
+
+  function rectangleBounds(ring) {
+    const rectangle = rectangleFromRing(ring);
+    const lons = rectangle.map((point) => point[0]);
+    const lats = rectangle.map((point) => point[1]);
+    return {
+      left: Math.min(...lons),
+      right: Math.max(...lons),
+      bottom: Math.min(...lats),
+      top: Math.max(...lats),
+    };
+  }
+
+  function rectangleFromBounds(bounds) {
+    return [
+      [bounds.left, bounds.top],
+      [bounds.right, bounds.top],
+      [bounds.right, bounds.bottom],
+      [bounds.left, bounds.bottom],
+      [bounds.left, bounds.top],
+    ];
+  }
+
+  function resizeContainerCoordinates(coordinates, widthM, heightM) {
+    const ring = rectangleFromRing(coordinates?.[0] || []);
+    const bounds = rectangleBounds(ring);
+    const centerLon = (bounds.left + bounds.right) / 2;
+    const centerLat = (bounds.top + bounds.bottom) / 2;
+    const halfWidth = metersToLng(widthM, centerLat) / 2;
+    const halfHeight = metersToLat(heightM) / 2;
+    return [rectangleFromBounds({
+      left: centerLon - halfWidth,
+      right: centerLon + halfWidth,
+      bottom: centerLat - halfHeight,
+      top: centerLat + halfHeight,
+    })];
+  }
+
+  function setPolygonCoordinates(overlay, coordinates) {
+    overlay.setPaths(coordinates.map((ring) => ring.slice(0, -1).map((point) => ({ lat: Number(point[1]), lng: Number(point[0]) }))));
   }
 
   function overlayStyle(properties, selected) {
@@ -559,6 +609,11 @@
 
   function populateForm(feature) {
     const properties = feature.properties || {};
+    const serialized = state.items.has(feature.id) ? serializeItem(state.items.get(feature.id)) : feature;
+    const containerBounds = properties.kind === 'container'
+      ? rectangleBounds(rectangleFromRing((serialized.geometry.coordinates || [[]])[0]))
+      : null;
+    const centerLat = containerBounds ? (containerBounds.top + containerBounds.bottom) / 2 : 42.8746;
     byId('market-feature-kind').value = properties.kind || 'district';
     byId('market-feature-name').value = properties.name || '';
     byId('market-feature-number').value = properties.number || '';
@@ -569,6 +624,10 @@
     byId('market-feature-stroke-width').value = Number(properties.stroke_width ?? 2);
     byId('market-feature-stroke').value = String(properties.stroke_color || '#e47f26').slice(0, 7);
     byId('market-feature-fill').value = String(properties.fill_color || '#ff8656').slice(0, 7);
+    if (containerBounds) {
+      byId('market-feature-width-m').value = Math.max(0.5, Math.round((containerBounds.right - containerBounds.left) * 111320 * Math.cos(centerLat * Math.PI / 180) * 10) / 10);
+      byId('market-feature-height-m').value = Math.max(0.5, Math.round((containerBounds.top - containerBounds.bottom) * 111320 * 10) / 10);
+    }
     updatePropertyVisibility(properties.kind || 'district');
   }
 
@@ -618,6 +677,11 @@
     properties.z_index = KIND_CONFIG[kind]?.zIndex ?? properties.z_index ?? 1;
     properties.line_pattern = KIND_CONFIG[kind]?.linePattern || properties.line_pattern || 'solid';
     if (kind === 'container') {
+      const serialized = serializeItem(item);
+      const widthM = Math.max(0.5, Number(byId('market-feature-width-m').value || 4));
+      const heightM = Math.max(0.5, Number(byId('market-feature-height-m').value || 2.5));
+      serialized.geometry.coordinates = resizeContainerCoordinates(serialized.geometry.coordinates, widthM, heightM);
+      item.feature.geometry.coordinates = serialized.geometry.coordinates;
       properties.passage_id = Number(byId('market-feature-passage').value || 0) || null;
       properties.container_id = Number(byId('market-feature-container').value || 0) || null;
       properties.title = byId('market-feature-title').value.trim();
@@ -646,6 +710,9 @@
           fontWeight: '700',
         });
       } else {
+        if (kind === 'container' && item.feature.geometry.type === 'Polygon') {
+          setPolygonCoordinates(overlay, item.feature.geometry.coordinates);
+        }
         overlay.setOptions(overlayStyle(properties, true));
       }
     });
@@ -661,6 +728,33 @@
     return Array.isArray(coordinates)
       ? coordinates.map((item) => cloneCoordinatesWithOffset(item, deltaLng, deltaLat))
       : coordinates;
+  }
+
+  function adjacentContainerCoordinates(coordinates, direction) {
+    const bounds = rectangleBounds(rectangleFromRing(coordinates?.[0] || []));
+    const width = bounds.right - bounds.left;
+    const height = bounds.top - bounds.bottom;
+    const next = { ...bounds };
+    switch (direction) {
+      case 'left':
+        next.left = bounds.left - width;
+        next.right = bounds.left;
+        break;
+      case 'up':
+        next.bottom = bounds.top;
+        next.top = bounds.top + height;
+        break;
+      case 'down':
+        next.bottom = bounds.bottom - height;
+        next.top = bounds.bottom;
+        break;
+      case 'right':
+      default:
+        next.left = bounds.right;
+        next.right = bounds.right + width;
+        break;
+    }
+    return [rectangleFromBounds(next)];
   }
 
   function nextContainerNumber(value) {
@@ -702,7 +796,8 @@
       number,
       container_id: null,
     };
-    copy.geometry.coordinates = cloneCoordinatesWithOffset(copy.geometry.coordinates, 0.000045, -0.00003);
+    const direction = byId('market-feature-duplicate-direction')?.value || 'right';
+    copy.geometry.coordinates = adjacentContainerCoordinates(copy.geometry.coordinates, direction);
 
     addFeature(copy, { select: true });
     populateForm(state.items.get(state.selectedId).feature);
