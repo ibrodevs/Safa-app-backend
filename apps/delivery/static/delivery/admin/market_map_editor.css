@@ -119,6 +119,9 @@
 }
 .market-map-draw-actions { margin-top: 10px; }
 .market-map-property-actions { margin-top: 12px; }
+.market-map-delete-button {
+  margin-left: auto;
+}
 .market-map-panel .help { margin: 10px 0 0; color: var(--map-muted); }
 .market-map-panel .market-map-inline-help { margin-top: 5px; font-size: 12px; }
 

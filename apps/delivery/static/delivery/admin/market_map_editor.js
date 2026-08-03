@@ -207,6 +207,24 @@
     return result;
   }
 
+  function rectangleFromRing(ring) {
+    const points = ring || [];
+    const lons = points.map((point) => point[0]);
+    const lats = points.map((point) => point[1]);
+    if (!lons.length || !lats.length) return ring;
+    const left = Math.min(...lons);
+    const right = Math.max(...lons);
+    const bottom = Math.min(...lats);
+    const top = Math.max(...lats);
+    return [
+      [left, top],
+      [right, top],
+      [right, bottom],
+      [left, bottom],
+      [left, top],
+    ];
+  }
+
   function overlayStyle(properties, selected) {
     const kind = properties.kind || 'district';
     const config = KIND_CONFIG[kind] || KIND_CONFIG.district;
@@ -240,7 +258,7 @@
         : Number(properties.fill_opacity ?? config.fillOpacity),
       icons,
       clickable: !properties.readonly,
-      editable: selected,
+      editable: selected && kind !== 'container',
       draggable: selected,
       zIndex: selected ? 1000 : Number(properties.z_index || config.zIndex || 1),
     };
@@ -475,6 +493,9 @@
       feature.geometry.coordinates = pathToCoordinates(item.overlays[0].getPath());
     } else if (type === 'Polygon') {
       feature.geometry.coordinates = pathsToCoordinates(item.overlays[0].getPaths());
+      if ((feature.properties || {}).kind === 'container') {
+        feature.geometry.coordinates = [rectangleFromRing(feature.geometry.coordinates[0])];
+      }
     } else if (type === 'MultiPolygon') {
       feature.geometry.coordinates = item.overlays.map((overlay) => pathsToCoordinates(overlay.getPaths()));
     }
@@ -1018,7 +1039,10 @@
     byId('market-map-cancel')?.addEventListener('click', () => setTool('select'));
     byId('market-feature-apply')?.addEventListener('click', applyForm);
     byId('market-feature-delete')?.addEventListener('click', () => {
-      if (!state.selectedId) return;
+      if (!state.selectedId) {
+        setStatus('Сначала выберите объект, который нужно удалить', 'error');
+        return;
+      }
       if (window.confirm('Удалить выбранный объект?')) removeFeature(state.selectedId);
     });
     byId('market-feature-duplicate')?.addEventListener('click', duplicateSelectedFeature);
