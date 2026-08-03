@@ -275,6 +275,28 @@
     overlay.setPaths(coordinates.map((ring) => ring.slice(0, -1).map((point) => ({ lat: Number(point[1]), lng: Number(point[0]) }))));
   }
 
+  function syncContainerSizeFields(coordinates) {
+    const bounds = rectangleBounds(rectangleFromRing((coordinates || [[]])[0]));
+    const centerLat = (bounds.top + bounds.bottom) / 2;
+    byId('market-feature-width-m').value = Math.max(0.5, Math.round((bounds.right - bounds.left) * 111320 * Math.cos(centerLat * Math.PI / 180) * 10) / 10);
+    byId('market-feature-height-m').value = Math.max(0.5, Math.round((bounds.top - bounds.bottom) * 111320 * 10) / 10);
+  }
+
+  function normalizeContainerItem(item) {
+    if (!item || (item.feature.properties || {}).kind !== 'container') return;
+    const snapshot = serializeItem(item);
+    snapshot.geometry.coordinates = [rectangleFromRing((snapshot.geometry.coordinates || [[]])[0])];
+    item.feature.geometry.coordinates = snapshot.geometry.coordinates;
+    item.overlays.forEach((overlay) => {
+      if (!(overlay instanceof google.maps.Marker)) {
+        setPolygonCoordinates(overlay, item.feature.geometry.coordinates);
+        overlay.setOptions(overlayStyle(item.feature.properties, true));
+      }
+    });
+    syncContainerSizeFields(item.feature.geometry.coordinates);
+    updateFeatureLabel(item);
+  }
+
   function overlayStyle(properties, selected) {
     const kind = properties.kind || 'district';
     const config = KIND_CONFIG[kind] || KIND_CONFIG.district;
@@ -308,7 +330,7 @@
         : Number(properties.fill_opacity ?? config.fillOpacity),
       icons,
       clickable: !properties.readonly,
-      editable: selected && kind !== 'container',
+      editable: selected,
       draggable: selected,
       zIndex: selected ? 1000 : Number(properties.z_index || config.zIndex || 1),
     };
@@ -502,11 +524,17 @@
     });
     polygon.addListener('mouseup', () => {
       const item = state.items.get(feature.id);
-      if (item) updateFeatureLabel(item);
+      if (item) {
+        normalizeContainerItem(item);
+        updateFeatureLabel(item);
+      }
     });
     polygon.addListener('dragend', () => {
       const item = state.items.get(feature.id);
-      if (item) updateFeatureLabel(item);
+      if (item) {
+        normalizeContainerItem(item);
+        updateFeatureLabel(item);
+      }
     });
     return polygon;
   }
@@ -784,6 +812,14 @@
     if ((item.feature.properties || {}).kind !== 'container') {
       setStatus('Дублировать можно только контейнеры', 'error');
       return;
+    }
+
+    item.feature.properties.passage_id = Number(byId('market-feature-passage').value || 0) || null;
+    item.feature.properties.title = byId('market-feature-title').value.trim();
+    const currentNumber = byId('market-feature-number').value.trim();
+    if (currentNumber) {
+      item.feature.properties.name = currentNumber;
+      item.feature.properties.number = currentNumber;
     }
 
     const source = serializeItem(item);
