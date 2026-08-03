@@ -6,6 +6,7 @@
     tool: 'select',
     drawingKind: null,
     items: new Map(),
+    contextItems: [],
     selectedId: null,
     drawing: [],
     preview: null,
@@ -14,7 +15,7 @@
 
   const byId = (id) => document.getElementById(id);
   const root = () => byId('market-map-editor');
-  const KIND_ORDER = ['bazar', 'district', 'sector', 'row', 'passage', 'container'];
+  const KIND_ORDER = ['bazar', 'passage', 'container', 'district', 'sector', 'row'];
 
   const KIND_CONFIG = {
     bazar: {
@@ -77,7 +78,7 @@
       fillOpacity: 0,
       zIndex: 60,
       linePattern: 'solid',
-      hint: 'Проведите основную линию прохода.',
+      hint: 'Проведите длинную стрелку прохода. Двойной клик завершает линию.',
     },
     container: {
       label: 'Контейнер',
@@ -211,13 +212,24 @@
     const config = KIND_CONFIG[kind] || KIND_CONFIG.district;
     const strokeWidth = Number(properties.stroke_width || config.strokeWidth || 2) + (selected ? 1 : 0);
     const linePattern = properties.line_pattern || config.linePattern || 'solid';
-    const icons = linePattern === 'dashed'
-      ? [{
-          icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 },
-          offset: '0',
-          repeat: '14px',
-        }]
-      : null;
+    let icons = null;
+    if (kind === 'passage') {
+      icons = [{
+        icon: {
+          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+          strokeOpacity: 1,
+          fillOpacity: 1,
+          scale: 3,
+        },
+        offset: '100%',
+      }];
+    } else if (linePattern === 'dashed') {
+      icons = [{
+        icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 },
+        offset: '0',
+        repeat: '14px',
+      }];
+    }
     return {
       strokeColor: properties.stroke_color || config.strokeColor,
       strokeOpacity: linePattern === 'dashed' ? 0 : 1,
@@ -227,7 +239,7 @@
         ? Math.max(Number(properties.fill_opacity ?? config.fillOpacity), 0.28)
         : Number(properties.fill_opacity ?? config.fillOpacity),
       icons,
-      clickable: true,
+      clickable: !properties.readonly,
       editable: selected,
       draggable: selected,
       zIndex: selected ? 1000 : Number(properties.z_index || config.zIndex || 1),
@@ -251,6 +263,15 @@
     return String(properties.number || properties.name || '').trim();
   }
 
+  function featureLabelText(feature) {
+    const properties = feature.properties || {};
+    if (properties.kind === 'container') return containerLabelText(properties);
+    if (properties.kind === 'bazar' || properties.kind === 'passage') {
+      return String(properties.name || '').trim();
+    }
+    return '';
+  }
+
   function geometryCenter(geometry) {
     const bounds = new google.maps.LatLngBounds();
     let count = 0;
@@ -269,6 +290,13 @@
   function overlayCenter(overlay) {
     if (overlay instanceof google.maps.Marker) return overlay.getPosition();
     const bounds = new google.maps.LatLngBounds();
+    const path = overlay.getPath?.();
+    if (path) {
+      for (let i = 0; i < path.getLength(); i += 1) {
+        bounds.extend(path.getAt(i));
+      }
+      return bounds.isEmpty() ? null : bounds.getCenter();
+    }
     const paths = overlay.getPaths?.();
     if (!paths) return null;
     for (let i = 0; i < paths.getLength(); i += 1) {
@@ -280,12 +308,14 @@
     return bounds.isEmpty() ? null : bounds.getCenter();
   }
 
-  function createContainerLabel(feature) {
-    if ((feature.properties || {}).kind !== 'container') return null;
-    const text = containerLabelText(feature.properties);
+  function createFeatureLabel(feature) {
+    const kind = (feature.properties || {}).kind;
+    if (!['bazar', 'passage', 'container'].includes(kind)) return null;
+    const text = featureLabelText(feature);
     if (!text) return null;
     const position = geometryCenter(feature.geometry);
     if (!position) return null;
+    const color = kind === 'container' ? '#111827' : (feature.properties.stroke_color || '#111827');
 
     return new google.maps.Marker({
       map: state.map,
@@ -300,21 +330,22 @@
       },
       label: {
         text,
-        color: '#111827',
-        fontSize: '12px',
+        color,
+        fontSize: kind === 'container' ? '12px' : '13px',
         fontWeight: '800',
       },
     });
   }
 
-  function updateContainerLabel(item) {
-    if ((item.feature.properties || {}).kind !== 'container') {
+  function updateFeatureLabel(item) {
+    const kind = (item.feature.properties || {}).kind;
+    if (!['bazar', 'passage', 'container'].includes(kind)) {
       if (item.label) item.label.setMap(null);
       item.label = null;
       return;
     }
 
-    const text = containerLabelText(item.feature.properties);
+    const text = featureLabelText(item.feature);
     const position = overlayCenter(item.overlays[0]) || geometryCenter(item.feature.geometry);
     if (!text || !position) {
       if (item.label) item.label.setMap(null);
@@ -323,14 +354,14 @@
     }
 
     if (!item.label) {
-      item.label = createContainerLabel(item.feature);
+      item.label = createFeatureLabel(item.feature);
     }
     item.label.setPosition(position);
     item.label.setZIndex(Number(item.feature.properties.z_index || KIND_CONFIG.container.zIndex) + 1);
     item.label.setLabel({
       text,
-      color: '#111827',
-      fontSize: '12px',
+      color: kind === 'container' ? '#111827' : (item.feature.properties.stroke_color || '#111827'),
+      fontSize: kind === 'container' ? '12px' : '13px',
       fontWeight: '800',
     });
   }
@@ -376,6 +407,14 @@
       }
       selectFeature(feature.id);
     });
+    line.addListener('mouseup', () => {
+      const item = state.items.get(feature.id);
+      if (item) updateFeatureLabel(item);
+    });
+    line.addListener('dragend', () => {
+      const item = state.items.get(feature.id);
+      if (item) updateFeatureLabel(item);
+    });
     return line;
   }
 
@@ -386,6 +425,7 @@
       ...overlayStyle(feature.properties, false),
     });
     polygon.addListener('click', (event) => {
+      if ((feature.properties || {}).readonly) return;
       if (state.tool === 'draw') {
         mapClick(event);
         return;
@@ -394,11 +434,11 @@
     });
     polygon.addListener('mouseup', () => {
       const item = state.items.get(feature.id);
-      if (item) updateContainerLabel(item);
+      if (item) updateFeatureLabel(item);
     });
     polygon.addListener('dragend', () => {
       const item = state.items.get(feature.id);
-      if (item) updateContainerLabel(item);
+      if (item) updateFeatureLabel(item);
     });
     return polygon;
   }
@@ -419,7 +459,7 @@
     if (state.items.has(feature.id)) removeFeature(feature.id);
     const item = { feature, overlays: buildOverlays(feature), label: null };
     state.items.set(feature.id, item);
-    updateContainerLabel(item);
+    updateFeatureLabel(item);
     if (select) selectFeature(feature.id);
     refreshList();
     return feature.id;
@@ -573,7 +613,7 @@
         overlay.setOptions(overlayStyle(properties, true));
       }
     });
-    updateContainerLabel(item);
+    updateFeatureLabel(item);
     refreshList();
     setStatus('Свойства объекта применены', 'success');
   }
@@ -785,7 +825,19 @@
       }
     };
     state.items.forEach((item) => visit(item.feature.geometry.coordinates));
+    state.contextItems.forEach((item) => visit(item.feature.geometry.coordinates));
     return count ? bounds : null;
+  }
+
+  function addContextFeature(rawFeature) {
+    const feature = normalizeFeature(rawFeature);
+    feature.properties.readonly = true;
+    const item = { feature, overlays: buildOverlays(feature), label: null };
+    item.overlays.forEach((overlay) => {
+      if (overlay.setOptions) overlay.setOptions({ clickable: false, editable: false, draggable: false });
+    });
+    updateFeatureLabel(item);
+    state.contextItems.push(item);
   }
 
   async function persist(url, publish = false) {
@@ -877,6 +929,7 @@
     const canvas = byId('market-map-canvas');
     if (!canvas || !window.google?.maps) return;
     const initial = readJsonScript('market-map-initial-geojson', { type: 'FeatureCollection', features: [] });
+    const context = readJsonScript('market-map-context-geojson', { type: 'FeatureCollection', features: [] });
     state.map = new google.maps.Map(canvas, {
       center: { lat: 42.8746, lng: 74.6122 },
       zoom: 15,
@@ -891,6 +944,7 @@
     state.map.addListener('dblclick', () => finishDrawing());
     bindControls();
     applyFocusedSection();
+    (context.features || []).forEach((feature) => addContextFeature(feature));
     (initial.features || []).forEach((feature) => addFeature(feature));
     const bounds = allBounds();
     if (bounds) state.map.fitBounds(bounds, 48);
@@ -898,6 +952,14 @@
     const kind = focusedKind();
     if (kind) {
       setTool('draw', kind);
+      const help = byId('market-map-mode-help');
+      if (help) {
+        help.textContent = kind === 'bazar'
+          ? 'Нарисуйте границу выбранного базара. Серые области — другие опубликованные базары, пересекаться с ними нельзя.'
+          : kind === 'passage'
+            ? 'Нарисуйте проход внутри выбранного базара. Граница базара остаётся видимой для ориентира.'
+            : 'Рисуйте контейнеры прямоугольниками. Граница базара и проходы остаются видимыми для ориентира.';
+      }
     } else {
       setStatus('Карта готова. Изменения пока находятся в черновике.', 'success');
     }

@@ -29,6 +29,33 @@ MAP_SECTION_LABELS = {
 }
 
 
+def other_bazar_boundaries(current_bazar: Bazar) -> dict:
+    features = []
+    revisions = (
+        MarketMapRevision.objects.filter(status=MarketMapRevision.Status.PUBLISHED)
+        .exclude(bazar=current_bazar)
+        .select_related("bazar")
+    )
+    for revision in revisions:
+        for feature in revision.geojson.get("features", []):
+            properties = feature.get("properties") or {}
+            if properties.get("kind") != "bazar":
+                continue
+            copy = json.loads(json.dumps(feature))
+            copy["id"] = f"readonly-{revision.bazar_id}-{copy.get('id')}"
+            copy["properties"] = {
+                **copy.get("properties", {}),
+                "name": revision.bazar.name,
+                "readonly": True,
+                "stroke_color": "#475467",
+                "fill_color": "#98A2B3",
+                "fill_opacity": 0.08,
+                "z_index": 1,
+            }
+            features.append(copy)
+    return {"type": "FeatureCollection", "features": features}
+
+
 @admin.register(MarketMapRevision)
 class MarketMapRevisionAdmin(admin.ModelAdmin):
     change_list_template = "admin/delivery/marketmaprevision/change_list.html"
@@ -125,6 +152,7 @@ class MarketMapRevisionAdmin(admin.ModelAdmin):
             "focus_kind": focus_kind,
             "focus_kind_label": MAP_SECTION_LABELS.get(focus_kind, ""),
             "initial_geojson": revision.geojson,
+            "context_geojson": other_bazar_boundaries(bazar),
             "passages": passages,
             "containers": containers,
             "google_maps_api_key": os.getenv("GOOGLE_MAPS_BROWSER_API_KEY", "") or os.getenv("GOOGLE_MAPS_API_KEY", ""),

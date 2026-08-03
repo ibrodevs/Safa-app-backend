@@ -57,9 +57,8 @@
           <button type="button" class="button default" id="market-map-finish">Завершить</button>
           <button type="button" class="button" id="market-map-cancel">Отменить</button>
         </div>
-        <p class="help">
-          Выберите отдельное окно создания. Граница и контейнер рисуются площадью,
-          проход — линией. Двойной клик завершает линию или площадь.
+        <p class="help" id="market-map-mode-help">
+          Карта показывает соседние базары и уже созданные объекты как контекст.
         </p>
       </section>
 
@@ -93,9 +92,6 @@
           <label for="market-feature-kind">Тип</label>
           <select id="market-feature-kind" disabled>
             <option value="bazar">Граница базара</option>
-            <option value="district">Район</option>
-            <option value="sector">Сектор</option>
-            <option value="row">Ряд</option>
             <option value="passage">Проход</option>
             <option value="container">Контейнер</option>
           </select>
@@ -103,7 +99,7 @@
         </div>
         <div class="form-row">
           <label for="market-feature-name">Название / номер</label>
-          <input id="market-feature-name" type="text" maxlength="160" placeholder="Например: Восточный сектор">
+          <input id="market-feature-name" type="text" maxlength="160" placeholder="Например: Дордой / Проход 1 / A-101">
         </div>
         <div class="form-row" data-kind-scope="container">
           <label for="market-feature-number">Номер контейнера</label>
@@ -172,6 +168,7 @@
 </div>
 
 {{ initial_geojson|json_script:"market-map-initial-geojson" }}
+{{ context_geojson|json_script:"market-map-context-geojson" }}
 {{ passages|json_script:"market-map-passages" }}
 {{ containers|json_script:"market-map-containers" }}
 <script src="{% static 'delivery/admin/market_map_editor.js' %}"></script>

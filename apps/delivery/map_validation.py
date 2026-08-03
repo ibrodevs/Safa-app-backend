@@ -260,6 +260,40 @@ def point_in_geometry(point: list[float], geometry: dict[str, Any]) -> bool:
     return False
 
 
+def _geometry_segments(geometry: dict[str, Any]) -> Iterable[tuple[list[float], list[float]]]:
+    geometry_type = geometry.get("type")
+    coordinates = geometry.get("coordinates") or []
+    polygons = [coordinates] if geometry_type == "Polygon" else coordinates if geometry_type == "MultiPolygon" else []
+    for polygon in polygons:
+        for ring in polygon:
+            for index in range(len(ring) - 1):
+                yield ring[index], ring[index + 1]
+
+
+def geometries_intersect(first: dict[str, Any], second: dict[str, Any]) -> bool:
+    first_bbox = geometry_bbox(first)
+    second_bbox = geometry_bbox(second)
+    if (
+        first_bbox[2] < second_bbox[0]
+        or first_bbox[0] > second_bbox[2]
+        or first_bbox[3] < second_bbox[1]
+        or first_bbox[1] > second_bbox[3]
+    ):
+        return False
+
+    for point in _iter_points(first.get("coordinates")):
+        if point_in_geometry(point, second):
+            return True
+    for point in _iter_points(second.get("coordinates")):
+        if point_in_geometry(point, first):
+            return True
+    for a, b in _geometry_segments(first):
+        for c, d in _geometry_segments(second):
+            if _segments_intersect(a, b, c, d):
+                return True
+    return False
+
+
 def representative_point(geometry: dict[str, Any]) -> list[float]:
     geometry_type = geometry.get("type")
     coordinates = geometry.get("coordinates") or []
@@ -286,6 +320,7 @@ def validate_feature_collection(value: Any) -> dict[str, Any]:
     normalized_features: list[dict[str, Any]] = []
     feature_ids: set[str] = set()
     bazar_geometries: list[dict[str, Any]] = []
+    passage_features: list[dict[str, Any]] = []
     container_features: list[dict[str, Any]] = []
 
     for index, raw in enumerate(raw_features):
@@ -336,6 +371,8 @@ def validate_feature_collection(value: Any) -> dict[str, Any]:
         normalized_features.append(feature)
         if kind == "bazar":
             bazar_geometries.append(geometry)
+        elif kind == "passage":
+            passage_features.append(feature)
         elif kind == "container":
             container_features.append(feature)
 
@@ -343,6 +380,12 @@ def validate_feature_collection(value: Any) -> dict[str, Any]:
         raise ValidationError("В одной версии карты допускается только одна граница базара")
     if bazar_geometries:
         boundary = bazar_geometries[0]
+        for feature in passage_features:
+            points = list(_iter_points(feature["geometry"]["coordinates"]))
+            if not points or any(not point_in_geometry(point, boundary) for point in points):
+                raise ValidationError(
+                    f"Проход '{feature['properties']['name']}' выходит за границу базара"
+                )
         for feature in container_features:
             points = list(_iter_points(feature["geometry"]["coordinates"]))
             if not points or any(not point_in_geometry(point, boundary) for point in points):

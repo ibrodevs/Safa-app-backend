@@ -12,6 +12,7 @@ from django.utils import timezone
 from .map_validation import (
     STYLE_DEFAULTS,
     empty_feature_collection,
+    geometries_intersect,
     representative_point,
     validate_feature_collection,
 )
@@ -72,6 +73,32 @@ class MarketMapRevision(models.Model):
     def clean(self) -> None:
         super().clean()
         self.geojson = validate_feature_collection(self.geojson)
+        self._validate_bazar_boundary_does_not_overlap()
+
+    def _boundary_feature(self) -> dict[str, Any] | None:
+        for feature in self.geojson.get("features", []):
+            if (feature.get("properties") or {}).get("kind") == "bazar":
+                return feature
+        return None
+
+    def _validate_bazar_boundary_does_not_overlap(self) -> None:
+        boundary = self._boundary_feature()
+        if not boundary:
+            return
+
+        published = (
+            MarketMapRevision.objects.filter(status=self.Status.PUBLISHED)
+            .exclude(bazar_id=self.bazar_id)
+            .select_related("bazar")
+        )
+        for revision in published:
+            for feature in revision.geojson.get("features", []):
+                if (feature.get("properties") or {}).get("kind") != "bazar":
+                    continue
+                if geometries_intersect(boundary["geometry"], feature["geometry"]):
+                    raise ValidationError(
+                        f"Граница базара пересекается с базаром '{revision.bazar.name}'"
+                    )
 
     @classmethod
     def latest_published(cls, bazar: Bazar | int) -> "MarketMapRevision | None":
