@@ -510,6 +510,11 @@
       setOverlaySelected(state.items.get(state.selectedId), false);
     }
     state.selectedId = state.items.has(id) ? id : null;
+    const focus = focusedKind();
+    if (state.selectedId && focus && state.items.get(state.selectedId).feature.properties.kind !== focus) {
+      state.selectedId = null;
+      setStatus(`В этом разделе редактируются только: ${featureKindLabel(focus)}`, 'error');
+    }
     if (!state.selectedId) {
       updatePropertyVisibility(null);
       refreshList();
@@ -670,6 +675,7 @@
     const list = byId('market-feature-list');
     if (!list) return;
     list.innerHTML = '';
+    const focus = focusedKind();
     const sorted = Array.from(state.items.values()).sort((a, b) => {
       const ak = a.feature.properties.kind || '';
       const bk = b.feature.properties.kind || '';
@@ -679,6 +685,7 @@
         String(a.feature.properties.name || '').localeCompare(String(b.feature.properties.name || ''));
     });
     KIND_ORDER.forEach((kind) => {
+      if (focus && kind !== focus) return;
       const group = sorted.filter((item) => item.feature.properties.kind === kind);
       if (!group.length) return;
       const heading = document.createElement('div');
@@ -699,10 +706,13 @@
         list.append(button);
       });
     });
-    if (!sorted.length) {
+    const visibleCount = focus
+      ? sorted.filter((item) => item.feature.properties.kind === focus).length
+      : sorted.length;
+    if (!visibleCount) {
       const empty = document.createElement('p');
       empty.className = 'help';
-      empty.textContent = 'Объектов пока нет.';
+      empty.textContent = focus ? `В разделе «${featureKindLabel(focus)}» объектов пока нет.` : 'Объектов пока нет.';
       list.append(empty);
     }
   }
@@ -829,6 +839,103 @@
     return count ? bounds : null;
   }
 
+  function iterCoordinatePoints(coordinates, out = []) {
+    if (Array.isArray(coordinates) && coordinates.length >= 2 && typeof coordinates[0] === 'number' && typeof coordinates[1] === 'number') {
+      out.push([coordinates[0], coordinates[1]]);
+      return out;
+    }
+    if (Array.isArray(coordinates)) coordinates.forEach((item) => iterCoordinatePoints(item, out));
+    return out;
+  }
+
+  function coordinateBbox(geometry) {
+    const points = iterCoordinatePoints(geometry.coordinates || []);
+    if (!points.length) return null;
+    const lons = points.map((point) => point[0]);
+    const lats = points.map((point) => point[1]);
+    return [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)];
+  }
+
+  function orientation(a, b, c) {
+    const value = (b[1] - a[1]) * (c[0] - b[0]) - (b[0] - a[0]) * (c[1] - b[1]);
+    if (Math.abs(value) < 1e-12) return 0;
+    return value > 0 ? 1 : 2;
+  }
+
+  function onSegment(a, b, c) {
+    return Math.min(a[0], c[0]) - 1e-12 <= b[0] && b[0] <= Math.max(a[0], c[0]) + 1e-12 &&
+      Math.min(a[1], c[1]) - 1e-12 <= b[1] && b[1] <= Math.max(a[1], c[1]) + 1e-12;
+  }
+
+  function segmentsIntersect(a, b, c, d) {
+    const o1 = orientation(a, b, c);
+    const o2 = orientation(a, b, d);
+    const o3 = orientation(c, d, a);
+    const o4 = orientation(c, d, b);
+    if (o1 !== o2 && o3 !== o4) return true;
+    return (o1 === 0 && onSegment(a, c, b)) ||
+      (o2 === 0 && onSegment(a, d, b)) ||
+      (o3 === 0 && onSegment(c, a, d)) ||
+      (o4 === 0 && onSegment(c, b, d));
+  }
+
+  function pointInRing(point, ring) {
+    let inside = false;
+    const [x, y] = point;
+    for (let index = 0; index < ring.length - 1; index += 1) {
+      const a = ring[index];
+      const b = ring[index + 1];
+      if (orientation(a, point, b) === 0 && onSegment(a, point, b)) return true;
+      const intersects = (a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / ((b[1] - a[1]) || 1e-30) + a[0];
+      if (intersects) inside = !inside;
+    }
+    return inside;
+  }
+
+  function pointInGeometry(point, geometry) {
+    const coordinates = geometry.coordinates || [];
+    const polygons = geometry.type === 'Polygon' ? [coordinates] : geometry.type === 'MultiPolygon' ? coordinates : [];
+    return polygons.some((polygon) => polygon[0] && pointInRing(point, polygon[0]) && !polygon.slice(1).some((ring) => pointInRing(point, ring)));
+  }
+
+  function geometrySegments(geometry) {
+    const coordinates = geometry.coordinates || [];
+    const polygons = geometry.type === 'Polygon' ? [coordinates] : geometry.type === 'MultiPolygon' ? coordinates : [];
+    const segments = [];
+    polygons.forEach((polygon) => {
+      polygon.forEach((ring) => {
+        for (let index = 0; index < ring.length - 1; index += 1) {
+          segments.push([ring[index], ring[index + 1]]);
+        }
+      });
+    });
+    return segments;
+  }
+
+  function geometriesIntersect(first, second) {
+    const firstBox = coordinateBbox(first);
+    const secondBox = coordinateBbox(second);
+    if (!firstBox || !secondBox) return false;
+    if (firstBox[2] < secondBox[0] || firstBox[0] > secondBox[2] || firstBox[3] < secondBox[1] || firstBox[1] > secondBox[3]) return false;
+    if (iterCoordinatePoints(first.coordinates).some((point) => pointInGeometry(point, second))) return true;
+    if (iterCoordinatePoints(second.coordinates).some((point) => pointInGeometry(point, first))) return true;
+    const firstSegments = geometrySegments(first);
+    const secondSegments = geometrySegments(second);
+    return firstSegments.some(([a, b]) => secondSegments.some(([c, d]) => segmentsIntersect(a, b, c, d)));
+  }
+
+  function clientValidationMessage(snapshot) {
+    const boundary = (snapshot.features || []).find((feature) => (feature.properties || {}).kind === 'bazar');
+    if (!boundary) return '';
+    for (const item of state.contextItems) {
+      if ((item.feature.properties || {}).kind !== 'bazar') continue;
+      if (geometriesIntersect(boundary.geometry, item.feature.geometry)) {
+        return `Граница пересекается с базаром «${item.feature.properties.name || 'другой базар'}». Измените форму территории.`;
+      }
+    }
+    return '';
+  }
+
   function addContextFeature(rawFeature) {
     const feature = normalizeFeature(rawFeature);
     feature.properties.readonly = true;
@@ -848,6 +955,9 @@
     button.textContent = publish ? 'Публикуем…' : 'Сохраняем…';
     setStatus(publish ? 'Проверяем и публикуем карту…' : 'Сохраняем черновик…');
     try {
+      const snapshot = collectionSnapshot();
+      const clientError = clientValidationMessage(snapshot);
+      if (clientError) throw new Error(clientError);
       const response = await fetch(url, {
         method: 'POST',
         credentials: 'same-origin',
@@ -856,7 +966,7 @@
           'X-CSRFToken': csrfToken(),
           'X-Requested-With': 'XMLHttpRequest',
         },
-        body: JSON.stringify({ geojson: collectionSnapshot() }),
+        body: JSON.stringify({ geojson: snapshot }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.ok) {
@@ -919,6 +1029,9 @@
     const kind = focusedKind();
     if (!kind) return;
 
+    document.querySelectorAll('[data-section-kind]').forEach((link) => {
+      link.classList.toggle('active', link.dataset.sectionKind === kind);
+    });
     document.querySelectorAll('.market-kind-section').forEach((section) => {
       const button = section.querySelector('[data-map-kind]');
       section.hidden = button?.dataset.mapKind !== kind;

@@ -47,7 +47,16 @@
   {% endif %}
 
   <div class="market-map-layout">
-    <aside class="market-map-sidebar">
+    <aside class="market-map-sidebar market-map-left">
+      <section class="market-map-panel">
+        <h2>Разделы</h2>
+        <nav class="market-map-section-nav" aria-label="Разделы редактора карты">
+          <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=bazar" data-section-kind="bazar">Базары</a>
+          <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=passage" data-section-kind="passage">Проходы</a>
+          <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=container" data-section-kind="container">Контейнеры</a>
+        </nav>
+      </section>
+
       <section class="market-map-panel">
         <h2>Режим</h2>
         <div class="market-map-tools" role="toolbar" aria-label="Инструменты рисования">
@@ -86,6 +95,18 @@
         <button type="button" class="button" data-map-tool="draw" data-map-kind="container">Создать контейнер</button>
       </section>
 
+      <section class="market-map-panel">
+        <h2>Объекты</h2>
+        <div id="market-feature-list" class="market-feature-list"></div>
+      </section>
+    </aside>
+
+    <div class="market-map-stage">
+      <div id="market-map-canvas" aria-label="Редактор карты базара"></div>
+      <div id="market-map-status" role="status" aria-live="polite">Загрузка карты…</div>
+    </div>
+
+    <aside class="market-map-sidebar market-map-properties">
       <section class="market-map-panel">
         <h2>Свойства объекта</h2>
         <div class="form-row">
@@ -153,17 +174,7 @@
           <button type="button" class="button deletelink" id="market-feature-delete">Удалить</button>
         </div>
       </section>
-
-      <section class="market-map-panel">
-        <h2>Объекты</h2>
-        <div id="market-feature-list" class="market-feature-list"></div>
-      </section>
     </aside>
-
-    <div class="market-map-stage">
-      <div id="market-map-canvas" aria-label="Редактор карты базара"></div>
-      <div id="market-map-status" role="status" aria-live="polite">Загрузка карты…</div>
-    </div>
   </div>
 </div>
 

@@ -18,7 +18,7 @@
 
 .market-map-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(280px, 340px);
   gap: 16px;
   min-height: 720px;
 }
@@ -37,6 +37,24 @@
 }
 
 .market-map-panel h2 { margin: 0 0 12px; font-size: 16px; }
+.market-map-section-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.market-map-section-nav a {
+  padding: 10px 12px;
+  border: 1px solid var(--map-border);
+  border-radius: 6px;
+  color: var(--body-fg, #1f2937);
+  text-decoration: none;
+  font-weight: 700;
+}
+.market-map-section-nav a.active,
+.market-map-section-nav a:hover {
+  border-color: #417690;
+  background: rgba(65, 118, 144, 0.1);
+}
 .market-map-tools,
 .market-map-draw-actions,
 .market-map-property-actions {
