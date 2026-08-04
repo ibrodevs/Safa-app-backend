@@ -15,7 +15,7 @@
 
   const byId = (id) => document.getElementById(id);
   const root = () => byId('market-map-editor');
-  const KIND_ORDER = ['bazar', 'passage', 'container', 'district', 'sector', 'row'];
+  const KIND_ORDER = ['bazar', 'district', 'passage', 'container', 'sector', 'row'];
 
   const KIND_CONFIG = {
     bazar: {
@@ -356,7 +356,7 @@
   function featureLabelText(feature) {
     const properties = feature.properties || {};
     if (properties.kind === 'container') return containerLabelText(properties);
-    if (properties.kind === 'bazar' || properties.kind === 'passage') {
+    if (properties.kind === 'bazar' || properties.kind === 'district' || properties.kind === 'passage') {
       return String(properties.name || '').trim();
     }
     return '';
@@ -400,7 +400,7 @@
 
   function createFeatureLabel(feature) {
     const kind = (feature.properties || {}).kind;
-    if (!['bazar', 'passage', 'container'].includes(kind)) return null;
+    if (!['bazar', 'district', 'passage', 'container'].includes(kind)) return null;
     const text = featureLabelText(feature);
     if (!text) return null;
     const position = geometryCenter(feature.geometry);
@@ -429,7 +429,7 @@
 
   function updateFeatureLabel(item) {
     const kind = (item.feature.properties || {}).kind;
-    if (!['bazar', 'passage', 'container'].includes(kind)) {
+    if (!['bazar', 'district', 'passage', 'container'].includes(kind)) {
       if (item.label) item.label.setMap(null);
       item.label = null;
       return;
@@ -1101,7 +1101,23 @@
 
   function clientValidationMessage(snapshot) {
     const boundary = (snapshot.features || []).find((feature) => (feature.properties || {}).kind === 'bazar');
-    if (!boundary) return '';
+    const districts = (snapshot.features || []).filter((feature) => (feature.properties || {}).kind === 'district');
+    if (!boundary) {
+      return districts.length ? 'Сначала нарисуйте границу базара, потом районы внутри неё.' : '';
+    }
+    for (const district of districts) {
+      const points = iterCoordinatePoints(district.geometry.coordinates || []);
+      if (!points.length || points.some((point) => !pointInGeometry(point, boundary.geometry))) {
+        return `Район «${district.properties.name || 'без названия'}» выходит за границу базара. Нарисуйте его внутри базара.`;
+      }
+    }
+    for (let index = 0; index < districts.length; index += 1) {
+      for (let next = index + 1; next < districts.length; next += 1) {
+        if (geometriesIntersect(districts[index].geometry, districts[next].geometry)) {
+          return `Районы «${districts[index].properties.name || 'без названия'}» и «${districts[next].properties.name || 'без названия'}» пересекаются.`;
+        }
+      }
+    }
     for (const item of state.contextItems) {
       if ((item.feature.properties || {}).kind !== 'bazar') continue;
       if (geometriesIntersect(boundary.geometry, item.feature.geometry)) {
@@ -1252,9 +1268,11 @@
       if (help) {
         help.textContent = kind === 'bazar'
           ? 'Нарисуйте границу выбранного базара. Серые области — другие опубликованные базары, пересекаться с ними нельзя.'
-          : kind === 'passage'
-            ? 'Нарисуйте проход внутри выбранного базара. Граница базара остаётся видимой для ориентира.'
-            : 'Рисуйте контейнеры прямоугольниками. Граница базара и проходы остаются видимыми для ориентира.';
+          : kind === 'district'
+            ? 'Нарисуйте район полигоном внутри выбранного базара. Граница базара остаётся видимой для ориентира.'
+            : kind === 'passage'
+              ? 'Нарисуйте проход внутри выбранного базара. Граница базара и районы остаются видимыми для ориентира.'
+              : 'Рисуйте контейнеры прямоугольниками. Граница базара, районы и проходы остаются видимыми для ориентира.';
       }
     } else {
       setStatus('Карта готова. Изменения пока находятся в черновике.', 'success');

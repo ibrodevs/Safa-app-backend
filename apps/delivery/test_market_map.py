@@ -84,6 +84,24 @@ def zone_feature(kind: str, name: str):
     return feature
 
 
+def district_feature(name: str, coordinates=None):
+    return {
+        "type": "Feature",
+        "id": f"district-{name}",
+        "properties": {"kind": "district", "name": name},
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": coordinates or [[
+                [74.61, 42.94],
+                [74.63, 42.94],
+                [74.63, 42.92],
+                [74.61, 42.92],
+                [74.61, 42.94],
+            ]],
+        },
+    }
+
+
 def test_map_kinds_receive_unique_default_styles():
     collection = validate_feature_collection(
         {
@@ -114,6 +132,33 @@ def test_map_kinds_receive_unique_default_styles():
     assert by_kind["row"]["line_pattern"] == "dashed"
     assert by_kind["passage"]["stroke_width"] == 5
     assert by_kind["container"]["fill_color"] == "#ef4444"
+
+
+def test_district_outside_bazar_is_rejected():
+    district = district_feature("Север", [[
+        [75.00, 43.04],
+        [75.02, 43.04],
+        [75.02, 43.02],
+        [75.00, 43.02],
+        [75.00, 43.04],
+    ]])
+
+    with pytest.raises(ValidationError):
+        validate_feature_collection({"type": "FeatureCollection", "features": [polygon_feature(1), district]})
+
+
+def test_intersecting_districts_are_rejected():
+    first = district_feature("Север")
+    second = district_feature("Юг", [[
+        [74.62, 42.935],
+        [74.64, 42.935],
+        [74.64, 42.915],
+        [74.62, 42.915],
+        [74.62, 42.935],
+    ]])
+
+    with pytest.raises(ValidationError):
+        validate_feature_collection({"type": "FeatureCollection", "features": [polygon_feature(1), first, second]})
 
 
 @pytest.mark.django_db
