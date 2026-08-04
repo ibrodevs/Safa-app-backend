@@ -31,7 +31,7 @@
       hint: 'Нарисуйте внешний контур всего базара.',
     },
     district: {
-      label: 'Район',
+      label: 'Граница района',
       family: 'polygon',
       name: 'Новый район',
       minZoom: 13,
@@ -40,7 +40,7 @@
       fillColor: '#60a5fa',
       fillOpacity: 0.16,
       zIndex: 20,
-      hint: 'Обведите крупный район внутри базара.',
+      hint: 'Нарисуйте внешний контур района внутри базара.',
     },
     sector: {
       label: 'Сектор',
@@ -1103,18 +1103,18 @@
     const boundary = (snapshot.features || []).find((feature) => (feature.properties || {}).kind === 'bazar');
     const districts = (snapshot.features || []).filter((feature) => (feature.properties || {}).kind === 'district');
     if (!boundary) {
-      return districts.length ? 'Сначала нарисуйте границу базара, потом районы внутри неё.' : '';
+      return districts.length ? 'Сначала нарисуйте границу базара, потом границы районов внутри неё.' : '';
     }
     for (const district of districts) {
       const points = iterCoordinatePoints(district.geometry.coordinates || []);
       if (!points.length || points.some((point) => !pointInGeometry(point, boundary.geometry))) {
-        return `Район «${district.properties.name || 'без названия'}» выходит за границу базара. Нарисуйте его внутри базара.`;
+        return `Граница района «${district.properties.name || 'без названия'}» выходит за границу базара. Нарисуйте её внутри базара.`;
       }
     }
     for (let index = 0; index < districts.length; index += 1) {
       for (let next = index + 1; next < districts.length; next += 1) {
         if (geometriesIntersect(districts[index].geometry, districts[next].geometry)) {
-          return `Районы «${districts[index].properties.name || 'без названия'}» и «${districts[next].properties.name || 'без названия'}» пересекаются.`;
+          return `Границы районов «${districts[index].properties.name || 'без названия'}» и «${districts[next].properties.name || 'без названия'}» пересекаются.`;
         }
       }
     }
@@ -1269,7 +1269,7 @@
         help.textContent = kind === 'bazar'
           ? 'Нарисуйте границу выбранного базара. Серые области — другие опубликованные базары, пересекаться с ними нельзя.'
           : kind === 'district'
-            ? 'Нарисуйте район полигоном внутри выбранного базара. Граница базара остаётся видимой для ориентира.'
+            ? 'Нарисуйте границу района внутри выбранного базара так же, как рисуется граница базара.'
             : kind === 'passage'
               ? 'Нарисуйте проход внутри выбранного базара. Граница базара и районы остаются видимыми для ориентира.'
               : 'Рисуйте контейнеры прямоугольниками. Граница базара, районы и проходы остаются видимыми для ориентира.';

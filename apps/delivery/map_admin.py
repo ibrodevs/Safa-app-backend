@@ -25,7 +25,7 @@ from .models import Bazar, Container, Passage
 
 MAP_SECTION_LABELS = {
     "bazar": "границу базара",
-    "district": "район базара",
+    "district": "границу района",
     "passage": "проход",
     "container": "контейнер",
 }
@@ -278,8 +278,8 @@ class MarketBoundaryMapSectionAdmin(MarketMapSectionAdmin):
 @admin.register(MarketDistrictMapSection)
 class MarketDistrictMapSectionAdmin(MarketMapSectionAdmin):
     kind = "district"
-    section_title = "Районы базаров"
-    section_help = "Отдельный раздел для крупных районов внутри выбранного базара."
+    section_title = "Границы районов"
+    section_help = "Рисуйте контуры районов внутри выбранного базара так же, как границу базара."
 
 
 @admin.register(MarketPassageMapSection)

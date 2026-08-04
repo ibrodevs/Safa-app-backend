@@ -52,7 +52,7 @@
         <h2>Разделы</h2>
         <nav class="market-map-section-nav" aria-label="Разделы редактора карты">
           <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=bazar" data-section-kind="bazar">Базары</a>
-          <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=district" data-section-kind="district">Районы базаров</a>
+          <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=district" data-section-kind="district">Границы районов</a>
           <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=passage" data-section-kind="passage">Проходы</a>
           <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=container" data-section-kind="container">Контейнеры</a>
         </nav>
@@ -82,10 +82,10 @@
 
       <section class="market-map-panel market-kind-section market-tool-district">
         <div>
-          <h2>Район базара</h2>
-          <p>Полигон внутри выбранного базара.</p>
+          <h2>Граница района</h2>
+          <p>Контур района внутри выбранного базара.</p>
         </div>
-        <button type="button" class="button" data-map-tool="draw" data-map-kind="district">Создать район</button>
+        <button type="button" class="button" data-map-tool="draw" data-map-kind="district">Создать границу</button>
       </section>
 
       <section class="market-map-panel market-kind-section market-tool-passage">
@@ -122,7 +122,7 @@
           <label for="market-feature-kind">Тип</label>
           <select id="market-feature-kind" disabled>
             <option value="bazar">Граница базара</option>
-            <option value="district">Район базара</option>
+            <option value="district">Граница района</option>
             <option value="passage">Проход</option>
             <option value="container">Контейнер</option>
           </select>
