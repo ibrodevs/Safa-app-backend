@@ -297,6 +297,14 @@ class MarketBoundaryMapSection(MarketMapRevision):
         verbose_name_plural = "Карта: границы базаров"
 
 
+class MarketDistrictMapSection(MarketMapRevision):
+    class Meta:
+        proxy = True
+        app_label = "delivery"
+        verbose_name = "Карта: район базара"
+        verbose_name_plural = "Карта: районы базаров"
+
+
 class MarketPassageMapSection(MarketMapRevision):
     class Meta:
         proxy = True

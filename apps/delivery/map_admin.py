@@ -15,6 +15,7 @@ from django.views.decorators.http import require_POST
 from .map_models import (
     MarketBoundaryMapSection,
     MarketContainerMapSection,
+    MarketDistrictMapSection,
     MarketMapRevision,
     MarketPassageMapSection,
 )
@@ -24,6 +25,7 @@ from .models import Bazar, Container, Passage
 
 MAP_SECTION_LABELS = {
     "bazar": "границу базара",
+    "district": "район базара",
     "passage": "проход",
     "container": "контейнер",
 }
@@ -271,6 +273,13 @@ class MarketBoundaryMapSectionAdmin(MarketMapSectionAdmin):
     kind = "bazar"
     section_title = "Граница базара"
     section_help = "Создавайте и редактируйте только внешний контур выбранного базара."
+
+
+@admin.register(MarketDistrictMapSection)
+class MarketDistrictMapSectionAdmin(MarketMapSectionAdmin):
+    kind = "district"
+    section_title = "Районы базаров"
+    section_help = "Отдельный раздел для крупных районов внутри выбранного базара."
 
 
 @admin.register(MarketPassageMapSection)
