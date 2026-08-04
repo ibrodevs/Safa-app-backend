@@ -48,7 +48,7 @@ STYLE_DEFAULTS = {
         "line_pattern": "dashed",
     },
     "passage": {
-        "min_zoom": 16,
+        "min_zoom": 14,
         "stroke_width": 5,
         "stroke_color": "#d97706",
         "fill_color": "#fbbf24",
@@ -57,7 +57,7 @@ STYLE_DEFAULTS = {
         "line_pattern": "solid",
     },
     "container": {
-        "min_zoom": 17,
+        "min_zoom": 15,
         "stroke_width": 2,
         "stroke_color": "#dc2626",
         "fill_color": "#ef4444",

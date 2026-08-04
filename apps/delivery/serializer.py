@@ -183,7 +183,7 @@ def get_or_create_container_ui(
 class BazarSerializer(serializers.ModelSerializer):
     class Meta:
         model = Bazar
-        fields = ["id", "name"]
+        fields = ["id", "name", "district"]
 
 
 class PassageSerializer(serializers.ModelSerializer):
@@ -198,6 +198,7 @@ class PassageSerializer(serializers.ModelSerializer):
 class ContainerSerializer(serializers.ModelSerializer):
     bazar_id = serializers.IntegerField(source="passage.bazar.id", read_only=True)
     bazar_name = serializers.CharField(source="passage.bazar.name", read_only=True)
+    bazar_district = serializers.CharField(source="passage.bazar.district", read_only=True)
     passage_id = serializers.IntegerField(source="passage.id", read_only=True)
     passage_number = serializers.CharField(source="passage.number", read_only=True)
     ui_label = serializers.SerializerMethodField()
@@ -209,6 +210,7 @@ class ContainerSerializer(serializers.ModelSerializer):
             "id",
             "bazar_id",
             "bazar_name",
+            "bazar_district",
             "passage_id",
             "passage_number",
             "number",

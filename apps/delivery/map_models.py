@@ -248,6 +248,7 @@ def build_initial_geojson(bazar: Bazar) -> dict[str, Any]:
                     "kind": "bazar",
                     "name": bazar.name,
                     "bazar_id": bazar.id,
+                    "bazar_district": bazar.district,
                     **STYLE_DEFAULTS["bazar"],
                 },
                 "geometry": {
@@ -275,6 +276,7 @@ def build_initial_geojson(bazar: Bazar) -> dict[str, Any]:
                         "title": item.title,
                         "number": item.number,
                         "bazar_id": bazar.id,
+                        "bazar_district": bazar.district,
                         "passage_id": item.passage_id,
                         "container_id": item.id,
                         **STYLE_DEFAULTS["container"],

@@ -15,6 +15,7 @@ ARRIVAL_RADIUS_M = 50
 
 class Bazar(models.Model):
     name = models.CharField(max_length=155, unique=True, verbose_name="Базар")
+    district = models.CharField(max_length=155, blank=True, verbose_name="Район")
     price_from = models.PositiveIntegerField(null=True, blank=True, verbose_name="Цена от")
     price_to = models.PositiveIntegerField(null=True, blank=True, verbose_name="Цена до")
     top_left_lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, verbose_name="Широта (верх-лево)")

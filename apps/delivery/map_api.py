@@ -39,6 +39,7 @@ class PublishedMarketMapView(APIView):
                 properties = feature.setdefault("properties", {})
                 properties.setdefault("bazar_id", revision.bazar_id)
                 properties.setdefault("bazar_name", revision.bazar.name)
+                properties.setdefault("bazar_district", revision.bazar.district)
                 features.append(feature)
             versions[str(revision.bazar_id)] = revision.version
 
