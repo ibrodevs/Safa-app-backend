@@ -84,6 +84,126 @@ class Container(models.Model):
         return self.display_title
 
 
+class AmanatCategory(models.Model):
+    name = models.CharField(max_length=80, unique=True, verbose_name="Категория")
+    slug = models.SlugField(max_length=90, unique=True, verbose_name="Slug")
+    sort_order = models.PositiveSmallIntegerField(default=0, verbose_name="Порядок")
+    is_active = models.BooleanField(default=True, verbose_name="Активна")
+
+    class Meta:
+        ordering = ("sort_order", "name")
+        verbose_name = "Аманат категория"
+        verbose_name_plural = "Аманат категории"
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class AmanatCampaign(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Черновик"
+        ACTIVE = "active", "Активен"
+        COMPLETED = "completed", "Завершён"
+        CANCELED = "canceled", "Отменён"
+
+    category = models.ForeignKey(
+        AmanatCategory,
+        on_delete=models.PROTECT,
+        related_name="campaigns",
+        verbose_name="Категория",
+    )
+    title = models.CharField(max_length=180, verbose_name="Название")
+    short_title = models.CharField(max_length=180, blank=True, verbose_name="Короткое название")
+    description = models.TextField(verbose_name="Описание")
+    goal = models.CharField(max_length=255, blank=True, verbose_name="Цель")
+    needed_amount = models.PositiveIntegerField(validators=[MinValueValidator(1)], verbose_name="Нужно собрать")
+    collected_amount_manual = models.PositiveIntegerField(default=0, verbose_name="Собрано вручную")
+    safa_amount = models.PositiveIntegerField(default=0, verbose_name="Начисления Safa")
+    helpers_count_manual = models.PositiveIntegerField(default=0, verbose_name="Помогли вручную")
+    cover_image = models.ImageField(upload_to="amanat/campaigns/", null=True, blank=True, verbose_name="Фото")
+    ends_at = models.DateField(null=True, blank=True, verbose_name="Дата завершения")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE, verbose_name="Статус")
+    is_featured = models.BooleanField(default=False, verbose_name="Главный сбор")
+    sort_order = models.PositiveSmallIntegerField(default=0, verbose_name="Порядок")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Изменён")
+
+    class Meta:
+        ordering = ("sort_order", "-created_at")
+        verbose_name = "Аманат сбор"
+        verbose_name_plural = "Аманат сборы"
+
+    def __str__(self) -> str:
+        return self.title
+
+    @property
+    def paid_donations_amount(self) -> int:
+        value = self.donations.filter(status=AmanatDonation.Status.PAID).aggregate(
+            total=models.Sum("amount")
+        )["total"]
+        return int(value or 0)
+
+    @property
+    def voluntary_amount(self) -> int:
+        return int(self.collected_amount_manual or 0) + self.paid_donations_amount
+
+    @property
+    def collected_amount(self) -> int:
+        return self.voluntary_amount + int(self.safa_amount or 0)
+
+    @property
+    def remaining_amount(self) -> int:
+        return max(int(self.needed_amount or 0) - self.collected_amount, 0)
+
+    @property
+    def helpers_count(self) -> int:
+        paid_count = self.donations.filter(status=AmanatDonation.Status.PAID).count()
+        return int(self.helpers_count_manual or 0) + paid_count
+
+
+class AmanatDonation(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "В ожидании"
+        PAID = "paid", "Оплачено"
+        FAILED = "failed", "Ошибка"
+        CANCELED = "canceled", "Отменено"
+
+    campaign = models.ForeignKey(
+        AmanatCampaign,
+        on_delete=models.CASCADE,
+        related_name="donations",
+        verbose_name="Сбор",
+    )
+    donor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="amanat_donations",
+        verbose_name="Пользователь",
+    )
+    donor_label = models.CharField(max_length=120, blank=True, verbose_name="Имя/телефон для отображения")
+    amount = models.PositiveIntegerField(validators=[MinValueValidator(1)], verbose_name="Сумма")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PAID, verbose_name="Статус")
+    is_anonymous = models.BooleanField(default=False, verbose_name="Анонимно")
+    comment = models.CharField(max_length=255, blank=True, verbose_name="Комментарий")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
+    paid_at = models.DateTimeField(null=True, blank=True, verbose_name="Оплачено в")
+
+    class Meta:
+        ordering = ("-created_at",)
+        verbose_name = "Аманат пожертвование"
+        verbose_name_plural = "Аманат пожертвования"
+
+    def save(self, *args, **kwargs):
+        if self.status == self.Status.PAID and self.paid_at is None:
+            self.paid_at = timezone.now()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.campaign} · {self.amount} сом"
+
+
 class GlobalDeliveryConfig(models.Model):
     """Глобальные настройки доставки (Одиночка)"""
     base_price = models.DecimalField(max_digits=10, decimal_places=2, default=50, verbose_name="Базовая стоимость")

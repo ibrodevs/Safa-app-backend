@@ -3,6 +3,9 @@ from django import forms
 from django.core.exceptions import ValidationError
 
 from .models import (
+    AmanatCampaign,
+    AmanatCategory,
+    AmanatDonation,
     GlobalDeliveryConfig,
     Shipment,
     ShipmentStop,
@@ -47,6 +50,70 @@ class ContainerAdmin(admin.ModelAdmin):
     @admin.display(description="Базар")
     def bazar_name(self, obj: Container) -> str:
         return obj.passage.bazar.name
+
+
+@admin.register(AmanatCategory)
+class AmanatCategoryAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "slug", "sort_order", "is_active")
+    list_editable = ("sort_order", "is_active")
+    prepopulated_fields = {"slug": ("name",)}
+    search_fields = ("name", "slug")
+    ordering = ("sort_order", "name")
+
+
+class AmanatDonationInline(admin.TabularInline):
+    model = AmanatDonation
+    extra = 0
+    fields = ("donor", "donor_label", "amount", "status", "is_anonymous", "created_at", "paid_at")
+    readonly_fields = ("created_at", "paid_at")
+    autocomplete_fields = ("donor",)
+    ordering = ("-created_at",)
+
+
+@admin.register(AmanatCampaign)
+class AmanatCampaignAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "title",
+        "category",
+        "status",
+        "needed_amount",
+        "collected_amount_display",
+        "helpers_count_display",
+        "is_featured",
+        "sort_order",
+    )
+    list_filter = ("status", "is_featured", "category")
+    list_editable = ("status", "is_featured", "sort_order")
+    search_fields = ("title", "short_title", "description")
+    autocomplete_fields = ("category",)
+    readonly_fields = ("created_at", "updated_at", "collected_amount_display", "helpers_count_display")
+    inlines = (AmanatDonationInline,)
+    ordering = ("sort_order", "-created_at")
+    fieldsets = (
+        ("Основное", {"fields": ("category", "title", "short_title", "description", "goal", "cover_image")}),
+        ("Суммы", {"fields": ("needed_amount", "collected_amount_manual", "safa_amount", "helpers_count_manual")}),
+        ("Публикация", {"fields": ("status", "is_featured", "sort_order", "ends_at")}),
+        ("Служебное", {"fields": ("collected_amount_display", "helpers_count_display", "created_at", "updated_at")}),
+    )
+
+    @admin.display(description="Собрано")
+    def collected_amount_display(self, obj: AmanatCampaign) -> int:
+        return obj.collected_amount
+
+    @admin.display(description="Помогли")
+    def helpers_count_display(self, obj: AmanatCampaign) -> int:
+        return obj.helpers_count
+
+
+@admin.register(AmanatDonation)
+class AmanatDonationAdmin(admin.ModelAdmin):
+    list_display = ("id", "campaign", "donor", "amount", "status", "is_anonymous", "created_at", "paid_at")
+    list_filter = ("status", "is_anonymous", "campaign")
+    search_fields = ("campaign__title", "donor__phone_number", "donor_label")
+    autocomplete_fields = ("campaign", "donor")
+    readonly_fields = ("created_at", "paid_at")
+    ordering = ("-created_at",)
 
 
 @admin.register(GlobalDeliveryConfig)

@@ -10,6 +10,9 @@ from rest_framework import serializers
 from apps.delivery.geo import haversine_m
 from .geocoding import GeocodeNotFound, twogis_resolve_best
 from .models import (
+    AmanatCampaign,
+    AmanatCategory,
+    AmanatDonation,
     Bazar,
     Container,
     Passage,
@@ -222,6 +225,110 @@ class ContainerSerializer(serializers.ModelSerializer):
 
     def get_display_title(self, obj: Container) -> str:
         return obj.display_title
+
+
+def mask_amanat_donor_label(value: str | None) -> str:
+    text = (value or "").strip()
+    if not text:
+        return "Анонимный пользователь"
+    if not text.startswith("+"):
+        return text
+    digits = "".join(ch for ch in text if ch.isdigit())
+    if len(digits) < 6:
+        return "Анонимный пользователь"
+    return f"+{digits[:3]} *** ** {digits[-3:]}"
+
+
+class AmanatCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AmanatCategory
+        fields = ["id", "name", "slug"]
+
+
+class AmanatDonationSerializer(serializers.ModelSerializer):
+    donor_label = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AmanatDonation
+        fields = ["id", "donor_label", "amount", "status", "created_at", "paid_at"]
+        read_only_fields = fields
+
+    def get_donor_label(self, obj: AmanatDonation) -> str:
+        if obj.is_anonymous:
+            return "Анонимный пользователь"
+        if obj.donor_label:
+            return mask_amanat_donor_label(obj.donor_label)
+        phone = getattr(obj.donor, "phone_number", "") if obj.donor_id else ""
+        name = " ".join(
+            part
+            for part in (
+                getattr(obj.donor, "first_name", "") if obj.donor_id else "",
+                getattr(obj.donor, "last_name", "") if obj.donor_id else "",
+            )
+            if part
+        )
+        return name or mask_amanat_donor_label(phone)
+
+
+class AmanatCampaignSerializer(serializers.ModelSerializer):
+    category_id = serializers.IntegerField(source="category.id", read_only=True)
+    category_name = serializers.CharField(source="category.name", read_only=True)
+    category_slug = serializers.CharField(source="category.slug", read_only=True)
+    cover_image_url = serializers.SerializerMethodField()
+    collected_amount = serializers.IntegerField(read_only=True)
+    voluntary_amount = serializers.IntegerField(read_only=True)
+    remaining_amount = serializers.IntegerField(read_only=True)
+    helpers_count = serializers.IntegerField(read_only=True)
+    progress = serializers.SerializerMethodField()
+    latest_donations = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AmanatCampaign
+        fields = [
+            "id",
+            "category_id",
+            "category_name",
+            "category_slug",
+            "title",
+            "short_title",
+            "description",
+            "goal",
+            "needed_amount",
+            "collected_amount",
+            "voluntary_amount",
+            "safa_amount",
+            "remaining_amount",
+            "helpers_count",
+            "cover_image_url",
+            "ends_at",
+            "status",
+            "is_featured",
+            "progress",
+            "latest_donations",
+        ]
+        read_only_fields = fields
+
+    def get_cover_image_url(self, obj: AmanatCampaign) -> str:
+        if not obj.cover_image:
+            return ""
+        request = self.context.get("request")
+        url = obj.cover_image.url
+        return request.build_absolute_uri(url) if request else url
+
+    def get_progress(self, obj: AmanatCampaign) -> float:
+        if not obj.needed_amount:
+            return 0
+        return min(obj.collected_amount / obj.needed_amount, 1)
+
+    def get_latest_donations(self, obj: AmanatCampaign):
+        qs = obj.donations.filter(status=AmanatDonation.Status.PAID).select_related("donor")[:5]
+        return AmanatDonationSerializer(qs, many=True, context=self.context).data
+
+
+class AmanatDonateSerializer(serializers.Serializer):
+    amount = serializers.IntegerField(min_value=1)
+    is_anonymous = serializers.BooleanField(required=False, default=False)
+    comment = serializers.CharField(required=False, allow_blank=True, max_length=255)
 
 
 class ShipmentStopInSerializer(serializers.Serializer):

@@ -31,9 +31,13 @@ from apps.payments.models import PaymentAttempt
 from apps.users.models import User, UserProfile
 from .geocoding import twogis_autocomplete
 from .geo import polyline_len_km, is_in_bishkek
-from .models import Bazar, Container, GlobalDeliveryConfig, Passage, Shipment
+from .models import AmanatCampaign, AmanatCategory, AmanatDonation, Bazar, Container, GlobalDeliveryConfig, Passage, Shipment
 from .pagination import StandardResultsSetPagination
 from .serializer import (
+    AmanatCampaignSerializer,
+    AmanatCategorySerializer,
+    AmanatDonateSerializer,
+    AmanatDonationSerializer,
     BazarSerializer,
     ContainerSerializer,
     PassageSerializer,
@@ -211,6 +215,76 @@ class ContainerViewSet(viewsets.ReadOnlyModelViewSet):
         except (TypeError, ValueError):
             pass
         return qs
+
+
+@extend_schema_view(
+    list=extend_schema(tags=["Amanat"], summary="Категории Safa Amanat"),
+)
+class AmanatCategoryViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = AmanatCategory.objects.filter(is_active=True).order_by("sort_order", "name")
+    serializer_class = AmanatCategorySerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
+
+@extend_schema_view(
+    list=extend_schema(
+        tags=["Amanat"],
+        summary="Активные сборы Safa Amanat",
+        parameters=[
+            OpenApiParameter(name="category", required=False, type=str, description="slug категории"),
+            OpenApiParameter(name="featured", required=False, type=bool, description="Только главный сбор"),
+        ],
+        responses=AmanatCampaignSerializer,
+    ),
+    retrieve=extend_schema(tags=["Amanat"], responses=AmanatCampaignSerializer),
+)
+class AmanatCampaignViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = (
+        AmanatCampaign.objects.select_related("category")
+        .prefetch_related("donations", "donations__donor")
+        .filter(status=AmanatCampaign.Status.ACTIVE)
+        .order_by("sort_order", "-created_at")
+    )
+    serializer_class = AmanatCampaignSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        category = (self.request.query_params.get("category") or "").strip()
+        if category:
+            qs = qs.filter(category__slug=category)
+        featured = (self.request.query_params.get("featured") or "").strip().lower()
+        if featured in ("1", "true", "yes"):
+            qs = qs.filter(is_featured=True)
+        return qs
+
+    @extend_schema(
+        tags=["Amanat"],
+        request=AmanatDonateSerializer,
+        responses={201: AmanatDonationSerializer},
+    )
+    @action(detail=True, methods=["post"])
+    def donate(self, request, pk=None):
+        campaign = self.get_object()
+        serializer = AmanatDonateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = request.user if request.user.is_authenticated else None
+        donor_label = getattr(user, "phone_number", "") if user else ""
+        donation = AmanatDonation.objects.create(
+            campaign=campaign,
+            donor=user,
+            donor_label=donor_label,
+            amount=serializer.validated_data["amount"],
+            is_anonymous=serializer.validated_data.get("is_anonymous", False),
+            comment=serializer.validated_data.get("comment", ""),
+            status=AmanatDonation.Status.PAID,
+        )
+        return Response(
+            AmanatDonationSerializer(donation, context=self.get_serializer_context()).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 @extend_schema_view(
