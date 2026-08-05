@@ -10,7 +10,7 @@ phone_re = RegexValidator(
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('id', 'role', 'first_name', 'phone_number', 'city')
+        fields = ('id', 'role', 'specialist_type', 'first_name', 'phone_number', 'city')
         read_only_fields = ('id', 'role', 'phone_number')
 
     def get_kyc(self, obj):
@@ -38,7 +38,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         model = User
         fields = (
             "phone_number", "first_name", "avatar",
-            "role", "id_front", "id_back", "password", "password_confirm",
+            "role", "specialist_type", "id_front", "id_back", "password", "password_confirm",
         )
         extra_kwargs = {
             "phone_number": {"validators": [phone_re]},
@@ -53,6 +53,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         role = attrs.get("role", User.Roles.CLIENT)
         if role == User.Roles.CARRIER:
+            attrs["specialist_type"] = attrs.get("specialist_type") or User.SpecialistType.DELIVERY
             from apps.users.utlis import is_static_otp_phone
             phone = attrs.get("phone_number")
             
@@ -82,6 +83,8 @@ class RegisterSerializer(serializers.ModelSerializer):
         from apps.users.utlis import is_static_otp_phone
         if is_static_otp_phone(user.phone_number):
             user.is_verify = True
+        elif user.role == User.Roles.CARRIER:
+            user.is_active = False
         
         try:
             user.save()
@@ -105,6 +108,8 @@ class RegisterSerializer(serializers.ModelSerializer):
             from apps.users.utlis import is_static_otp_phone
             if is_static_otp_phone(user.phone_number):
                 kyc.status = CourierKYC.Status.APPROVED
+                user.is_active = True
+                user.save(update_fields=["is_active"])
                 changed.append("status")
             elif changed or kyc.status != CourierKYC.Status.PENDING:
                 kyc.status = CourierKYC.Status.PENDING
@@ -180,6 +185,7 @@ class VerifyCodeSerializer(serializers.Serializer):
 
 class UserProfileSerializer(serializers.ModelSerializer):
     role = serializers.CharField(source='user.role', read_only=True)
+    specialist_type = serializers.CharField(source='user.specialist_type', read_only=True)
     phone_number = serializers.CharField(source='user.phone_number', read_only=True)
     first_name = serializers.CharField(source='user.first_name', required=False)
     avatar = serializers.ImageField(source='user.avatar', required=False, allow_null=True)
@@ -189,6 +195,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = UserProfile
         fields = (
             'role',
+            'specialist_type',
             'phone_number',
             'first_name',
             'city',

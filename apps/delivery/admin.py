@@ -11,18 +11,51 @@ from .models import (
     ShipmentStop,
     CourierPosition,
     Bazar,
+    DeliveryDistrict,
     Passage,
     Container,
 )
 
 
+@admin.register(DeliveryDistrict)
+class DeliveryDistrictAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "fixed_price", "base_price", "per_km_price", "min_fare", "is_active")
+    list_editable = ("fixed_price", "is_active")
+    search_fields = ("name",)
+    list_filter = ("is_active",)
+    ordering = ("name",)
+    fieldsets = (
+        ("Район", {"fields": ("name", "is_active")}),
+        (
+            "Фиксированная цена",
+            {
+                "fields": ("fixed_price",),
+                "description": "Используется для заказов, где точки находятся внутри базаров этого района, если у самого базара не задана своя цена.",
+            },
+        ),
+        ("Километраж", {"fields": ("base_price", "per_km_price", "min_fare")}),
+    )
+
+
 @admin.register(Bazar)
 class BazarAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "district", "price_from", "price_to")
-    search_fields = ("name", "district")
-    list_filter = ("district",)
+    list_display = ("id", "name", "district", "district_tariff", "fixed_price", "price_from", "price_to")
+    search_fields = ("name", "district", "district_tariff__name")
+    list_filter = ("district", "district_tariff")
     ordering = ("name",)
-    fields = ("name", "district", "price_from", "price_to", "top_left_lat", "top_left_lon", "bottom_right_lat", "bottom_right_lon")
+    autocomplete_fields = ("district_tariff",)
+    fields = (
+        "name",
+        "district",
+        "district_tariff",
+        "fixed_price",
+        "price_from",
+        "price_to",
+        "top_left_lat",
+        "top_left_lon",
+        "bottom_right_lat",
+        "bottom_right_lon",
+    )
 
 
 @admin.register(Passage)

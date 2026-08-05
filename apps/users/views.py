@@ -172,6 +172,24 @@ class VerifyCodeView(generics.GenericAPIView):
             user.is_verify = True
             user.save(update_fields=["is_verify"])
 
+        if user.role == User.Roles.CARRIER and not user.is_active:
+            kyc = getattr(user, "kyc", None)
+            kyc_status = kyc.status if kyc else CourierKYC.Status.PENDING
+            detail = "Ваши данные на проверке."
+            if kyc_status == CourierKYC.Status.REJECTED:
+                detail = "Ваши данные отклонены."
+
+            return Response(
+                {
+                    "detail": detail,
+                    "status": kyc_status,
+                    "user_id": user.id,
+                    "is_verify": user.is_verify,
+                    "comment": getattr(kyc, "comment", "") if kyc else "",
+                },
+                status=403,
+            )
+
         refresh = RefreshToken.for_user(user)
         access = refresh.access_token
 

@@ -35,10 +35,21 @@ class User(AbstractUser):
     email = models.EmailField(blank=True, null=True)
 
     class Roles(models.TextChoices):
-        CARRIER = "carrier", "Тачкист"
+        CARRIER = "carrier", "Специалист"
         CLIENT = "client", "Клиент"
 
+    class SpecialistType(models.TextChoices):
+        CART = "cart", "Тачкист"
+        DELIVERY = "delivery", "Доставщик"
+
     role = models.CharField(max_length=16, choices=Roles.choices, default=Roles.CLIENT)
+    specialist_type = models.CharField(
+        max_length=16,
+        choices=SpecialistType.choices,
+        null=True,
+        blank=True,
+        verbose_name="Тип специалиста",
+    )
     first_name = models.CharField(max_length=155, verbose_name='Имя')
     phone_number = models.CharField(unique=True, max_length=13, validators=[phone_re])
     avatar = models.ImageField(upload_to='avatars/', verbose_name='Аватарка', null=True, blank=True)
@@ -76,6 +87,10 @@ class CourierKYC(models.Model):
 
     def __str__(self):
         return f"KYC {self.user_id}: {self.status}"
+
+    class Meta:
+        verbose_name = "Заявка специалиста"
+        verbose_name_plural = "Заявки специалистов"
 
 
 

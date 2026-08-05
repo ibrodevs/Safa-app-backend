@@ -15,6 +15,7 @@ class UserCreationForm(forms.ModelForm):
             "phone_number",
             "first_name",
             "role",
+            "specialist_type",
             "city",
             "is_verify",
             "avatar",
@@ -41,6 +42,7 @@ class UserChangeForm(forms.ModelForm):
             "phone_number",
             "first_name",
             "role",
+            "specialist_type",
             "city",
             "is_verify",
             "avatar",
@@ -79,19 +81,20 @@ class UserAdmin(BaseUserAdmin):
         "phone_number",
         "first_name",
         "role",
+        "specialist_type",
         "city",
         "is_verify",
         "is_staff",
         "is_superuser",
         "created_at",
     )
-    list_filter = ("role", "is_verify", "is_staff", "is_superuser", "created_at")
+    list_filter = ("role", "specialist_type", "is_verify", "is_staff", "is_superuser", "created_at")
     search_fields = ("phone_number", "first_name")
     ordering = ("-created_at",)
 
     fieldsets = (
         ("Учётные данные", {"fields": ("phone_number",)}),
-        ("Личные данные", {"fields": ("first_name", "avatar", "role", "city", "is_verify")}),
+        ("Личные данные", {"fields": ("first_name", "avatar", "role", "specialist_type", "city", "is_verify")}),
         ("Служебное", {"fields": ("last_login", "created_at")}),
     )
     add_fieldsets = (
@@ -103,6 +106,7 @@ class UserAdmin(BaseUserAdmin):
                     "phone_number",
                     "first_name",
                     "role",
+                    "specialist_type",
                     "city",
                     "is_verify",
                     "avatar",
@@ -144,26 +148,63 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(CourierKYC)
 class CourierKYCAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "status", "checked_at", "created_at")
-    list_filter = ("status", "created_at")
+    list_display = ("id", "user", "specialist_type", "status", "checked_at", "created_at")
+    list_filter = ("status", "user__specialist_type", "created_at")
     search_fields = ("user__phone_number", "user__first_name")
     readonly_fields = ("created_at",)
 
     actions = ["mark_approved", "mark_rejected", "mark_pending"]
 
+    @admin.display(description="Тип")
+    def specialist_type(self, obj: CourierKYC) -> str:
+        return obj.user.get_specialist_type_display() or "—"
+
+    def _sync_user_access(self, kyc: CourierKYC) -> None:
+        user = kyc.user
+        if kyc.status == CourierKYC.Status.APPROVED:
+            user.is_active = True
+            user.is_verify = True
+        elif kyc.status in (CourierKYC.Status.PENDING, CourierKYC.Status.REJECTED):
+            user.is_active = False
+        user.save(update_fields=["is_active", "is_verify"])
+
+    def save_model(self, request, obj, form, change):
+        if "status" in form.changed_data:
+            obj.checked_at = timezone.now() if obj.status != CourierKYC.Status.PENDING else None
+        super().save_model(request, obj, form, change)
+        self._sync_user_access(obj)
+
     @admin.action(description="Одобрить KYC")
     def mark_approved(self, request, queryset):
-        updated = queryset.update(status=CourierKYC.Status.APPROVED, checked_at=timezone.now())
+        updated = 0
+        for kyc in queryset.select_related("user"):
+            kyc.status = CourierKYC.Status.APPROVED
+            kyc.checked_at = timezone.now()
+            kyc.save(update_fields=["status", "checked_at"])
+            self._sync_user_access(kyc)
+            updated += 1
         self.message_user(request, f"Одобрено: {updated}")
 
     @admin.action(description="Отклонить KYC")
     def mark_rejected(self, request, queryset):
-        updated = queryset.update(status=CourierKYC.Status.REJECTED, checked_at=timezone.now())
+        updated = 0
+        for kyc in queryset.select_related("user"):
+            kyc.status = CourierKYC.Status.REJECTED
+            kyc.checked_at = timezone.now()
+            kyc.save(update_fields=["status", "checked_at"])
+            self._sync_user_access(kyc)
+            updated += 1
         self.message_user(request, f"Отклонено: {updated}")
 
     @admin.action(description="Вернуть на проверку")
     def mark_pending(self, request, queryset):
-        updated = queryset.update(status=CourierKYC.Status.PENDING, checked_at=None)
+        updated = 0
+        for kyc in queryset.select_related("user"):
+            kyc.status = CourierKYC.Status.PENDING
+            kyc.checked_at = None
+            kyc.save(update_fields=["status", "checked_at"])
+            self._sync_user_access(kyc)
+            updated += 1
         self.message_user(request, f"На проверке: {updated}")
 
 

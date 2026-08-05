@@ -13,9 +13,61 @@ from .geo import polyline_len_km, haversine_m
 ARRIVAL_RADIUS_M = 50
 
 
+class DeliveryDistrict(models.Model):
+    name = models.CharField(max_length=155, unique=True, verbose_name="Район")
+    fixed_price = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Фиксированная цена внутри района",
+    )
+    base_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Базовая стоимость района",
+    )
+    per_km_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Стоимость за км в районе",
+    )
+    min_fare = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Минималка района",
+    )
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "Тариф района"
+        verbose_name_plural = "Тарифы районов"
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class Bazar(models.Model):
     name = models.CharField(max_length=155, unique=True, verbose_name="Базар")
     district = models.CharField(max_length=155, blank=True, verbose_name="Район")
+    district_tariff = models.ForeignKey(
+        DeliveryDistrict,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bazars",
+        verbose_name="Тариф района",
+    )
+    fixed_price = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Фиксированная цена базара",
+    )
     price_from = models.PositiveIntegerField(null=True, blank=True, verbose_name="Цена от")
     price_to = models.PositiveIntegerField(null=True, blank=True, verbose_name="Цена до")
     top_left_lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True, verbose_name="Широта (верх-лево)")
@@ -30,6 +82,16 @@ class Bazar(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    @property
+    def effective_fixed_price(self) -> int | None:
+        if self.fixed_price is not None:
+            return int(self.fixed_price)
+        if self.price_from is not None:
+            return int(self.price_from)
+        if self.district_tariff and self.district_tariff.fixed_price is not None:
+            return int(self.district_tariff.fixed_price)
+        return None
 
 
 class Passage(models.Model):
@@ -320,45 +382,52 @@ class Shipment(models.Model):
 
     def estimate(self) -> int:
         self.distance_km = self.route_distance_km()
-        
-        bazar_prices = []
+
+        fixed_prices: list[int] = []
         bazaars_with_coords = None
-        
         all_stops_in_bazar = True
 
         for stop in self.stops.all():
             stop_matched = False
-            
-            if stop.container_id and stop.container.passage.bazar.price_from is not None:
-                bazar_prices.append(stop.container.passage.bazar.price_from)
-                stop_matched = True
-            elif stop.lat is not None and stop.lon is not None:
+
+            if stop.container_id:
+                bazar = stop.container.passage.bazar
+                price = bazar.effective_fixed_price
+                if price is not None:
+                    fixed_prices.append(price)
+                    stop_matched = True
+
+            if not stop_matched and stop.lat is not None and stop.lon is not None:
                 if bazaars_with_coords is None:
-                    bazaars_with_coords = Bazar.objects.filter(
+                    bazaars_with_coords = Bazar.objects.select_related(
+                        "district_tariff",
+                    ).filter(
                         top_left_lat__isnull=False,
                         top_left_lon__isnull=False,
                         bottom_right_lat__isnull=False,
-                        bottom_right_lon__isnull=False
+                        bottom_right_lon__isnull=False,
                     )
-                
+
                 # Проверка вхождения координаты в прямоугольник базара
                 for bazar in bazaars_with_coords:
                     if (bazar.bottom_right_lat <= stop.lat <= bazar.top_left_lat) and \
                        (bazar.top_left_lon <= stop.lon <= bazar.bottom_right_lon):
-                        if bazar.price_from is not None:
-                            bazar_prices.append(bazar.price_from)
+                        price = bazar.effective_fixed_price
+                        if price is not None:
+                            fixed_prices.append(price)
                             stop_matched = True
                         break
-                        
+
             if not stop_matched:
                 all_stops_in_bazar = False
 
-        # Если ВСЕ точки маршрута находятся внутри базаров - берем максимальную цену базара
-        if all_stops_in_bazar and bazar_prices:
-            self.estimated_fare = max(bazar_prices)
+        # Если все точки маршрута внутри базаров, берём максимальный
+        # фиксированный тариф базара/района среди точек.
+        if all_stops_in_bazar and fixed_prices:
+            self.estimated_fare = max(fixed_prices)
             return self.estimated_fare
-
-        # Иначе (кто-то за пределами базара) - считаем по километражу
+        
+        # Иначе кто-то за пределами базара — считаем по километражу.
         config = GlobalDeliveryConfig.get_config()
         base_price = Decimal(config.base_price)
         per_km_price = Decimal(config.per_km_price)

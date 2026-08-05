@@ -70,11 +70,53 @@ def _complete_shipment_if_needed(s: Shipment) -> None:
     if s.status == Shipment.Status.COMPLETED:
         if not s.finished_at:
             s.finalize()
-            s.save(update_fields=["final_fare", "finished_at"])
+        s.save(update_fields=["final_fare", "finished_at"])
         return
     s.status = Shipment.Status.COMPLETED
     s.finalize()
     s.save(update_fields=["status", "final_fare", "finished_at"])
+
+
+def _point_inside_bazar(lat, lon) -> bool:
+    if lat is None or lon is None:
+        return False
+    return Bazar.objects.filter(
+        top_left_lat__isnull=False,
+        top_left_lon__isnull=False,
+        bottom_right_lat__isnull=False,
+        bottom_right_lon__isnull=False,
+        bottom_right_lat__lte=lat,
+        top_left_lat__gte=lat,
+        top_left_lon__lte=lon,
+        bottom_right_lon__gte=lon,
+    ).exists()
+
+
+def _shipment_all_stops_in_bazars(shipment: Shipment) -> bool:
+    stops = list(shipment.stops.all())
+    if not stops:
+        return False
+    for stop in stops:
+        if stop.container_id:
+            continue
+        if not _point_inside_bazar(stop.lat, stop.lon):
+            return False
+    return True
+
+
+def _shipment_matches_specialist(shipment: Shipment, user: User) -> bool:
+    specialist_type = getattr(user, "specialist_type", None)
+    if specialist_type == User.SpecialistType.CART:
+        return (
+            shipment.service_type == Shipment.ServiceType.CARS
+            and _shipment_all_stops_in_bazars(shipment)
+        )
+    if specialist_type == User.SpecialistType.DELIVERY:
+        return shipment.service_type in (
+            Shipment.ServiceType.DELIVERY,
+            Shipment.ServiceType.AMANAT,
+        )
+    return True
 
 
 def _increment_carrier_rating(shipment: Shipment) -> None:
@@ -395,6 +437,8 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 )
             if shipment.status != Shipment.Status.PENDING or shipment.carrier_id is not None:
                 return response.Response({"detail": "already_accepted"}, status=status.HTTP_409_CONFLICT)
+            if not _shipment_matches_specialist(shipment, user):
+                return response.Response({"detail": "unsupported_specialist_type"}, status=status.HTTP_403_FORBIDDEN)
 
             shipment.carrier = user
             shipment.status = Shipment.Status.ASSIGNED
@@ -597,7 +641,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         for s in qs:
             first_stop = s.stops.order_by("position").first()
             if first_stop and first_stop.lat and first_stop.lon:
-                if is_in_bishkek(float(first_stop.lat), float(first_stop.lon)):
+                if is_in_bishkek(float(first_stop.lat), float(first_stop.lon)) and _shipment_matches_specialist(s, request.user):
                     filtered_ids.append(s.id)
         
         qs = qs.filter(id__in=filtered_ids)
