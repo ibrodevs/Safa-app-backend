@@ -1,18 +1,32 @@
 import pytest
 from rest_framework.test import APIClient
 
-from apps.delivery.models import Shipment, ShipmentStop
+from apps.delivery.models import Bazar, Shipment, ShipmentStop
 from apps.users.models import User
 
 
-def _user(phone: str, role: str = User.Roles.CLIENT) -> User:
+def _user(phone: str, role: str = User.Roles.CLIENT, specialist_type: str | None = None) -> User:
     return User.objects.create_user(
         phone_number=phone,
         password="pass12345",
         first_name="User",
         role=role,
+        specialist_type=specialist_type,
         is_verify=True,
     )
+
+
+def _bazar() -> Bazar:
+    return Bazar.objects.get_or_create(
+        name="Тестовый базар",
+        defaults={
+            "top_left_lat": 42.90,
+            "top_left_lon": 74.58,
+            "bottom_right_lat": 42.85,
+            "bottom_right_lon": 74.64,
+            "price_from": 100,
+        },
+    )[0]
 
 
 def _shipment(client: User, title: str, status: str = Shipment.Status.PENDING) -> Shipment:
@@ -45,8 +59,9 @@ def test_client_list_does_not_show_demo_shipments():
 
 @pytest.mark.django_db
 def test_nearby_does_not_show_demo_shipments_to_carrier():
+    _bazar()
     order_client = _user("996700555202")
-    carrier = _user("996700555203", role=User.Roles.CARRIER)
+    carrier = _user("996700555203", role=User.Roles.CARRIER, specialist_type=User.SpecialistType.DELIVERY)
     _shipment(order_client, "DEMO Аманат: контейнеры Дордой")
     visible = _shipment(order_client, "Реальный свободный заказ")
 
@@ -62,6 +77,7 @@ def test_nearby_does_not_show_demo_shipments_to_carrier():
 
 @pytest.mark.django_db
 def test_cars_shipment_accepts_long_route():
+    _bazar()
     user = _user("996700555204")
     client = APIClient()
     client.force_authenticate(user=user)

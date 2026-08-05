@@ -15,6 +15,7 @@ urlpatterns = [
     path("geo/reverse/", ReverseGeocodeView.as_view()),
     path("geo/autocomplete/", AutocompleteView.as_view()),
     path("map/features/", PublishedMarketMapView.as_view(), name="published-market-map"),
+    path("position/", CourierPositionView.as_view(), name="courier-position"),
     path("stats/", CarrierDailyStatsView.as_view(), name="carrier-daily-stats"),
     path("support/", SupportView.as_view(), name="support"),
     path("", include(router.urls)),

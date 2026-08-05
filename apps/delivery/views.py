@@ -30,8 +30,8 @@ from apps.notification.events import notify_shipment_offer_for_carrier, notify_s
 from apps.payments.models import PaymentAttempt
 from apps.users.models import User, UserProfile
 from .geocoding import twogis_autocomplete
-from .geo import polyline_len_km, is_in_bishkek
-from .models import AmanatCampaign, AmanatCategory, AmanatDonation, Bazar, Container, GlobalDeliveryConfig, Passage, Shipment
+from .geo import haversine_m, polyline_len_km, is_in_bishkek
+from .models import AmanatCampaign, AmanatCategory, AmanatDonation, Bazar, Container, CourierPosition, GlobalDeliveryConfig, Passage, Shipment
 from .pagination import StandardResultsSetPagination
 from .serializer import (
     AmanatCampaignSerializer,
@@ -48,6 +48,7 @@ from .serializer import (
     ShipmentDetailSerializer,
     ShipmentNearbySerializer,
 )
+from .specialists import shipment_matches_specialist
 from .stats import carrier_daily_stats_with_change
 
 logger = logging.getLogger(__name__)
@@ -90,46 +91,34 @@ def _complete_shipment_if_needed(s: Shipment) -> None:
     s.save(update_fields=["status", "final_fare", "finished_at"])
 
 
-def _point_inside_bazar(lat, lon) -> bool:
-    if lat is None or lon is None:
-        return False
-    return Bazar.objects.filter(
-        top_left_lat__isnull=False,
-        top_left_lon__isnull=False,
-        bottom_right_lat__isnull=False,
-        bottom_right_lon__isnull=False,
-        bottom_right_lat__lte=lat,
-        top_left_lat__gte=lat,
-        top_left_lon__lte=lon,
-        bottom_right_lon__gte=lon,
-    ).exists()
+def _quote_fixed_bazar_fare(stops: list[dict]) -> int | None:
+    bazaars = list(
+        Bazar.objects.select_related("district_tariff").filter(
+            top_left_lat__isnull=False,
+            top_left_lon__isnull=False,
+            bottom_right_lat__isnull=False,
+            bottom_right_lon__isnull=False,
+        )
+    )
+    if not bazaars:
+        return None
 
-
-def _shipment_all_stops_in_bazars(shipment: Shipment) -> bool:
-    stops = list(shipment.stops.all())
-    if not stops:
-        return False
+    prices: list[int] = []
     for stop in stops:
-        if stop.container_id:
-            continue
-        if not _point_inside_bazar(stop.lat, stop.lon):
-            return False
-    return True
+        lat = stop.get("lat")
+        lon = stop.get("lon")
+        matched_price = None
+        for bazar in bazaars:
+            if (float(bazar.bottom_right_lat) <= lat <= float(bazar.top_left_lat)) and (
+                float(bazar.top_left_lon) <= lon <= float(bazar.bottom_right_lon)
+            ):
+                matched_price = bazar.effective_fixed_price
+                break
+        if matched_price is None:
+            return None
+        prices.append(int(matched_price))
 
-
-def _shipment_matches_specialist(shipment: Shipment, user: User) -> bool:
-    specialist_type = getattr(user, "specialist_type", None)
-    if specialist_type == User.SpecialistType.CART:
-        return (
-            shipment.service_type == Shipment.ServiceType.CARS
-            and _shipment_all_stops_in_bazars(shipment)
-        )
-    if specialist_type == User.SpecialistType.DELIVERY:
-        return shipment.service_type in (
-            Shipment.ServiceType.DELIVERY,
-            Shipment.ServiceType.AMANAT,
-        )
-    return True
+    return max(prices) if prices else None
 
 
 def _increment_carrier_rating(shipment: Shipment) -> None:
@@ -452,7 +441,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 )
             if shipment.status != Shipment.Status.PENDING or shipment.carrier_id is not None:
                 return response.Response({"detail": "already_accepted"}, status=status.HTTP_409_CONFLICT)
-            if not _shipment_matches_specialist(shipment, user):
+            if not shipment_matches_specialist(shipment, user):
                 return response.Response({"detail": "unsupported_specialist_type"}, status=status.HTTP_403_FORBIDDEN)
 
             shipment.carrier = user
@@ -571,6 +560,22 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         geoms = [(p["lat"], p["lon"]) for p in stops]
         dist_km = Decimal(str(polyline_len_km(geoms))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
+        fixed_fare = _quote_fixed_bazar_fare(stops)
+        if fixed_fare is not None:
+            logger.info(
+                "quote_calculated",
+                extra={
+                    "request_id": rid,
+                    "user_id": request.user.id,
+                    "distance_km": str(dist_km),
+                    "estimated_fare": fixed_fare,
+                    "pricing": "bazar_fixed",
+                },
+            )
+            return response.Response(
+                QuoteOutSerializer({"distance_km": dist_km, "estimated_fare": fixed_fare}).data
+            )
+
         config = GlobalDeliveryConfig.get_config()
         base_price = Decimal(config.base_price)
         per_km_price = Decimal(config.per_km_price)
@@ -652,25 +657,32 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         )
 
         # Оставляем только заказы, где первая точка (забор) в Бишкеке
-        filtered_ids = []
+        filtered_distances = []
         for s in qs:
             first_stop = s.stops.order_by("position").first()
             if first_stop and first_stop.lat and first_stop.lon:
-                if is_in_bishkek(float(first_stop.lat), float(first_stop.lon)) and _shipment_matches_specialist(s, request.user):
-                    filtered_ids.append(s.id)
+                if is_in_bishkek(float(first_stop.lat), float(first_stop.lon)) and shipment_matches_specialist(s, request.user):
+                    filtered_distances.append(
+                        (
+                            s.id,
+                            haversine_m(lat, lon, float(first_stop.lat), float(first_stop.lon)),
+                        )
+                    )
         
-        qs = qs.filter(id__in=filtered_ids)
+        filtered_ids = [item[0] for item in sorted(filtered_distances, key=lambda item: item[1])]
+        qs_by_id = {shipment.id: shipment for shipment in qs.filter(id__in=filtered_ids)}
+        ordered_shipments = [qs_by_id[shipment_id] for shipment_id in filtered_ids if shipment_id in qs_by_id]
 
-        page = self.paginate_queryset(qs)
+        page = self.paginate_queryset(ordered_shipments)
         serializer = self.get_serializer(
-            page or qs,
+            page or ordered_shipments,
             many=True,
             context={"request": request, "user_lat": lat, "user_lon": lon},
         )
 
         logger.info(
             "nearby_listed",
-            extra={"request_id": rid, "user_id": request.user.id, "lat": lat, "lon": lon, "count": qs.count()},
+            extra={"request_id": rid, "user_id": request.user.id, "lat": lat, "lon": lon, "count": len(ordered_shipments)},
         )
         if page is not None:
             return self.get_paginated_response(serializer.data)
@@ -832,6 +844,60 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             extra={"request_id": rid, "user_id": request.user.id, "count": len(ser.data)},
         )
         return response.Response(ser.data)
+
+
+@extend_schema(tags=["Специалисты"])
+class CourierPositionView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @extend_schema(
+        summary="Обновить текущую позицию специалиста",
+        request=inline_serializer(
+            name="CourierPositionRequest",
+            fields={
+                "lat": serializers.FloatField(),
+                "lon": serializers.FloatField(),
+            },
+        ),
+        responses=inline_serializer(
+            name="CourierPositionResponse",
+            fields={
+                "lat": serializers.FloatField(),
+                "lon": serializers.FloatField(),
+                "updated_at": serializers.DateTimeField(),
+            },
+        ),
+    )
+    def post(self, request):
+        user = request.user
+        if getattr(user, "role", None) != User.Roles.CARRIER:
+            return Response({"detail": "only_for_carrier"}, status=status.HTTP_403_FORBIDDEN)
+        if not user.is_active:
+            return Response({"detail": "specialist_not_approved"}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            lat = float(request.data.get("lat"))
+            lon = float(request.data.get("lon"))
+        except (TypeError, ValueError):
+            return Response({"detail": "lat_lon_required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            return Response({"detail": "invalid_coordinates"}, status=status.HTTP_400_BAD_REQUEST)
+
+        position, _ = CourierPosition.objects.update_or_create(
+            user=user,
+            defaults={
+                "lat": Decimal(str(lat)).quantize(Decimal("0.000001")),
+                "lon": Decimal(str(lon)).quantize(Decimal("0.000001")),
+            },
+        )
+        return Response(
+            {
+                "lat": float(position.lat),
+                "lon": float(position.lon),
+                "updated_at": position.updated_at,
+            }
+        )
 
 
 @extend_schema(tags=["Гео"])

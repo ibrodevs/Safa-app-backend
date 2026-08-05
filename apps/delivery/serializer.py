@@ -19,6 +19,7 @@ from .models import (
     Shipment,
     ShipmentStop,
 )
+from .specialists import point_inside_bazar
 
 logger = logging.getLogger(__name__)
 
@@ -538,6 +539,15 @@ class ShipmentCreateSerializer(serializers.ModelSerializer):
 
         if return_to_start and resolved:
             resolved.append(dict(resolved[0]))
+
+        outside_bazar: dict[int, str] = {}
+        for idx, stop in enumerate(resolved):
+            if stop["kind"] == "container":
+                continue
+            if not point_inside_bazar(stop.get("lat"), stop.get("lon")):
+                outside_bazar[idx] = "Точка должна быть внутри базара"
+        if outside_bazar:
+            raise serializers.ValidationError({"stops": outside_bazar})
 
         with transaction.atomic():
             shipment = Shipment(client=request.user, **validated_data)

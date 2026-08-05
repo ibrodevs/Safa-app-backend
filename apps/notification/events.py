@@ -5,6 +5,7 @@ from typing import Iterable, Any
 
 from django.utils import timezone
 
+from apps.delivery.specialists import nearest_specialist_candidates
 from apps.users.models import User
 from .models import FCMToken, Notification
 from .fcm_client import send_data_message
@@ -103,15 +104,8 @@ def notify_shipment_offer_for_carrier(shipment) -> None:
     data = {**base, **extra}
     collapse_key = f"shipment_offer_{shipment.id}"
 
-    carrier_ids = (
-        FCMToken.objects.filter(user__role=User.Roles.CARRIER, is_active=True)
-        .values_list("user_id", flat=True)
-        .distinct()
-    )
-    for carrier_id in carrier_ids:
-        if carrier_id == shipment.client_id:
-            continue
-        _send_to_user(carrier_id, dict(data), ttl="15s", collapse_key=collapse_key)
+    for candidate in nearest_specialist_candidates(shipment):
+        _send_to_user(candidate.user_id, dict(data), ttl="30s", collapse_key=collapse_key)
 
 
 def notify_shipment_status(shipment) -> None:
