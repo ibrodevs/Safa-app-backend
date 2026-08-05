@@ -57,7 +57,11 @@ def shipment_matches_specialist(shipment: Shipment, user: User) -> bool:
             Shipment.ServiceType.DELIVERY,
             Shipment.ServiceType.AMANAT,
         )
-    return False
+    return shipment.service_type in (
+        Shipment.ServiceType.CARS,
+        Shipment.ServiceType.DELIVERY,
+        Shipment.ServiceType.AMANAT,
+    )
 
 
 def nearest_specialist_candidates(shipment: Shipment) -> list[SpecialistCandidate]:
