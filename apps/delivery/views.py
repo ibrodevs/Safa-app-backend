@@ -57,6 +57,19 @@ def _rid(request) -> str:
     return request.headers.get("X-Request-ID") or uuid.uuid4().hex
 
 
+def _demo_shipment_q() -> Q:
+    return (
+        Q(title__istartswith="DEMO")
+        | Q(title__istartswith="TEST")
+        | Q(title__istartswith="ДЕМО")
+        | Q(title__istartswith="ТЕСТ")
+        | Q(description__istartswith="DEMO")
+        | Q(description__istartswith="TEST")
+        | Q(description__istartswith="ДЕМО")
+        | Q(description__istartswith="ТЕСТ")
+    )
+
+
 def _broadcast(shipment: Shipment) -> None:
     layer = get_channel_layer()
     data = ShipmentDetailSerializer(shipment).data
@@ -372,7 +385,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             return qs.none()
         if user.is_superuser or user.is_staff:
             return qs
-        return qs.exclude(title__startswith="DEMO ").filter(Q(client=user) | Q(carrier=user)).distinct()
+        return qs.exclude(_demo_shipment_q()).filter(Q(client=user) | Q(carrier=user)).distinct()
 
     def perform_create(self, serializer):
         rid = _rid(self.request)
@@ -430,6 +443,8 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             )
             if not shipment:
                 return response.Response({"detail": "not_found"}, status=status.HTTP_404_NOT_FOUND)
+            if shipment.is_demo:
+                return response.Response({"detail": "demo_shipment_unavailable"}, status=status.HTTP_404_NOT_FOUND)
             if shipment.client_id == user.id:
                 return response.Response(
                     {"detail": "client_cannot_accept_own_shipment"},
@@ -631,7 +646,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         # Теперь фильтруем по Бишкеку и показываем всем онлайн курьерам.
         qs = (
             Shipment.objects.filter(status=Shipment.Status.PENDING, carrier__isnull=True)
-            .exclude(title__startswith="DEMO ")
+            .exclude(_demo_shipment_q())
             .prefetch_related("stops")
             .order_by("created_at")
         )

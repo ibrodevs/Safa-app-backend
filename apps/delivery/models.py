@@ -353,6 +353,11 @@ class Shipment(models.Model):
     def public_code(self) -> str:
         return f"{self.id:04d}"
 
+    @property
+    def is_demo(self) -> bool:
+        text = f"{self.title or ''} {self.description or ''}".strip().lower()
+        return text.startswith(("demo", "test", "демо", "тест"))
+
     def _route_points(self) -> List[Tuple[float, float]]:
         qs = self.stops.order_by("position")
         pts: List[Tuple[float, float]] = []

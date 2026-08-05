@@ -15,10 +15,53 @@ from .models import (
     Passage,
     Container,
 )
+from .map_models import MarketMapRevision
+
+
+def available_district_choices(current: str | None = None) -> list[tuple[str, str]]:
+    names: set[str] = set()
+
+    for name in Bazar.objects.exclude(district="").values_list("district", flat=True).distinct():
+        clean = (name or "").strip()
+        if clean:
+            names.add(clean)
+
+    revisions = MarketMapRevision.objects.filter(status=MarketMapRevision.Status.PUBLISHED).only("geojson")
+    for revision in revisions:
+        for feature in (revision.geojson or {}).get("features", []):
+            properties = feature.get("properties") or {}
+            if properties.get("kind") != "district":
+                continue
+            clean = str(properties.get("name") or "").strip()
+            if clean:
+                names.add(clean)
+
+    clean_current = (current or "").strip()
+    if clean_current:
+        names.add(clean_current)
+
+    return [("", "---------"), *[(name, name) for name in sorted(names)]]
+
+
+class DeliveryDistrictAdminForm(forms.ModelForm):
+    class Meta:
+        model = DeliveryDistrict
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        current = self.instance.name if self.instance and self.instance.pk else self.data.get("name")
+        self.fields["name"] = forms.ChoiceField(
+            label=self.fields["name"].label,
+            required=True,
+            choices=available_district_choices(current),
+            help_text="Выберите район из уже созданных районов базаров или опубликованной карты.",
+        )
 
 
 @admin.register(DeliveryDistrict)
 class DeliveryDistrictAdmin(admin.ModelAdmin):
+    form = DeliveryDistrictAdminForm
     list_display = ("id", "name", "fixed_price", "base_price", "per_km_price", "min_fare", "is_active")
     list_editable = ("fixed_price", "is_active")
     search_fields = ("name",)
