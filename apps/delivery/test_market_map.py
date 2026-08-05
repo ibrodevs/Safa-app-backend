@@ -213,6 +213,56 @@ def test_publish_syncs_container_and_returns_only_published_map():
 
 
 @pytest.mark.django_db
+def test_published_map_limits_containers_near_center():
+    user = User.objects.create_user(
+        phone_number="996700777011",
+        password="pass12345",
+        first_name="Admin",
+        is_verify=True,
+        is_staff=True,
+    )
+    bazar = Bazar.objects.create(name="Дордой")
+    passage = Passage.objects.create(bazar=bazar, number="1")
+    features = [polygon_feature(bazar.id)]
+    for index in range(10):
+        feature = container_feature(bazar.id, passage.id, index + 1)
+        feature["id"] = f"container-{index + 1}"
+        feature["properties"]["name"] = f"Контейнер {index + 1}"
+        feature["properties"]["number"] = str(index + 1)
+        feature["properties"]["min_zoom"] = 15
+        feature["geometry"]["coordinates"] = [74.61 + index * 0.001, 42.93]
+        features.append(feature)
+
+    MarketMapRevision.objects.create(
+        bazar=bazar,
+        version=1,
+        status=MarketMapRevision.Status.PUBLISHED,
+        geojson={"type": "FeatureCollection", "features": features},
+        created_by=user,
+    )
+
+    client = APIClient()
+    client.force_authenticate(user=user)
+    response = client.get(
+        f"/api/delivery/map/features/?bazar_id={bazar.id}"
+        "&zoom=15&max_containers=3&center_lat=42.93&center_lon=74.61"
+    )
+
+    assert response.status_code == 200
+    returned = response.data["features"]
+    assert (
+        sum(feature["properties"]["kind"] == "container" for feature in returned)
+        == 3
+    )
+    assert returned[0]["properties"]["kind"] == "bazar"
+    assert [
+        feature["properties"]["number"]
+        for feature in returned
+        if feature["properties"]["kind"] == "container"
+    ] == ["1", "2", "3"]
+
+
+@pytest.mark.django_db
 def test_new_container_can_be_created_from_published_feature():
     user = User.objects.create_user(
         phone_number="996700777002",

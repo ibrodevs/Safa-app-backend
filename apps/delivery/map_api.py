@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .map_models import MarketMapRevision
-from .map_validation import filter_feature_collection
+from .map_validation import filter_feature_collection, representative_point
 
 
 class PublishedMarketMapView(APIView):
@@ -26,7 +26,13 @@ class PublishedMarketMapView(APIView):
         try:
             bazar_id = self._optional_int(request.query_params.get("bazar_id"), minimum=1)
             zoom = self._optional_int(request.query_params.get("zoom"), minimum=0, maximum=22)
+            max_containers = self._optional_int(
+                request.query_params.get("max_containers"),
+                minimum=1,
+                maximum=1000,
+            )
             bbox = self._bbox(request)
+            center = self._center(request, bbox=bbox)
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -42,6 +48,13 @@ class PublishedMarketMapView(APIView):
                 properties.setdefault("bazar_district", revision.bazar.district)
                 features.append(feature)
             versions[str(revision.bazar_id)] = revision.version
+
+        if max_containers is not None:
+            features = self._limit_containers(
+                features,
+                max_containers=max_containers,
+                center=center,
+            )
 
         payload = {
             "type": "FeatureCollection",
@@ -109,3 +122,56 @@ class PublishedMarketMapView(APIView):
         if not (-180 <= min_lon <= 180 and -180 <= max_lon <= 180 and -90 <= min_lat <= 90 and -90 <= max_lat <= 90):
             raise ValueError("bbox выходит за допустимый диапазон координат")
         return min_lon, min_lat, max_lon, max_lat
+
+    @staticmethod
+    def _center(request, *, bbox):
+        raw_lat = request.query_params.get("center_lat")
+        raw_lon = request.query_params.get("center_lon")
+        if raw_lat in (None, "") and raw_lon in (None, ""):
+            if bbox is None:
+                return None
+            min_lon, min_lat, max_lon, max_lat = bbox
+            return (min_lat + max_lat) / 2, (min_lon + max_lon) / 2
+        if raw_lat in (None, "") or raw_lon in (None, ""):
+            raise ValueError("Для центра нужны center_lat и center_lon")
+        try:
+            lat = float(raw_lat)
+            lon = float(raw_lon)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Некорректные координаты центра") from exc
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            raise ValueError("Центр выходит за допустимый диапазон координат")
+        return lat, lon
+
+    @staticmethod
+    def _limit_containers(features, *, max_containers: int, center):
+        containers = []
+        output = []
+        for index, feature in enumerate(features):
+            properties = feature.get("properties") or {}
+            if properties.get("kind") != "container":
+                output.append((index, feature))
+                continue
+            distance = index
+            if center is not None:
+                try:
+                    lon, lat = representative_point(feature.get("geometry") or {})
+                    distance = (lat - center[0]) ** 2 + (lon - center[1]) ** 2
+                except Exception:
+                    distance = float("inf")
+            containers.append((distance, index, feature))
+
+        if len(containers) <= max_containers:
+            return features
+
+        kept_container_indexes = {
+            index
+            for _, index, _ in sorted(
+                containers,
+                key=lambda item: item[0],
+            )[:max_containers]
+        }
+        for _, index, feature in containers:
+            if index in kept_container_indexes:
+                output.append((index, feature))
+        return [feature for _, feature in sorted(output, key=lambda item: item[0])]
