@@ -1,11 +1,11 @@
 from __future__ import annotations
-from django.contrib.auth import get_user_model
 import logging
 import uuid
 from typing import Iterable, Any
 
 from django.utils import timezone
 
+from apps.users.models import User
 from .models import FCMToken, Notification
 from .fcm_client import send_data_message
 
@@ -234,13 +234,6 @@ def notify_shipment_canceled(shipment, *, reason: str = "") -> None:
         ttl="600s",
         collapse_key=f"shipment_cancel_{shipment.id}",
     )
-
-
-
-
-
-User = get_user_model()
-
 
 def broadcast_to_role(
     *,
