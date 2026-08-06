@@ -1,7 +1,10 @@
 import uuid
+
 from django.db import models
 from django.utils import timezone
+
 from apps.delivery.models import Shipment
+
 
 class PaymentAttempt(models.Model):
     class Status(models.TextChoices):
@@ -13,7 +16,11 @@ class PaymentAttempt(models.Model):
         FINIK = "FINIK"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    shipment = models.ForeignKey(Shipment, on_delete=models.PROTECT, related_name="payment_attempts")
+    shipment = models.ForeignKey(
+        Shipment,
+        on_delete=models.CASCADE,
+        related_name="payment_attempts",
+    )
 
     provider = models.CharField(
         max_length=16,
