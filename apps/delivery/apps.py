@@ -14,6 +14,7 @@ class DeleveryConfig(AppConfig):
         from . import map_admin  # noqa: F401
         from .models import ShipmentStop
         from .admin_patches import allow_bazar_map_cascade_deletion
+        from .map_sync import enable_passage_sync
 
         # Контейнер — справочник текущей карты, а остановка заказа хранит
         # собственный снимок title/lat/lon. Поэтому удаление контейнера не должно
@@ -23,3 +24,7 @@ class DeleveryConfig(AppConfig):
         # Карты базара уже удаляются через CASCADE. Эта настройка убирает только
         # лишнюю проверку отдельного права delete_marketmaprevision в Django Admin.
         allow_bazar_map_cascade_deletion()
+
+        # Объекты типа passage из GeoJSON должны появляться в обычном справочнике
+        # «Проходы» до синхронизации контейнеров.
+        enable_passage_sync()
