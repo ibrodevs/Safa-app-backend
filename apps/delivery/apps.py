@@ -1,4 +1,5 @@
 from django.apps import AppConfig
+from django.db import models
 
 
 class DeleveryConfig(AppConfig):
@@ -11,3 +12,9 @@ class DeleveryConfig(AppConfig):
         # отдельный редактор Django Admin.
         from . import map_models  # noqa: F401
         from . import map_admin  # noqa: F401
+        from .models import ShipmentStop
+
+        # Контейнер — справочник текущей карты, а остановка заказа хранит
+        # собственный снимок title/lat/lon. Поэтому удаление контейнера не должно
+        # удалять или блокировать историю заказов: ссылка очищается, снимок остаётся.
+        ShipmentStop._meta.get_field("container").remote_field.on_delete = models.SET_NULL
