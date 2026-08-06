@@ -6,7 +6,6 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("delivery", "0018_remove_amanatdonation_user_and_more"),
         ("payments", "0002_remove_paymentattempt_payments_pa_shipmen_de05ba_idx_and_more"),
     ]
 
