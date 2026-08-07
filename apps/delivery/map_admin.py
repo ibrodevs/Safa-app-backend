@@ -19,6 +19,7 @@ from .map_models import (
     MarketMapRevision,
     MarketPassageMapSection,
 )
+from .map_tariff_sync import attach_district_tariff_ids
 from .map_validation import validate_feature_collection
 from .models import Bazar, Container, DeliveryDistrict, Passage
 
@@ -195,7 +196,8 @@ class MarketMapRevisionAdmin(admin.ModelAdmin):
             payload = json.loads(request.body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValidationError("Не удалось прочитать JSON") from exc
-        return validate_feature_collection(payload.get("geojson"))
+        validated = validate_feature_collection(payload.get("geojson"))
+        return attach_district_tariff_ids(validated)
 
     def save_view(self, request, bazar_id: int):
         bazar = self._bazar(request, bazar_id)
