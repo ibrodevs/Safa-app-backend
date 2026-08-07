@@ -64,7 +64,31 @@ def test_map_editor_prioritizes_map_area_over_properties():
     assert "minmax(260px, 285px)" in compact_css
     assert "height: clamp(700px, calc(100vh - 240px), 900px);" in compact_css
     assert ".market-map-properties-card" in compact_css
-    assert "min-height: 35px" in compact_css
+    assert "min-height: 34px" in compact_css
+
+
+def test_map_editor_controls_have_predictable_compact_layout():
+    compact_css = COMPACT_CSS.read_text(encoding="utf-8")
+
+    assert "repeat(auto-fit, minmax(210px, 1fr))" in compact_css
+    assert "grid-template-columns: auto auto minmax(160px, 1fr)" in compact_css
+    assert ".market-map-actions" in compact_css
+    assert "flex-wrap: nowrap" in compact_css
+    assert ".market-map-property-actions" in compact_css
+    assert "grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)" in compact_css
+    assert ".market-map-property-actions .market-map-apply-button" in compact_css
+    assert "grid-column: 1 / -1" in compact_css
+
+
+def test_map_editor_compact_controls_remain_responsive():
+    compact_css = COMPACT_CSS.read_text(encoding="utf-8")
+
+    assert "@media (max-width: 960px)" in compact_css
+    assert "@media (max-width: 680px)" in compact_css
+    assert ".market-map-actions" in compact_css
+    assert "grid-template-columns: 1fr 1fr" in compact_css
+    assert ".market-map-property-actions" in compact_css
+    assert "grid-template-columns: 1fr" in compact_css
 
 
 def test_map_editor_errors_are_shown_in_modal_instead_of_red_status_bar():
