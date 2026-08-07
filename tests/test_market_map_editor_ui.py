@@ -4,15 +4,22 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "apps/delivery/templates/admin/delivery/marketmaprevision/map_editor.html"
 CSS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor.css"
+COMPACT_CSS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor_compact.css"
 UI_JS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor_ui.js"
 
 
-def test_map_editor_uses_simple_three_step_workflow():
+def test_map_editor_uses_compact_creation_controls():
     content = TEMPLATE.read_text(encoding="utf-8")
 
-    assert "Что хотите создать?" in content
-    assert "Нарисуйте объект" in content
-    assert "Данные объекта" in content
+    assert "Создание карты" not in content
+    assert "Что хотите создать?" not in content
+    assert "Нарисуйте объект" not in content
+    assert 'class="market-map-create-panel"' in content
+    assert "Нарисовать границу" in content
+    assert "Нарисовать район" in content
+    assert "Нарисовать проход" in content
+    assert "Добавить контейнер" in content
+    assert "Свойства объекта" in content
     assert "Объекты на карте" in content
     assert "<details class=\"market-map-objects-panel\">" in content
 
@@ -49,15 +56,40 @@ def test_map_editor_keeps_existing_javascript_contract_ids():
         assert f'id="{element_id}"' in content
 
 
+def test_map_editor_prioritizes_map_area_over_properties():
+    template = TEMPLATE.read_text(encoding="utf-8")
+    compact_css = COMPACT_CSS.read_text(encoding="utf-8")
+
+    assert "market_map_editor_compact.css" in template
+    assert "minmax(260px, 285px)" in compact_css
+    assert "height: clamp(700px, calc(100vh - 240px), 900px);" in compact_css
+    assert ".market-map-properties-card" in compact_css
+    assert "min-height: 35px" in compact_css
+
+
 def test_map_editor_errors_are_shown_in_modal_instead_of_red_status_bar():
     template = TEMPLATE.read_text(encoding="utf-8")
     css = CSS.read_text(encoding="utf-8")
+    compact_css = COMPACT_CSS.read_text(encoding="utf-8")
     ui_js = UI_JS.read_text(encoding="utf-8")
 
     assert 'id="market-map-error-modal"' in template
     assert 'id="market-map-error-message"' in template
     assert "market_map_editor_ui.js" in template
     assert "#market-map-status.error { display: none; }" in css
+    assert "#market-map-status.error" in compact_css
+    assert "display: none !important" in compact_css
     assert "new MutationObserver(syncStatus)" in ui_js
     assert "status.classList.contains('error')" in ui_js
+    assert "window.marketMapShowError = showError" in ui_js
     assert "showError(message)" in ui_js
+
+
+def test_missing_container_passage_is_blocked_with_modal_warning():
+    ui_js = UI_JS.read_text(encoding="utf-8")
+
+    assert "#market-feature-apply, #market-map-save, #market-map-publish" in ui_js
+    assert "kind?.value !== 'container'" in ui_js
+    assert "Для контейнера обязательно выберите проход." in ui_js
+    assert "event.stopImmediatePropagation()" in ui_js
+    assert "showError('Для контейнера обязательно выберите проход.')" in ui_js

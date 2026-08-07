@@ -55,6 +55,10 @@
     restoreFocus = null;
   }
 
+  // Public entry point for editor-side validations. MutationObserver below stays
+  // as a fallback so every existing setStatus(..., 'error') also opens the modal.
+  window.marketMapShowError = showError;
+
   function syncStatus() {
     if (!status.classList.contains('error')) return;
     const message = status.textContent.trim();
@@ -69,6 +73,32 @@
     characterData: true,
     subtree: true,
   });
+
+  // Validate the most common admin mistake before the main editor handler runs.
+  // This makes a missing passage an immediate warning instead of a late server error.
+  document.addEventListener('click', (event) => {
+    const action = event.target instanceof Element
+      ? event.target.closest('#market-feature-apply, #market-map-save, #market-map-publish')
+      : null;
+    if (!action) return;
+
+    const kind = document.getElementById('market-feature-kind');
+    const passage = document.getElementById('market-feature-passage');
+    if (kind?.value !== 'container' || passage?.value) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    showError('Для контейнера обязательно выберите проход.');
+    window.setTimeout(() => passage?.focus(), 0);
+  }, true);
+
+  // Convert Django/Jazzmin validation messages on this editor page to the same modal.
+  const djangoErrors = Array.from(document.querySelectorAll('.errornote, .errorlist'))
+    .map((node) => node.textContent.trim())
+    .filter(Boolean);
+  if (djangoErrors.length) {
+    showError(djangoErrors.join('\n'));
+  }
 
   document.querySelectorAll('[data-market-map-error-close]').forEach((node) => {
     node.addEventListener('click', closeError);

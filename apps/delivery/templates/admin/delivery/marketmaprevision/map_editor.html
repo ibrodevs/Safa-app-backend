@@ -4,6 +4,7 @@
 {% block extrastyle %}
   {{ block.super }}
   <link rel="stylesheet" href="{% static 'delivery/admin/market_map_editor.css' %}">
+  <link rel="stylesheet" href="{% static 'delivery/admin/market_map_editor_compact.css' %}">
 {% endblock %}
 
 {% block breadcrumbs %}
@@ -26,7 +27,7 @@
     <div class="market-map-heading">
       <span class="market-map-eyebrow">Редактор карты</span>
       <h1>{{ bazar.name }}</h1>
-      <p>Нарисуйте объекты на карте, заполните их данные и сохраните. Пользователи увидят изменения только после публикации.</p>
+      <p>Создайте объект на карте, заполните его свойства и сохраните изменения.</p>
     </div>
     <div class="market-map-actions">
       <button type="button" class="button market-map-secondary-action" id="market-map-save">Сохранить</button>
@@ -41,89 +42,50 @@
     </div>
   {% endif %}
 
-  <section class="market-map-workflow" aria-label="Создание карты">
-    <div class="market-map-workflow-title">
-      <div>
-        <strong>Создание карты</strong>
-        <span>Работайте слева направо: выберите раздел → нарисуйте → заполните данные.</span>
+  <section class="market-map-create-panel" aria-label="Создание объекта на карте">
+    <div class="market-map-create-tools">
+      <div class="market-kind-section market-tool-bazar">
+        <div>
+          <strong>Граница базара</strong>
+          <small>Обведите внешний контур базара.</small>
+        </div>
+        <button type="button" class="button default" data-map-tool="draw" data-map-kind="bazar">Нарисовать границу</button>
       </div>
-      <span class="market-map-version">Черновик v{{ revision.version }}</span>
+
+      <div class="market-kind-section market-tool-district">
+        <div>
+          <strong>Район</strong>
+          <small>Обведите нужную область внутри базара.</small>
+        </div>
+        <button type="button" class="button default" data-map-tool="draw" data-map-kind="district">Нарисовать район</button>
+      </div>
+
+      <div class="market-kind-section market-tool-passage">
+        <div>
+          <strong>Проход</strong>
+          <small>Проведите линию вдоль прохода.</small>
+        </div>
+        <button type="button" class="button default" data-map-tool="draw" data-map-kind="passage">Нарисовать проход</button>
+      </div>
+
+      <div class="market-kind-section market-tool-container">
+        <div>
+          <strong>Контейнер</strong>
+          <small>Кликните в месте контейнера — прямоугольник создастся автоматически.</small>
+        </div>
+        <button type="button" class="button default" data-map-tool="draw" data-map-kind="container">Добавить контейнер</button>
+      </div>
     </div>
 
-    <div class="market-map-step">
-      <div class="market-map-step-number">1</div>
-      <div class="market-map-step-content">
-        <div class="market-map-step-label">Что хотите создать?</div>
-        <nav class="market-map-section-nav" aria-label="Разделы редактора карты">
-          <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=bazar" data-section-kind="bazar">
-            <span class="market-map-section-dot market-map-section-dot-bazar"></span>
-            Граница базара
-          </a>
-          <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=district" data-section-kind="district">
-            <span class="market-map-section-dot market-map-section-dot-district"></span>
-            Район
-          </a>
-          <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=passage" data-section-kind="passage">
-            <span class="market-map-section-dot market-map-section-dot-passage"></span>
-            Проход
-          </a>
-          <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=container" data-section-kind="container">
-            <span class="market-map-section-dot market-map-section-dot-container"></span>
-            Контейнер
-          </a>
-        </nav>
+    <div class="market-map-edit-bar">
+      <div class="market-map-tools" role="toolbar" aria-label="Инструменты рисования">
+        <button type="button" class="button active" data-map-tool="select">Редактировать объекты</button>
       </div>
-    </div>
-
-    <div class="market-map-step market-map-create-step">
-      <div class="market-map-step-number">2</div>
-      <div class="market-map-step-content">
-        <div class="market-map-step-label">Нарисуйте объект</div>
-        <div class="market-map-create-tools">
-          <div class="market-kind-section market-tool-bazar">
-            <div>
-              <strong>Граница базара</strong>
-              <small>Обведите внешний контур базара.</small>
-            </div>
-            <button type="button" class="button default" data-map-tool="draw" data-map-kind="bazar">Нарисовать границу</button>
-          </div>
-
-          <div class="market-kind-section market-tool-district">
-            <div>
-              <strong>Район</strong>
-              <small>Обведите нужную область внутри базара.</small>
-            </div>
-            <button type="button" class="button default" data-map-tool="draw" data-map-kind="district">Нарисовать район</button>
-          </div>
-
-          <div class="market-kind-section market-tool-passage">
-            <div>
-              <strong>Проход</strong>
-              <small>Проведите линию вдоль прохода.</small>
-            </div>
-            <button type="button" class="button default" data-map-tool="draw" data-map-kind="passage">Нарисовать проход</button>
-          </div>
-
-          <div class="market-kind-section market-tool-container">
-            <div>
-              <strong>Контейнер</strong>
-              <small>Кликните в месте контейнера — прямоугольник создастся автоматически.</small>
-            </div>
-            <button type="button" class="button default" data-map-tool="draw" data-map-kind="container">Добавить контейнер</button>
-          </div>
-        </div>
-
-        <div class="market-map-edit-bar">
-          <div class="market-map-tools" role="toolbar" aria-label="Инструменты рисования">
-            <button type="button" class="button active" data-map-tool="select">Редактировать объекты</button>
-          </div>
-          <div class="market-map-draw-actions" hidden>
-            <button type="button" class="button default" id="market-map-finish">Завершить рисунок</button>
-            <button type="button" class="button" id="market-map-cancel">Отменить</button>
-          </div>
-          <p class="help" id="market-map-mode-help">Выберите раздел выше и нарисуйте объект на карте.</p>
-        </div>
+      <div class="market-map-draw-actions" hidden>
+        <button type="button" class="button default" id="market-map-finish">Завершить рисунок</button>
+        <button type="button" class="button" id="market-map-cancel">Отменить</button>
       </div>
+      <p class="help" id="market-map-mode-help">Нарисуйте объект на карте.</p>
     </div>
   </section>
 
@@ -155,10 +117,9 @@
     <aside class="market-map-properties">
       <section class="market-map-properties-card">
         <div class="market-map-properties-header">
-          <span class="market-map-step-number">3</span>
           <div>
-            <h2>Данные объекта</h2>
-            <p>После рисования заполните только необходимые поля и нажмите «Применить».</p>
+            <h2>Свойства объекта</h2>
+            <p>Заполните данные выбранного объекта и примените изменения.</p>
           </div>
         </div>
 
@@ -274,9 +235,9 @@
   <div class="market-map-modal-dialog" role="alertdialog" aria-modal="true" aria-labelledby="market-map-error-title" aria-describedby="market-map-error-message">
     <div class="market-map-modal-icon" aria-hidden="true">!</div>
     <div class="market-map-modal-content">
-      <h2 id="market-map-error-title">Не получилось выполнить действие</h2>
+      <h2 id="market-map-error-title">Проверьте данные</h2>
       <div id="market-map-error-message" class="market-map-modal-message"></div>
-      <p class="market-map-modal-hint">Исправьте указанную проблему и повторите действие. Ваши нарисованные объекты останутся на карте.</p>
+      <p class="market-map-modal-hint">Исправьте указанную проблему и повторите действие. Нарисованные объекты останутся на карте.</p>
     </div>
     <div class="market-map-modal-actions">
       <button type="button" class="button default" id="market-map-error-close">Понятно</button>
