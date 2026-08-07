@@ -74,6 +74,24 @@
     subtree: true,
   });
 
+  // Дополнительные настройки в редакторе карты всегда видимы.
+  // Даже если браузер/Jazzmin попытается закрыть <details>, сразу открываем его обратно.
+  document.querySelectorAll('details.market-map-advanced-fields').forEach((details) => {
+    details.open = true;
+    details.setAttribute('open', '');
+    const summary = details.querySelector('summary');
+    if (summary) {
+      summary.setAttribute('aria-disabled', 'true');
+      summary.setAttribute('tabindex', '-1');
+    }
+    details.addEventListener('toggle', () => {
+      if (!details.open) {
+        details.open = true;
+        details.setAttribute('open', '');
+      }
+    });
+  });
+
   // Validate the most common admin mistake before the main editor handler runs.
   // This makes a missing passage an immediate warning instead of a late server error.
   document.addEventListener('click', (event) => {
