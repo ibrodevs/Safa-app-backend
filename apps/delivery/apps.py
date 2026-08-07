@@ -16,6 +16,7 @@ class DeleveryConfig(AppConfig):
         from .models import ShipmentStop
         from .admin_patches import allow_bazar_map_cascade_deletion
         from .admin_simplify import simplify_delivery_admin
+        from .map_pricing_patch import enable_map_pricing
         from .map_sync import enable_passage_sync
 
         # Контейнер — справочник текущей карты, а остановка заказа хранит
@@ -30,6 +31,10 @@ class DeleveryConfig(AppConfig):
         # Объекты типа passage из GeoJSON должны появляться в обычном справочнике
         # «Проходы» до синхронизации контейнеров.
         enable_passage_sync()
+
+        # Предварительная и фактическая стоимость заказа используют одни и те же
+        # опубликованные границы базаров/районов и тарифы админ-панели.
+        enable_map_pricing()
 
         # Упрощаем рабочие формы админ-панели: на создании показываем только
         # обязательные поля, технические/legacy-настройки прячем в редактировании.
