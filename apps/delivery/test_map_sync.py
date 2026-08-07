@@ -1,8 +1,8 @@
 from django.test import TestCase
 
-from .map_models import MarketMapRevision
-from .map_sync import sync_passages
-from .models import Bazar, Passage
+from apps.delivery.map_models import MarketMapRevision
+from apps.delivery.map_sync import sync_passages
+from apps.delivery.models import Bazar, Passage
 
 
 class PassageMapSyncTests(TestCase):
