@@ -9,7 +9,7 @@
 {% block breadcrumbs %}
 <div class="breadcrumbs">
   <a href="{% url 'admin:index' %}">Главная</a>
-  &rsaquo; <a href="{{ changelist_url }}">Карты базаров</a>
+  &rsaquo; <a href="{{ changelist_url }}">Карта</a>
   &rsaquo; {{ bazar.name }}
 </div>
 {% endblock %}
@@ -21,104 +21,148 @@
      data-bazar-id="{{ bazar.id }}"
      data-bazar-name="{{ bazar.name }}"
      data-focus-kind="{{ focus_kind }}">
-  <div class="market-map-header">
-    <div>
-      <h1>{{ title }}</h1>
-      <p>
-        Черновик v{{ revision.version }}.
-        Изменения увидят пользователи только после публикации.
-        {% if focus_kind_label %}
-          Открыт отдельный раздел: {{ focus_kind_label }}.
-        {% endif %}
-      </p>
+
+  <header class="market-map-header">
+    <div class="market-map-heading">
+      <span class="market-map-eyebrow">Редактор карты</span>
+      <h1>{{ bazar.name }}</h1>
+      <p>Нарисуйте объекты на карте, заполните их данные и сохраните. Пользователи увидят изменения только после публикации.</p>
     </div>
     <div class="market-map-actions">
-      <button type="button" class="button" id="market-map-save">Сохранить черновик</button>
-      <button type="button" class="button default" id="market-map-publish">Опубликовать</button>
+      <button type="button" class="button market-map-secondary-action" id="market-map-save">Сохранить</button>
+      <button type="button" class="button default market-map-primary-action" id="market-map-publish">Опубликовать карту</button>
     </div>
-  </div>
+  </header>
 
   {% if not google_maps_api_key %}
-    <div class="messagelist market-map-warning">
-      <div class="warning">
-        Не задан GOOGLE_MAPS_BROWSER_API_KEY. Добавьте браузерный Google Maps API key в .env и перезагрузите приложение.
-      </div>
+    <div class="market-map-key-warning" role="alert">
+      <strong>Карта недоступна.</strong>
+      Не настроен Google Maps API key. Обратитесь к разработчику.
     </div>
   {% endif %}
 
-  <div class="market-map-layout">
-    <aside class="market-map-sidebar market-map-left">
-      <section class="market-map-panel">
-        <h2>Разделы</h2>
-        <nav class="market-map-section-nav" aria-label="Разделы редактора карты">
-          <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=bazar" data-section-kind="bazar">Базары</a>
-          <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=district" data-section-kind="district">Границы районов</a>
-          <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=passage" data-section-kind="passage">Проходы</a>
-          <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=container" data-section-kind="container">Контейнеры</a>
-        </nav>
-      </section>
-
-      <section class="market-map-panel">
-        <h2>Режим</h2>
-        <div class="market-map-tools" role="toolbar" aria-label="Инструменты рисования">
-          <button type="button" class="button active" data-map-tool="select">Выбор / редактирование</button>
-        </div>
-        <div class="market-map-draw-actions" hidden>
-          <button type="button" class="button default" id="market-map-finish">Завершить</button>
-          <button type="button" class="button" id="market-map-cancel">Отменить</button>
-        </div>
-        <p class="help" id="market-map-mode-help">
-          Карта показывает соседние базары и уже созданные объекты как контекст.
-        </p>
-      </section>
-
-      <section class="market-map-panel market-kind-section market-tool-bazar">
-        <div>
-          <h2>Граница базара</h2>
-          <p>Один внешний контур всего базара.</p>
-        </div>
-        <button type="button" class="button" data-map-tool="draw" data-map-kind="bazar">Создать границу</button>
-      </section>
-
-      <section class="market-map-panel market-kind-section market-tool-district">
-        <div>
-          <h2>Граница района</h2>
-          <p>Контур района внутри выбранного базара.</p>
-        </div>
-        <button type="button" class="button" data-map-tool="draw" data-map-kind="district">Создать границу</button>
-      </section>
-
-      <section class="market-map-panel market-kind-section market-tool-passage">
-        <div>
-          <h2>Проход</h2>
-          <p>Основная линия прохода между рядами.</p>
-        </div>
-        <button type="button" class="button" data-map-tool="draw" data-map-kind="passage">Создать проход</button>
-      </section>
-
-      <section class="market-map-panel market-kind-section market-tool-container">
-        <div>
-          <h2>Контейнеры</h2>
-          <p>Прямоугольники контейнеров с привязкой к проходу.</p>
-        </div>
-        <button type="button" class="button" data-map-tool="draw" data-map-kind="container">Создать контейнер</button>
-      </section>
-
-      <section class="market-map-panel">
-        <h2>Объекты</h2>
-        <div id="market-feature-list" class="market-feature-list"></div>
-      </section>
-    </aside>
-
-    <div class="market-map-stage">
-      <div id="market-map-canvas" aria-label="Редактор карты базара"></div>
-      <div id="market-map-status" role="status" aria-live="polite">Загрузка карты…</div>
+  <section class="market-map-workflow" aria-label="Создание карты">
+    <div class="market-map-workflow-title">
+      <div>
+        <strong>Создание карты</strong>
+        <span>Работайте слева направо: выберите раздел → нарисуйте → заполните данные.</span>
+      </div>
+      <span class="market-map-version">Черновик v{{ revision.version }}</span>
     </div>
 
-    <aside class="market-map-sidebar market-map-properties">
-      <section class="market-map-panel">
-        <h2>Свойства объекта</h2>
-        <div class="form-row">
+    <div class="market-map-step">
+      <div class="market-map-step-number">1</div>
+      <div class="market-map-step-content">
+        <div class="market-map-step-label">Что хотите создать?</div>
+        <nav class="market-map-section-nav" aria-label="Разделы редактора карты">
+          <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=bazar" data-section-kind="bazar">
+            <span class="market-map-section-dot market-map-section-dot-bazar"></span>
+            Граница базара
+          </a>
+          <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=district" data-section-kind="district">
+            <span class="market-map-section-dot market-map-section-dot-district"></span>
+            Район
+          </a>
+          <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=passage" data-section-kind="passage">
+            <span class="market-map-section-dot market-map-section-dot-passage"></span>
+            Проход
+          </a>
+          <a href="{% url 'admin:delivery_market_map_editor' bazar.id %}?kind=container" data-section-kind="container">
+            <span class="market-map-section-dot market-map-section-dot-container"></span>
+            Контейнер
+          </a>
+        </nav>
+      </div>
+    </div>
+
+    <div class="market-map-step market-map-create-step">
+      <div class="market-map-step-number">2</div>
+      <div class="market-map-step-content">
+        <div class="market-map-step-label">Нарисуйте объект</div>
+        <div class="market-map-create-tools">
+          <div class="market-kind-section market-tool-bazar">
+            <div>
+              <strong>Граница базара</strong>
+              <small>Обведите внешний контур базара.</small>
+            </div>
+            <button type="button" class="button default" data-map-tool="draw" data-map-kind="bazar">Нарисовать границу</button>
+          </div>
+
+          <div class="market-kind-section market-tool-district">
+            <div>
+              <strong>Район</strong>
+              <small>Обведите нужную область внутри базара.</small>
+            </div>
+            <button type="button" class="button default" data-map-tool="draw" data-map-kind="district">Нарисовать район</button>
+          </div>
+
+          <div class="market-kind-section market-tool-passage">
+            <div>
+              <strong>Проход</strong>
+              <small>Проведите линию вдоль прохода.</small>
+            </div>
+            <button type="button" class="button default" data-map-tool="draw" data-map-kind="passage">Нарисовать проход</button>
+          </div>
+
+          <div class="market-kind-section market-tool-container">
+            <div>
+              <strong>Контейнер</strong>
+              <small>Кликните в месте контейнера — прямоугольник создастся автоматически.</small>
+            </div>
+            <button type="button" class="button default" data-map-tool="draw" data-map-kind="container">Добавить контейнер</button>
+          </div>
+        </div>
+
+        <div class="market-map-edit-bar">
+          <div class="market-map-tools" role="toolbar" aria-label="Инструменты рисования">
+            <button type="button" class="button active" data-map-tool="select">Редактировать объекты</button>
+          </div>
+          <div class="market-map-draw-actions" hidden>
+            <button type="button" class="button default" id="market-map-finish">Завершить рисунок</button>
+            <button type="button" class="button" id="market-map-cancel">Отменить</button>
+          </div>
+          <p class="help" id="market-map-mode-help">Выберите раздел выше и нарисуйте объект на карте.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="market-map-layout">
+    <main class="market-map-main">
+      <section class="market-map-stage-card">
+        <div class="market-map-stage-header">
+          <div>
+            <span class="market-map-stage-step">Карта</span>
+            <strong>Рисуйте прямо здесь</strong>
+          </div>
+          <span class="market-map-stage-hint">Колёсико — масштаб · зажмите карту — перемещение</span>
+        </div>
+        <div class="market-map-stage">
+          <div id="market-map-canvas" aria-label="Редактор карты базара"></div>
+          <div id="market-map-status" role="status" aria-live="polite">Загрузка карты…</div>
+        </div>
+      </section>
+
+      <details class="market-map-objects-panel">
+        <summary>
+          <span>Объекты на карте</span>
+          <small>Откройте список, если нужно быстро найти уже созданный объект.</small>
+        </summary>
+        <div id="market-feature-list" class="market-feature-list"></div>
+      </details>
+    </main>
+
+    <aside class="market-map-properties">
+      <section class="market-map-properties-card">
+        <div class="market-map-properties-header">
+          <span class="market-map-step-number">3</span>
+          <div>
+            <h2>Данные объекта</h2>
+            <p>После рисования заполните только необходимые поля и нажмите «Применить».</p>
+          </div>
+        </div>
+
+        <div class="form-row market-map-technical-field">
           <label for="market-feature-kind">Тип</label>
           <select id="market-feature-kind" disabled>
             <option value="bazar">Граница базара</option>
@@ -126,87 +170,117 @@
             <option value="passage">Проход</option>
             <option value="container">Контейнер</option>
           </select>
-          <p class="help market-map-inline-help">Тип фиксируется выбранным инструментом рисования.</p>
         </div>
+
         <div class="form-row" data-kind-scope="not-container">
-          <label for="market-feature-name">Название / номер</label>
-          <input id="market-feature-name" type="text" maxlength="160" placeholder="Например: Дордой / Проход 1 / A-101">
+          <label for="market-feature-name">Название</label>
+          <input id="market-feature-name" type="text" maxlength="160" placeholder="Например: Проход 1">
         </div>
+
         <div class="form-row" data-kind-scope="container">
-          <label for="market-feature-number">Номер или название</label>
+          <label for="market-feature-number">Номер контейнера</label>
           <input id="market-feature-number" type="text" maxlength="50" placeholder="Например: A-101">
         </div>
+
         <div class="form-row" data-kind-scope="container">
-          <label for="market-feature-passage">Проход</label>
+          <label for="market-feature-passage">К какому проходу относится?</label>
           <select id="market-feature-passage">
-            <option value="">Не выбран</option>
+            <option value="">Выберите проход</option>
             {% for passage in passages %}
               <option value="{{ passage.id }}">{{ passage.number }}</option>
             {% endfor %}
           </select>
+          <p class="help market-map-inline-help">Если нужного прохода нет, сначала создайте его в разделе «Проход» и сохраните карту.</p>
         </div>
+
         <div class="market-map-grid-fields" data-kind-scope="container">
           <div class="form-row">
             <label for="market-feature-width-m">Ширина, м</label>
             <input id="market-feature-width-m" type="number" min="0.5" max="100" step="0.5" value="4">
           </div>
           <div class="form-row">
-            <label for="market-feature-height-m">Высота, м</label>
+            <label for="market-feature-height-m">Длина, м</label>
             <input id="market-feature-height-m" type="number" min="0.5" max="100" step="0.5" value="2.5">
           </div>
         </div>
-        <div class="form-row" data-kind-scope="container">
-          <label for="market-feature-duplicate-direction">Дублировать куда</label>
-          <select id="market-feature-duplicate-direction">
-            <option value="right">Вправо</option>
-            <option value="left">Влево</option>
-            <option value="down">Вниз</option>
-            <option value="up">Вверх</option>
-          </select>
-        </div>
-        <div class="form-row" data-kind-scope="advanced-container">
-          <label for="market-feature-container">Существующий контейнер</label>
-          <select id="market-feature-container">
-            <option value="">Новый объект</option>
-            {% for container in containers %}
-              <option value="{{ container.id }}" data-passage-id="{{ container.passage_id }}" data-number="{{ container.number }}">
-                {{ container.number }}{% if container.title %} — {{ container.title }}{% endif %}
-              </option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="form-row" data-kind-scope="container">
-          <label for="market-feature-title">Примечание</label>
-          <input id="market-feature-title" type="text" maxlength="150" placeholder="Необязательно">
-        </div>
+
         <details class="market-map-advanced-fields">
-          <summary>Дополнительно</summary>
+          <summary>Дополнительные настройки</summary>
+
+          <div class="form-row" data-kind-scope="container">
+            <label for="market-feature-title">Примечание</label>
+            <input id="market-feature-title" type="text" maxlength="150" placeholder="Необязательно">
+          </div>
+
+          <div class="form-row" data-kind-scope="container">
+            <label for="market-feature-duplicate-direction">При дублировании разместить</label>
+            <select id="market-feature-duplicate-direction">
+              <option value="right">Справа</option>
+              <option value="left">Слева</option>
+              <option value="down">Снизу</option>
+              <option value="up">Сверху</option>
+            </select>
+          </div>
+
+          <div class="form-row" data-kind-scope="advanced-container">
+            <label for="market-feature-container">Связать с существующим контейнером</label>
+            <select id="market-feature-container">
+              <option value="">Новый контейнер</option>
+              {% for container in containers %}
+                <option value="{{ container.id }}" data-passage-id="{{ container.passage_id }}" data-number="{{ container.number }}">
+                  {{ container.number }}{% if container.title %} — {{ container.title }}{% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
           <div class="market-map-grid-fields">
-          <div class="form-row" data-kind-scope="not-container">
-            <label for="market-feature-min-zoom">Показывать с масштаба</label>
-            <input id="market-feature-min-zoom" type="number" min="0" max="22" value="14">
-          </div>
-          <div class="form-row" data-kind-scope="not-container">
-            <label for="market-feature-stroke-width">Толщина линии</label>
-            <input id="market-feature-stroke-width" type="number" min="1" max="12" value="2">
-          </div>
-          <div class="form-row">
-            <label for="market-feature-stroke">Цвет линии</label>
-            <input id="market-feature-stroke" type="color" value="#e47f26">
-          </div>
-          <div class="form-row">
-            <label for="market-feature-fill">Цвет заливки</label>
-            <input id="market-feature-fill" type="color" value="#ff8656">
-          </div>
+            <div class="form-row" data-kind-scope="not-container">
+              <label for="market-feature-min-zoom">Показывать с масштаба</label>
+              <input id="market-feature-min-zoom" type="number" min="0" max="22" value="14">
+            </div>
+            <div class="form-row" data-kind-scope="not-container">
+              <label for="market-feature-stroke-width">Толщина линии</label>
+              <input id="market-feature-stroke-width" type="number" min="1" max="12" value="2">
+            </div>
+            <div class="form-row">
+              <label for="market-feature-stroke">Цвет линии</label>
+              <input id="market-feature-stroke" type="color" value="#e47f26">
+            </div>
+            <div class="form-row">
+              <label for="market-feature-fill">Цвет объекта</label>
+              <input id="market-feature-fill" type="color" value="#ff8656">
+            </div>
           </div>
         </details>
+
         <div class="market-map-property-actions">
-          <button type="button" class="button default" id="market-feature-apply">Применить</button>
-          <button type="button" class="button" id="market-feature-duplicate" data-kind-scope="container">Дублировать</button>
-          <button type="button" class="button deletelink market-map-delete-button" id="market-feature-delete">Удалить объект</button>
+          <button type="button" class="button default market-map-apply-button" id="market-feature-apply">Применить изменения</button>
+          <button type="button" class="button" id="market-feature-duplicate" data-kind-scope="container">Дублировать контейнер</button>
+          <button type="button" class="button deletelink market-map-delete-button" id="market-feature-delete">Удалить</button>
         </div>
       </section>
+
+      <section class="market-map-save-help">
+        <strong>Когда всё готово</strong>
+        <p><b>Сохранить</b> — оставить изменения в черновике. <b>Опубликовать карту</b> — показать новую карту пользователям приложения.</p>
+      </section>
     </aside>
+  </div>
+</div>
+
+<div id="market-map-error-modal" class="market-map-modal" hidden aria-hidden="true">
+  <div class="market-map-modal-backdrop" data-market-map-error-close></div>
+  <div class="market-map-modal-dialog" role="alertdialog" aria-modal="true" aria-labelledby="market-map-error-title" aria-describedby="market-map-error-message">
+    <div class="market-map-modal-icon" aria-hidden="true">!</div>
+    <div class="market-map-modal-content">
+      <h2 id="market-map-error-title">Не получилось выполнить действие</h2>
+      <div id="market-map-error-message" class="market-map-modal-message"></div>
+      <p class="market-map-modal-hint">Исправьте указанную проблему и повторите действие. Ваши нарисованные объекты останутся на карте.</p>
+    </div>
+    <div class="market-map-modal-actions">
+      <button type="button" class="button default" id="market-map-error-close">Понятно</button>
+    </div>
   </div>
 </div>
 
@@ -215,6 +289,7 @@
 {{ passages|json_script:"market-map-passages" }}
 {{ containers|json_script:"market-map-containers" }}
 <script src="{% static 'delivery/admin/market_map_editor.js' %}"></script>
+<script src="{% static 'delivery/admin/market_map_editor_ui.js' %}"></script>
 {% if google_maps_api_key %}
 <script async defer src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key|urlencode }}&callback=initMarketMapEditor&v=weekly"></script>
 {% endif %}
