@@ -23,7 +23,7 @@ def sync_passages(revision: MarketMapRevision) -> None:
 
         number = str(properties.get("number") or properties.get("name") or "").strip()
         if number in DEFAULT_PASSAGE_NAMES:
-            raise ValidationError("Укажите название или номер каждого прохода перед публикацией")
+            raise ValidationError("Укажите название или номер каждого прохода перед сохранением")
 
         passage = None
         passage_id = properties.get("passage_id")
@@ -52,12 +52,33 @@ def sync_passages(revision: MarketMapRevision) -> None:
             feature["properties"] = properties
             changed = True
 
-    if changed:
+    if changed and revision.pk:
         MarketMapRevision.objects.filter(pk=revision.pk).update(geojson=revision.geojson)
 
 
 def enable_passage_sync() -> None:
-    """Run passage synchronization before the existing map publication flow."""
+    """Keep map passage features and the Passage catalog synchronized on save and publish."""
+    current_save = MarketMapRevision.save
+    if not getattr(current_save, "_safa_passage_save_sync_enabled", False):
+        @wraps(current_save)
+        @transaction.atomic
+        def save_with_passage_sync(self, *args, **kwargs):
+            update_fields = kwargs.get("update_fields")
+            geojson_is_being_saved = update_fields is None or "geojson" in update_fields
+            should_sync = (
+                self.pk is not None
+                and self.status == MarketMapRevision.Status.DRAFT
+                and geojson_is_being_saved
+            )
+
+            if should_sync:
+                sync_passages(self)
+
+            return current_save(self, *args, **kwargs)
+
+        save_with_passage_sync._safa_passage_save_sync_enabled = True
+        MarketMapRevision.save = save_with_passage_sync
+
     current_publish = MarketMapRevision.publish
     if getattr(current_publish, "_safa_passage_sync_enabled", False):
         return

@@ -70,3 +70,37 @@ class PassageMapSyncTests(TestCase):
             revision.geojson["features"][0]["properties"]["passage_id"],
             passage.id,
         )
+
+    def test_saving_draft_geojson_creates_passage_for_container_picker(self):
+        bazar = Bazar.objects.create(name="Базар для контейнеров")
+        revision = MarketMapRevision.objects.create(
+            bazar=bazar,
+            version=1,
+            geojson={"type": "FeatureCollection", "features": []},
+        )
+
+        revision.geojson = {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "id": "passage-saved-from-editor",
+                    "properties": {
+                        "kind": "passage",
+                        "name": "Проход 7",
+                    },
+                    "geometry": {
+                        "type": "LineString",
+                        "coordinates": [[74.60, 42.87], [74.61, 42.88]],
+                    },
+                }
+            ],
+        }
+        revision.save(update_fields=("geojson", "updated_at"))
+
+        passage = Passage.objects.get(bazar=bazar, number="Проход 7")
+        revision.refresh_from_db()
+        properties = revision.geojson["features"][0]["properties"]
+
+        self.assertEqual(properties["passage_id"], passage.id)
+        self.assertTrue(Passage.objects.filter(bazar=bazar, pk=passage.id).exists())
