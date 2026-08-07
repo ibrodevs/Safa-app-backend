@@ -144,75 +144,91 @@
 
   function installGoogleMapsPerformancePatch() {
     if (perf.installed || !window.google?.maps) return;
-    perf.installed = true;
 
     const maps = window.google.maps;
-    const OriginalMap = maps.Map;
-    const OriginalMarker = maps.Marker;
-    const OriginalPolygon = maps.Polygon;
-    const OriginalPolyline = maps.Polyline;
+    const originals = {
+      Map: maps.Map,
+      Marker: maps.Marker,
+      Polygon: maps.Polygon,
+      Polyline: maps.Polyline,
+    };
 
-    maps.Map = wrapConstructor(OriginalMap, (Ctor, args) => {
-      const [element, options = {}] = args;
-      const map = new Ctor(element, {
-        ...options,
-        gestureHandling: 'greedy',
-      });
-      perf.map = map;
-      attachMapPerformanceListeners(map);
-      return map;
-    });
-
-    maps.Marker = wrapConstructor(OriginalMarker, (Ctor, args) => {
-      const [options = {}] = args;
-      const marker = new Ctor({
-        ...options,
-        optimized: options.optimized !== false,
+    try {
+      maps.Map = wrapConstructor(originals.Map, (Ctor, args) => {
+        const [element, options = {}] = args;
+        const map = new Ctor(element, {
+          ...options,
+          gestureHandling: 'greedy',
+        });
+        perf.map = map;
+        attachMapPerformanceListeners(map);
+        return map;
       });
 
-      if (isFeatureLabel(options)) {
-        marker.__safaPerfLabelMeta = {
-          minZoom: inferLabelMinZoom(options),
-        };
-        perf.labels.add(marker);
-        marker.setVisible(false);
+      maps.Marker = wrapConstructor(originals.Marker, (Ctor, args) => {
+        const [options = {}] = args;
+        const marker = new Ctor({
+          ...options,
+          optimized: options.optimized !== false,
+        });
 
-        const originalSetMap = marker.setMap?.bind(marker);
-        if (originalSetMap) {
-          marker.setMap = (map) => {
-            if (map === null) perf.labels.delete(marker);
-            return originalSetMap(map);
+        if (isFeatureLabel(options)) {
+          marker.__safaPerfLabelMeta = {
+            minZoom: inferLabelMinZoom(options),
+          };
+          perf.labels.add(marker);
+          marker.setVisible(false);
+
+          const originalSetMap = marker.setMap?.bind(marker);
+          if (originalSetMap) {
+            marker.setMap = (map) => {
+              if (map === null) perf.labels.delete(marker);
+              return originalSetMap(map);
+            };
+          }
+          scheduleLabelRestore(0);
+        }
+
+        const originalSetAnimation = marker.setAnimation?.bind(marker);
+        if (originalSetAnimation) {
+          marker.setAnimation = (animation) => {
+            if (animation === maps.Animation?.BOUNCE) return undefined;
+            return originalSetAnimation(animation);
           };
         }
-        scheduleLabelRestore(0);
-      }
 
-      const originalSetAnimation = marker.setAnimation?.bind(marker);
-      if (originalSetAnimation) {
-        marker.setAnimation = (animation) => {
-          if (animation === maps.Animation?.BOUNCE) return undefined;
-          return originalSetAnimation(animation);
-        };
-      }
+        return marker;
+      });
 
-      return marker;
-    });
+      maps.Polygon = wrapConstructor(originals.Polygon, (Ctor, args) => {
+        const [options = {}] = args;
+        return patchOverlayInstance(new Ctor(options));
+      });
 
-    maps.Polygon = wrapConstructor(OriginalPolygon, (Ctor, args) => {
-      const [options = {}] = args;
-      return patchOverlayInstance(new Ctor(options));
-    });
+      maps.Polyline = wrapConstructor(originals.Polyline, (Ctor, args) => {
+        const [options = {}] = args;
+        return patchOverlayInstance(new Ctor(options));
+      });
 
-    maps.Polyline = wrapConstructor(OriginalPolyline, (Ctor, args) => {
-      const [options = {}] = args;
-      return patchOverlayInstance(new Ctor(options));
-    });
+      perf.installed = true;
+    } catch (error) {
+      // Если Google изменит внутреннее API, редактор всё равно должен запуститься
+      // в обычном режиме, а не сломаться из-за оптимизатора.
+      maps.Map = originals.Map;
+      maps.Marker = originals.Marker;
+      maps.Polygon = originals.Polygon;
+      maps.Polyline = originals.Polyline;
+      perf.installed = false;
+      perf.labels.clear();
+      perf.map = null;
+      console.warn('Safa map performance optimizer disabled:', error);
+    }
   }
 
   window.initMarketMapEditor = function initMarketMapEditorOptimized() {
     installGoogleMapsPerformancePatch();
     const result = originalInit();
-    scheduleLabelRestore(80);
+    if (perf.installed) scheduleLabelRestore(80);
     return result;
   };
 })();
