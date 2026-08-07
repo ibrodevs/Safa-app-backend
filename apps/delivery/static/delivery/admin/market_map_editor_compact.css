@@ -1,22 +1,107 @@
-/* Compact layout for the map editor: creation controls stay visible, instructions do not. */
+/* Compact, predictable controls for the market map editor. */
+
+/* Header: title on the left, two clear actions on one line. */
+.market-map-header {
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 10px;
+  padding: 0;
+}
+
+.market-map-heading {
+  min-width: 0;
+}
+
+.market-map-eyebrow {
+  margin-bottom: 3px;
+  font-size: 10px;
+}
+
+.market-map-header h1 {
+  margin-bottom: 3px;
+  font-size: clamp(22px, 2.4vw, 30px);
+}
+
+.market-map-header p {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.market-map-actions {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 7px;
+}
+
+.market-map-actions .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  margin: 0;
+  padding: 7px 13px;
+  border-radius: 8px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.market-map-secondary-action {
+  min-width: 108px;
+}
+
+.market-map-primary-action {
+  min-width: 154px;
+}
+
+/* Creation controls: one clean row instead of scattered cards/buttons. */
 .market-map-create-panel {
   margin-bottom: 10px;
-  padding: 9px 10px;
+  padding: 7px 9px;
   border: 1px solid var(--map-border);
-  border-radius: 12px;
+  border-radius: 11px;
   background: var(--body-bg, #fff);
 }
 
 .market-map-create-panel .market-map-create-tools {
-  grid-template-columns: 1fr;
-  gap: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 6px;
 }
 
 .market-map-create-panel .market-kind-section {
-  min-height: 48px;
-  padding: 8px 9px 8px 11px;
-  border-radius: 9px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  margin: 0;
+  padding: 5px 6px 5px 10px;
+  border-width: 1px 1px 1px 3px;
+  border-radius: 8px;
+  background: var(--map-soft);
   list-style: none !important;
+}
+
+.market-map-create-panel .market-kind-section[hidden] {
+  display: none !important;
+}
+
+.market-map-create-panel .market-kind-section > div {
+  min-width: 0;
+}
+
+.market-map-create-panel .market-kind-section strong {
+  display: block;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The dynamic help below already explains how to draw; duplicated mini text only adds noise. */
+.market-map-create-panel .market-kind-section small {
+  display: none;
 }
 
 /* Jazzmin/base admin styles can add bullets/pseudo-elements to compact rows.
@@ -31,22 +116,62 @@
   display: none !important;
 }
 
-.market-map-create-panel .market-kind-section small {
-  font-size: 10.5px;
+.market-map-create-panel .market-kind-section .button,
+.market-map-create-panel .market-map-tools .button,
+.market-map-create-panel .market-map-draw-actions .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  margin: 0;
+  padding: 6px 11px;
+  border-radius: 7px;
+  font-size: 11px;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 .market-map-create-panel .market-kind-section .button {
-  min-height: 34px;
-  padding: 7px 11px;
+  min-width: 140px;
 }
 
+/* Edit/drawing controls form one toolbar with the current-mode hint on the right. */
 .market-map-create-panel .market-map-edit-bar {
-  margin-top: 7px;
-  padding-top: 7px;
+  display: grid;
+  grid-template-columns: auto auto minmax(160px, 1fr);
+  align-items: center;
+  gap: 7px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--map-border);
+}
+
+.market-map-create-panel .market-map-tools,
+.market-map-create-panel .market-map-draw-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.market-map-create-panel .market-map-tools .button {
+  min-width: 142px;
+}
+
+.market-map-create-panel .market-map-draw-actions .button {
+  min-width: 92px;
 }
 
 .market-map-create-panel .market-map-edit-bar .help {
-  font-size: 11px;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--map-muted);
+  font-size: 10.5px;
+  line-height: 1.25;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Give drawing most of the available desktop width. */
@@ -67,25 +192,25 @@
 }
 
 .market-map-stage-header {
-  padding: 9px 12px;
+  padding: 8px 11px;
 }
 
 .market-map-stage-hint {
-  font-size: 10.5px;
+  font-size: 10px;
 }
 
 /* Keep the properties panel useful without stealing space from the map. */
 .market-map-properties {
-  gap: 9px;
+  gap: 8px;
 }
 
 .market-map-properties-card {
-  padding: 11px;
+  padding: 10px;
 }
 
 .market-map-properties-header {
-  margin-bottom: 11px;
-  padding-bottom: 9px;
+  margin-bottom: 9px;
+  padding-bottom: 8px;
 }
 
 .market-map-properties-header h2 {
@@ -93,45 +218,51 @@
 }
 
 .market-map-properties-header p {
-  font-size: 11px;
-  line-height: 1.35;
+  font-size: 10.5px;
+  line-height: 1.3;
 }
 
 .market-map-properties-card .form-row {
-  margin-bottom: 8px;
+  margin-bottom: 7px;
 }
 
 .market-map-properties-card label {
-  margin-bottom: 4px;
-  font-size: 11px;
+  margin-bottom: 3px;
+  font-size: 10.5px;
 }
 
 .market-map-properties-card input,
 .market-map-properties-card select {
-  min-height: 35px;
+  min-height: 34px;
   padding: 5px 7px;
   border-radius: 7px;
-  font-size: 12px;
+  font-size: 11.5px;
 }
 
 .market-map-inline-help {
-  font-size: 10px;
+  margin-top: 4px;
+  font-size: 9.5px;
+  line-height: 1.3;
+}
+
+.market-map-grid-fields {
+  gap: 0 7px;
 }
 
 /* Дополнительные настройки всегда раскрыты и выглядят как обычный раздел. */
 .market-map-advanced-fields {
-  margin-bottom: 9px;
+  margin-bottom: 8px;
 }
 
 .market-map-advanced-fields[open] > summary,
 .market-map-advanced-fields > summary {
   display: block;
-  padding: 9px 0 8px;
+  padding: 8px 0 7px;
   border-top: 1px solid var(--map-border);
   color: var(--map-text);
   cursor: default;
   list-style: none !important;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 800;
   pointer-events: none;
 }
@@ -151,24 +282,54 @@
   display: none !important;
 }
 
+/* Property actions always sit in a predictable 2-column grid. */
 .market-map-property-actions {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 6px;
-  padding-top: 9px;
+  margin-top: 3px;
+  padding-top: 8px;
 }
 
 .market-map-property-actions .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
   min-height: 34px;
-  padding: 7px 9px;
-  font-size: 11px;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 7px;
+  font-size: 10.5px;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.market-map-property-actions .market-map-apply-button {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.market-map-property-actions #market-feature-duplicate {
+  grid-column: 1;
+}
+
+.market-map-property-actions .market-map-delete-button {
+  grid-column: 2;
+  margin-left: 0;
 }
 
 .market-map-save-help {
-  padding: 9px 10px;
+  padding: 8px 9px;
 }
 
 .market-map-save-help p,
 .market-map-save-help strong {
-  font-size: 10px;
+  font-size: 9.5px;
+}
+
+.market-map-save-help strong {
+  margin-bottom: 2px;
 }
 
 /* Error text never remains as a red bar at the bottom of the map. */
@@ -179,6 +340,14 @@
 @media (max-width: 1180px) {
   .market-map-layout {
     grid-template-columns: minmax(0, 1fr) 265px;
+  }
+
+  .market-map-create-panel .market-map-edit-bar {
+    grid-template-columns: auto auto minmax(120px, 1fr);
+  }
+
+  .market-map-create-panel .market-map-edit-bar .help {
+    font-size: 10px;
   }
 }
 
@@ -195,19 +364,97 @@
   .market-map-properties {
     position: static;
   }
+
+  .market-map-create-panel .market-map-edit-bar {
+    grid-template-columns: auto 1fr;
+  }
+
+  .market-map-create-panel .market-map-draw-actions {
+    justify-self: end;
+  }
+
+  .market-map-create-panel .market-map-edit-bar .help {
+    grid-column: 1 / -1;
+    text-align: left;
+    white-space: normal;
+  }
 }
 
 @media (max-width: 680px) {
+  .market-map-header {
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .market-map-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .market-map-actions .button,
+  .market-map-secondary-action,
+  .market-map-primary-action {
+    width: 100%;
+    min-width: 0;
+  }
+
   .market-map-create-panel {
-    padding: 8px;
+    padding: 7px;
+  }
+
+  .market-map-create-panel .market-map-create-tools {
+    grid-template-columns: 1fr;
   }
 
   .market-map-create-panel .market-kind-section {
-    gap: 8px;
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .market-map-create-panel .market-kind-section .button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .market-map-create-panel .market-map-edit-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .market-map-create-panel .market-map-tools,
+  .market-map-create-panel .market-map-draw-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    justify-self: stretch;
+  }
+
+  .market-map-create-panel .market-map-tools .button,
+  .market-map-create-panel .market-map-draw-actions .button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .market-map-create-panel .market-map-tools .button:only-child {
+    grid-column: 1 / -1;
+  }
+
+  .market-map-create-panel .market-map-edit-bar .help {
+    grid-column: auto;
   }
 
   .market-map-stage {
     height: 520px;
     min-height: 520px;
+  }
+
+  .market-map-property-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .market-map-property-actions .market-map-apply-button,
+  .market-map-property-actions #market-feature-duplicate,
+  .market-map-property-actions .market-map-delete-button {
+    grid-column: 1;
   }
 }
