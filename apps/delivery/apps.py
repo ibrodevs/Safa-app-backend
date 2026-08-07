@@ -17,6 +17,7 @@ class DeleveryConfig(AppConfig):
         from .admin_patches import allow_bazar_map_cascade_deletion
         from .admin_simplify import simplify_delivery_admin
         from .map_pricing_patch import enable_map_pricing
+        from .map_quote_patch import enable_quote_map_pricing
         from .map_sync import enable_passage_sync
 
         # Контейнер — справочник текущей карты, а остановка заказа хранит
@@ -35,6 +36,7 @@ class DeleveryConfig(AppConfig):
         # Предварительная и фактическая стоимость заказа используют одни и те же
         # опубликованные границы базаров/районов и тарифы админ-панели.
         enable_map_pricing()
+        enable_quote_map_pricing()
 
         # Упрощаем рабочие формы админ-панели: на создании показываем только
         # обязательные поля, технические/legacy-настройки прячем в редактировании.
