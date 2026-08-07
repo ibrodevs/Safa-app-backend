@@ -19,8 +19,9 @@ from .map_models import (
     MarketMapRevision,
     MarketPassageMapSection,
 )
+from .map_tariff_sync import attach_district_tariff_ids
 from .map_validation import validate_feature_collection
-from .models import Bazar, Container, Passage
+from .models import Bazar, Container, DeliveryDistrict, Passage
 
 
 MAP_SECTION_LABELS = {
@@ -146,6 +147,23 @@ class MarketMapRevisionAdmin(admin.ModelAdmin):
             item["lat"] = float(item["lat"])
             item["lon"] = float(item["lon"])
 
+        district_tariffs = list(
+            DeliveryDistrict.objects.filter(is_active=True)
+            .order_by("name")
+            .values(
+                "id",
+                "name",
+                "fixed_price",
+                "base_price",
+                "per_km_price",
+                "min_fare",
+            )
+        )
+        for tariff in district_tariffs:
+            for key in ("base_price", "per_km_price", "min_fare"):
+                value = tariff[key]
+                tariff[key] = str(value) if value is not None else None
+
         context = {
             **self.admin_site.each_context(request),
             "title": f"Карта базара: {bazar.name}",
@@ -157,6 +175,7 @@ class MarketMapRevisionAdmin(admin.ModelAdmin):
             "context_geojson": other_bazar_boundaries(bazar),
             "passages": passages,
             "containers": containers,
+            "district_tariffs": district_tariffs,
             "google_maps_api_key": os.getenv("GOOGLE_MAPS_BROWSER_API_KEY", "") or os.getenv("GOOGLE_MAPS_API_KEY", ""),
             "save_url": reverse("admin:delivery_market_map_save", args=(bazar.id,)),
             "publish_url": reverse("admin:delivery_market_map_publish", args=(bazar.id,)),
@@ -177,7 +196,8 @@ class MarketMapRevisionAdmin(admin.ModelAdmin):
             payload = json.loads(request.body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValidationError("Не удалось прочитать JSON") from exc
-        return validate_feature_collection(payload.get("geojson"))
+        validated = validate_feature_collection(payload.get("geojson"))
+        return attach_district_tariff_ids(validated)
 
     def save_view(self, request, bazar_id: int):
         bazar = self._bazar(request, bazar_id)

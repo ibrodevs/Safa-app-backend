@@ -7,7 +7,8 @@ from django.utils import timezone
 
 from apps.users.models import User
 from .geo import haversine_m
-from .models import Bazar, CourierPosition, Shipment
+from .map_pricing import point_inside_published_or_legacy_bazar
+from .models import CourierPosition, Shipment
 
 
 @dataclass(frozen=True)
@@ -17,18 +18,9 @@ class SpecialistCandidate:
 
 
 def point_inside_bazar(lat, lon) -> bool:
-    if lat is None or lon is None:
-        return False
-    return Bazar.objects.filter(
-        top_left_lat__isnull=False,
-        top_left_lon__isnull=False,
-        bottom_right_lat__isnull=False,
-        bottom_right_lon__isnull=False,
-        bottom_right_lat__lte=lat,
-        top_left_lat__gte=lat,
-        top_left_lon__lte=lon,
-        bottom_right_lon__gte=lon,
-    ).exists()
+    """Проверяет опубликованную границу карты, затем legacy-прямоугольник."""
+
+    return point_inside_published_or_legacy_bazar(lat, lon)
 
 
 def shipment_all_stops_in_bazars(shipment: Shipment) -> bool:
