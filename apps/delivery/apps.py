@@ -5,6 +5,7 @@ from django.db import models
 class DeleveryConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.delivery'
+    verbose_name = 'Safa — доставка и карта'
 
     def ready(self):
         # Модель карты вынесена отдельно, чтобы не раздувать основной models.py.
@@ -14,6 +15,7 @@ class DeleveryConfig(AppConfig):
         from . import map_admin  # noqa: F401
         from .models import ShipmentStop
         from .admin_patches import allow_bazar_map_cascade_deletion
+        from .admin_simplify import simplify_delivery_admin
         from .map_sync import enable_passage_sync
 
         # Контейнер — справочник текущей карты, а остановка заказа хранит
@@ -28,3 +30,7 @@ class DeleveryConfig(AppConfig):
         # Объекты типа passage из GeoJSON должны появляться в обычном справочнике
         # «Проходы» до синхронизации контейнеров.
         enable_passage_sync()
+
+        # Упрощаем рабочие формы админ-панели: на создании показываем только
+        # обязательные поля, технические/legacy-настройки прячем в редактировании.
+        simplify_delivery_admin()
