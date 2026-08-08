@@ -382,32 +382,32 @@ class ShipmentStopReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = ShipmentStop
         fields = [
-  "position",
-  "title",
-  "lat",
-  "lon",
-  "bazar",
-  "district",
-  "passage",
-  "container",
-  "label",
+            "position",
+            "title",
+            "lat",
+            "lon",
+            "bazar",
+            "district",
+            "passage",
+            "container",
+            "label",
         ]
 
     def _resolved_market_point(self, obj: ShipmentStop):
         if not obj.container_id or obj.lat is None or obj.lon is None:
-  return None
+            return None
         cache = self.context.setdefault("_safa_market_stop_cache", {})
         if obj.container_id not in cache:
-  match = resolve_market_point(float(obj.lat), float(obj.lon))
-  if match is not None and match.container.id != obj.container_id:
-      match = None
-  cache[obj.container_id] = match
+            match = resolve_market_point(float(obj.lat), float(obj.lon))
+            if match is not None and match.container.id != obj.container_id:
+                match = None
+            cache[obj.container_id] = match
         return cache[obj.container_id]
 
     def get_bazar(self, obj: ShipmentStop):
         match = self._resolved_market_point(obj)
         if match is not None:
-  return match.bazar_name
+            return match.bazar_name
         return obj.container.passage.bazar.name if obj.container_id else None
 
     def get_district(self, obj: ShipmentStop):
@@ -417,13 +417,13 @@ class ShipmentStopReadSerializer(serializers.ModelSerializer):
     def get_passage(self, obj: ShipmentStop):
         match = self._resolved_market_point(obj)
         if match is not None:
-  return match.passage_number
+            return match.passage_number
         return obj.container.passage.number if obj.container_id else None
 
     def get_container(self, obj: ShipmentStop):
         match = self._resolved_market_point(obj)
         if match is not None:
-  return match.container_number
+            return match.container_number
         return obj.container.number if obj.container_id else None
 
     def get_label(self, obj: ShipmentStop):
@@ -433,13 +433,13 @@ class ShipmentStopReadSerializer(serializers.ModelSerializer):
         passage = self.get_passage(obj)
         container = self.get_container(obj)
         if bazar:
-  parts.append(f"Базар: {bazar}")
+            parts.append(f"Базар: {bazar}")
         if district:
-  parts.append(f"Район: {district}")
+            parts.append(f"Район: {district}")
         if passage:
-  parts.append(f"Проход: {passage}")
+            parts.append(f"Проход: {passage}")
         if container:
-  parts.append(f"Контейнер: {container}")
+            parts.append(f"Контейнер: {container}")
         return " · ".join(parts) or (obj.title or "")
 
 
@@ -735,23 +735,23 @@ class ShipmentNearbySerializer(serializers.ModelSerializer):
     class Meta:
         model = Shipment
         fields = (
-  "id",
-  "public_code",
-  "title",
-  "service_type",
-  "description",
-  "estimated_fare",
-  "final_fare",
-  "commission",
-  "courier_income",
-  "status",
-  "created_at",
-  "finished_at",
-  "is_paid",
-  "paid_at",
-  "distance_m",
-  "stops_count",
-  "stops",
+            "id",
+            "public_code",
+            "title",
+            "service_type",
+            "description",
+            "estimated_fare",
+            "final_fare",
+            "commission",
+            "courier_income",
+            "status",
+            "created_at",
+            "finished_at",
+            "is_paid",
+            "paid_at",
+            "distance_m",
+            "stops_count",
+            "stops",
         )
 
     def get_stops_count(self, obj) -> int:
@@ -767,11 +767,11 @@ class ShipmentNearbySerializer(serializers.ModelSerializer):
         lat = self.context.get("user_lat")
         lon = self.context.get("user_lon")
         if lat is None or lon is None:
-  return None
+            return None
 
         stop = obj.stops.order_by("position").first()
         if not stop or stop.lat is None or stop.lon is None:
-  return None
+            return None
 
         d = haversine_m(lat, lon, float(stop.lat), float(stop.lon))
         return int(round(d))
