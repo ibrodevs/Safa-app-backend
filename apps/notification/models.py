@@ -1,8 +1,11 @@
 from __future__ import annotations
-from apps.users.models import User
+
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
-from django.utils import timezone
+
+from apps.users.models import User
+
 
 class FCMToken(models.Model):
     class Platform(models.TextChoices):
@@ -82,9 +85,6 @@ class Notification(models.Model):
         return f"{self.user_id}: {self.title or self.type}"
 
 
-
-
-
 class RoleBroadcast(models.Model):
     APP_CHOICES = (
         ("client", "Клиентское приложение"),
@@ -114,3 +114,19 @@ class RoleBroadcast(models.Model):
 
     def __str__(self) -> str:
         return f"{self.title} → {self.role}"
+
+    def clean(self) -> None:
+        super().clean()
+        expected_app = {
+            User.Roles.CLIENT: "client",
+            User.Roles.CARRIER: "carrier",
+        }.get(self.role)
+        if expected_app and self.app != expected_app:
+            raise ValidationError(
+                {
+                    "app": (
+                        "Приложение должно соответствовать роли получателей: "
+                        f"для роли {self.role} используется {expected_app}."
+                    )
+                }
+            )
