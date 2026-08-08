@@ -1,8 +1,8 @@
 from django.contrib import admin
 from django.utils import timezone
 
-from .models import RoleBroadcast
 from .events import broadcast_to_role
+from .models import RoleBroadcast
 
 
 @admin.register(RoleBroadcast)
@@ -23,9 +23,14 @@ class RoleBroadcastAdmin(admin.ModelAdmin):
     )
 
     def save_model(self, request, obj, form, change):
+        # A saved broadcast is immutable from a delivery perspective. Previously
+        # every later edit/save sent it to the whole role again.
+        already_sent = bool(obj.sent_at)
         super().save_model(request, obj, form, change)
+        if already_sent:
+            return
 
-        cnt = broadcast_to_role(
+        delivered_count = broadcast_to_role(
             role=obj.role,
             app=obj.app,
             title=obj.title,
@@ -37,5 +42,5 @@ class RoleBroadcastAdmin(admin.ModelAdmin):
         )
 
         obj.sent_at = timezone.now()
-        obj.sent_count = cnt
+        obj.sent_count = delivered_count
         obj.save(update_fields=["sent_at", "sent_count"])
