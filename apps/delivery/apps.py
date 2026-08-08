@@ -16,6 +16,10 @@ class DeleveryConfig(AppConfig):
         from .models import ShipmentStop
         from .admin_patches import allow_bazar_map_cascade_deletion
         from .admin_simplify import simplify_delivery_admin
+        from .district_per_km import (
+            enable_district_per_km_admin,
+            enable_district_per_km_pricing,
+        )
         from .map_pricing_patch import enable_map_pricing
         from .map_quote_patch import enable_quote_map_pricing
         from .map_sync import enable_passage_sync
@@ -37,7 +41,9 @@ class DeleveryConfig(AppConfig):
         # опубликованные границы базаров/районов и тарифы админ-панели.
         enable_map_pricing()
         enable_quote_map_pricing()
+        enable_district_per_km_pricing()
 
-        # Упрощаем рабочие формы админ-панели: на создании показываем только
-        # обязательные поля, технические/legacy-настройки прячем в редактировании.
+        # Базовая админка остаётся компактной, а для тарифов районов поверх неё
+        # включаем единственную рабочую настройку: стоимость одного километра.
         simplify_delivery_admin()
+        enable_district_per_km_admin()
