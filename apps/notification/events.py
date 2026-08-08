@@ -80,6 +80,7 @@ def _send_to_user(
             data=data,
             ttl=ttl,
             collapse_key=collapse_key,
+            platform=token_obj.platform,
         )
         delivered = delivered or result.success
         if result.deactivate_token:
