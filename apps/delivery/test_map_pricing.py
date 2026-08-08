@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 import pytest
 
@@ -149,7 +149,7 @@ class TestPublishedMapPricing:
 
         quote_distance = Decimal(
             str(polyline_len_km([(stop["lat"], stop["lon"]) for stop in stops]))
-        ).quantize(Decimal("0.01"))
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         expected_quote = per_km_tariff_price(district, quote_distance)
         assert views._quote_fixed_bazar_fare(stops) == expected_quote
 
