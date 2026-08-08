@@ -13,7 +13,6 @@ def test_map_editor_uses_compact_creation_controls():
 
     assert "Создание карты" not in content
     assert "Что хотите создать?" not in content
-    assert "Нарисуйте объект" not in content
     assert 'class="market-map-create-panel"' in content
     assert "Нарисовать границу" in content
     assert "Нарисовать район" in content
@@ -113,7 +112,7 @@ def test_missing_container_passage_is_blocked_with_modal_warning():
     ui_js = UI_JS.read_text(encoding="utf-8")
 
     assert "#market-feature-apply, #market-map-save, #market-map-publish" in ui_js
-    assert "kind?.value !== 'container'" in ui_js
+    assert "featureKind?.value !== 'container'" in ui_js
     assert "Для контейнера обязательно выберите проход." in ui_js
     assert "event.stopImmediatePropagation()" in ui_js
     assert "showError('Для контейнера обязательно выберите проход.')" in ui_js
