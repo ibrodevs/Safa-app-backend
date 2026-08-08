@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.users.models import User
 from apps.notification.events import _send_to_user
 from apps.notification.fcm_client import fcm_config_status
 from apps.notification.models import FCMToken
+from apps.users.models import User
 
 
 class Command(BaseCommand):
-    help = "Проверяет конфигурацию FCM, активные токены и при необходимости отправляет тестовый push."
+    help = "Проверяет FCM по платформам, активные токены и при необходимости отправляет тестовый push."
 
     def add_arguments(self, parser):
         parser.add_argument("--user-id", type=int, default=None)
@@ -19,22 +19,35 @@ class Command(BaseCommand):
             help="Отправить тестовое уведомление пользователю из --user-id.",
         )
 
-    def handle(self, *args, **options):
-        status = fcm_config_status()
-        configured = bool(status["configured"])
+    def _print_platform_status(self, platform: str) -> None:
+        status = fcm_config_status(platform)
+        label = platform.upper()
+        if status["configured"]:
+            self.stdout.write(self.style.SUCCESS(f"{label} FCM: OK"))
+        else:
+            self.stdout.write(
+                self.style.ERROR(f"{label} FCM: ERROR — {status['error']}")
+            )
+        self.stdout.write(f"  Project ID: {status['project_id'] or '—'}")
         self.stdout.write(
-            self.style.SUCCESS("FCM configuration: OK")
-            if configured
-            else self.style.ERROR(f"FCM configuration: ERROR — {status['error']}")
-        )
-        self.stdout.write(f"Project ID: {status['project_id'] or '—'}")
-        self.stdout.write(
-            "Service account file: "
+            "  Service account file: "
             + ("found" if status["service_account_exists"] else "missing")
         )
 
+    def handle(self, *args, **options):
+        self._print_platform_status("android")
+        self._print_platform_status("ios")
+
         active_tokens = FCMToken.objects.filter(is_active=True, user__is_active=True)
         self.stdout.write(f"Active device tokens: {active_tokens.count()}")
+        self.stdout.write(
+            "  Android: "
+            + str(active_tokens.filter(platform=FCMToken.Platform.ANDROID).count())
+        )
+        self.stdout.write(
+            "  iOS: "
+            + str(active_tokens.filter(platform=FCMToken.Platform.IOS).count())
+        )
         self.stdout.write(
             "Clients with tokens: "
             + str(
@@ -81,12 +94,15 @@ class Command(BaseCommand):
             raise CommandError(f"Активный пользователь id={user_id} не найден.")
 
         app = "carrier" if user.role == User.Roles.CARRIER else "client"
-        has_token = FCMToken.objects.filter(user=user, is_active=True).exists()
-        if not has_token:
+        tokens = list(FCMToken.objects.filter(user=user, is_active=True))
+        if not tokens:
             raise CommandError(
                 f"У пользователя id={user_id} нет активного FCM-токена. "
                 "Сначала войдите в приложение на его устройстве."
             )
+
+        platforms = ", ".join(sorted({token.platform for token in tokens}))
+        self.stdout.write(f"Test user platforms: {platforms}")
 
         data = {
             "app": app,
@@ -107,5 +123,5 @@ class Command(BaseCommand):
         else:
             raise CommandError(
                 "TEST PUSH failed: Firebase did not accept the push. "
-                "Проверьте конфигурацию FCM и активность токена."
+                "Проверьте platform FCM config и активность токена выше."
             )
