@@ -8,6 +8,7 @@ on:
       - apps/delivery/map_*.py
       - apps/delivery/migrations/0017_market_map_revision.py
       - apps/delivery/test_market_map.py
+      - tests/test_map_point_resolution.py
       - apps/delivery/urls.py
       - apps/delivery/apps.py
       - .github/workflows/market-map-ci.yml
@@ -50,7 +51,7 @@ jobs:
       - name: Run market map tests
         run: |
           set +e
-          python -m pytest apps/delivery/test_market_map.py -vv --tb=short --junitxml=market-map-results.xml > market-map-output.txt 2>&1
+          python -m pytest apps/delivery/test_market_map.py tests/test_map_point_resolution.py -vv --tb=short --junitxml=market-map-results.xml > market-map-output.txt 2>&1
           code=$?
           echo "$code" > market-map-exit-code.txt
           cat market-map-output.txt
