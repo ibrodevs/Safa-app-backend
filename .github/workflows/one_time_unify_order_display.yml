@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   apply:
-    if: github.event.head_commit.message == 'Run one-time order API display refactor'
+    if: github.event.head_commit.message == 'Retry one-time order API display refactor'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,37 +21,19 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           p = Path('apps/delivery/serializer.py')
           s = p.read_text()
-          old = 'from .specialists import point_inside_bazar\n'
-          new = 'from .specialists import point_inside_bazar\nfrom .map_point_resolver import resolve_market_point\n'
-          assert old in s
-          s = s.replace(old, new, 1)
+          import_line = 'from .specialists import point_inside_bazar\n'
+          assert import_line in s
+          s = s.replace(
+              import_line,
+              import_line + 'from .map_point_resolver import resolve_market_point\n',
+              1,
+          )
 
-          old = '''class ShipmentStopReadSerializer(serializers.ModelSerializer):
-              bazar = serializers.SerializerMethodField()
-              passage = serializers.SerializerMethodField()
-              container = serializers.SerializerMethodField()
-              label = serializers.SerializerMethodField()
-
-              class Meta:
-                  model = ShipmentStop
-                  fields = ["position", "title", "lat", "lon", "bazar", "passage", "container", "label"]
-
-              def get_bazar(self, obj: ShipmentStop):
-                  return obj.container.passage.bazar.name if obj.container_id else None
-
-              def get_passage(self, obj: ShipmentStop):
-                  return obj.container.passage.number if obj.container_id else None
-
-              def get_container(self, obj: ShipmentStop):
-                  return obj.container.number if obj.container_id else None
-
-              def get_label(self, obj: ShipmentStop):
-                  return obj.container.display_title if obj.container_id else None
-          '''
-          new = '''class ShipmentStopReadSerializer(serializers.ModelSerializer):
+          stop_block = '''class ShipmentStopReadSerializer(serializers.ModelSerializer):
               bazar = serializers.SerializerMethodField()
               district = serializers.SerializerMethodField()
               passage = serializers.SerializerMethodField()
@@ -120,32 +102,15 @@ jobs:
                   if container:
                       parts.append(f"Контейнер: {container}")
                   return " · ".join(parts) or (obj.title or "")
-          '''
-          old = old.replace('          ', '')
-          new = new.replace('          ', '')
-          assert old in s, 'ShipmentStopReadSerializer block changed'
-          s = s.replace(old, new, 1)
+          '''.replace('          ', '')
+          pattern = re.compile(
+              r'class ShipmentStopReadSerializer\(serializers\.ModelSerializer\):.*?\n\nMAX_SHIPMENT_STOPS = 30',
+              re.S,
+          )
+          assert pattern.search(s), 'ShipmentStopReadSerializer not found'
+          s = pattern.sub(stop_block.rstrip() + '\n\n\nMAX_SHIPMENT_STOPS = 30', s, count=1)
 
-          old = '''class ShipmentNearbySerializer(serializers.ModelSerializer):
-              distance_m = serializers.SerializerMethodField()
-              stops = ShipmentStopReadSerializer(many=True, read_only=True)
-
-              class Meta:
-                  model = Shipment
-                  fields = (
-                      "id",
-                      "public_code",
-                      "title",
-                      "estimated_fare",
-                      "status",
-                      "created_at",
-                      "distance_m",
-                      "stops",
-                  )
-
-              def get_distance_m(self, obj) -> int | None:
-          '''
-          new = '''class ShipmentNearbySerializer(serializers.ModelSerializer):
+          nearby_block = '''class ShipmentNearbySerializer(serializers.ModelSerializer):
               distance_m = serializers.SerializerMethodField()
               stops = ShipmentStopReadSerializer(many=True, read_only=True)
               stops_count = serializers.SerializerMethodField()
@@ -184,20 +149,37 @@ jobs:
                   return obj.courier_income
 
               def get_distance_m(self, obj) -> int | None:
-          '''
-          old = old.replace('          ', '')
-          new = new.replace('          ', '')
-          assert old in s, 'ShipmentNearbySerializer block changed'
-          s = s.replace(old, new, 1)
+                  lat = self.context.get("user_lat")
+                  lon = self.context.get("user_lon")
+                  if lat is None or lon is None:
+                      return None
+
+                  stop = obj.stops.order_by("position").first()
+                  if not stop or stop.lat is None or stop.lon is None:
+                      return None
+
+                  d = haversine_m(lat, lon, float(stop.lat), float(stop.lon))
+                  return int(round(d))
+          '''.replace('          ', '')
+          pattern = re.compile(
+              r'class ShipmentNearbySerializer\(serializers\.ModelSerializer\):.*\Z',
+              re.S,
+          )
+          assert pattern.search(s), 'ShipmentNearbySerializer not found'
+          s = pattern.sub(nearby_block.rstrip() + '\n', s, count=1)
           p.write_text(s)
 
           p = Path('tests/test_map_point_resolution.py')
           s = p.read_text()
           import_old = 'from apps.delivery.map_point_resolver import resolve_market_point\n'
-          import_new = 'from apps.delivery.map_point_resolver import resolve_market_point\nfrom apps.delivery.serializer import ShipmentDetailSerializer, ShipmentNearbySerializer\n'
           assert import_old in s
-          s = s.replace(import_old, import_new, 1)
-          s += '''\n\n@pytest.mark.django_db\ndef test_shipment_serializers_share_compact_map_hierarchy_and_fare(mapped_container):\n    user = User.objects.create(phone_number="996555009876", first_name="Client")\n    shipment = Shipment.objects.create(\n        client=user,\n        title="Реальный заказ",\n        service_type=Shipment.ServiceType.DELIVERY,\n        estimated_fare=275,\n        final_fare=0,\n    )\n    ShipmentStop.objects.create(\n        shipment=shipment,\n        position=0,\n        container=mapped_container,\n    )\n\n    detail = ShipmentDetailSerializer(shipment).data\n    nearby = ShipmentNearbySerializer(\n        shipment,\n        context={"user_lat": 42.9, "user_lon": 74.6},\n    ).data\n\n    expected = {\n        "bazar": "Дордой",\n        "district": "Центральный",\n        "passage": "8",\n        "container": "125",\n        "label": "Базар: Дордой · Район: Центральный · Проход: 8 · Контейнер: 125",\n    }\n    for key, value in expected.items():\n        assert detail["stops"][0][key] == value\n        assert nearby["stops"][0][key] == value\n\n    assert detail["estimated_fare"] == nearby["estimated_fare"] == 275\n    assert nearby["service_type"] == Shipment.ServiceType.DELIVERY\n    assert nearby["stops_count"] == 1\n    assert nearby["commission"] == shipment.commission_amount\n    assert nearby["courier_income"] == shipment.courier_income\n''' 
+          s = s.replace(
+              import_old,
+              import_old + 'from apps.delivery.serializer import ShipmentDetailSerializer, ShipmentNearbySerializer\n',
+              1,
+          )
+          assert 'test_shipment_serializers_share_compact_map_hierarchy_and_fare' not in s
+          s += '''\n\n@pytest.mark.django_db\ndef test_shipment_serializers_share_compact_map_hierarchy_and_fare(mapped_container):\n    user = User.objects.create(phone_number="996555009876", first_name="Client")\n    shipment = Shipment.objects.create(\n        client=user,\n        title="Реальный заказ",\n        service_type=Shipment.ServiceType.DELIVERY,\n        estimated_fare=275,\n        final_fare=0,\n    )\n    ShipmentStop.objects.create(\n        shipment=shipment,\n        position=0,\n        container=mapped_container,\n    )\n\n    detail = ShipmentDetailSerializer(shipment).data\n    nearby = ShipmentNearbySerializer(\n        shipment,\n        context={"user_lat": 42.9, "user_lon": 74.6},\n    ).data\n\n    expected = {\n        "bazar": "Дордой",\n        "district": "Центральный",\n        "passage": "8",\n        "container": "125",\n        "label": "Базар: Дордой · Район: Центральный · Проход: 8 · Контейнер: 125",\n    }\n    for key, value in expected.items():\n        assert detail["stops"][0][key] == value\n        assert nearby["stops"][0][key] == value\n\n    assert detail["estimated_fare"] == nearby["estimated_fare"] == 275\n    assert nearby["service_type"] == Shipment.ServiceType.DELIVERY\n    assert nearby["stops_count"] == 1\n    assert nearby["commission"] == shipment.commission_amount\n    assert nearby["courier_income"] == shipment.courier_income\n'''
           p.write_text(s)
           PY
       - name: Commit changes
