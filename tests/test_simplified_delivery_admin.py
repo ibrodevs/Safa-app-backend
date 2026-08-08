@@ -1,9 +1,13 @@
+import pytest
 from django.contrib import admin
 from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory
 
 from apps.delivery.map_models import MarketMapRevision
 from apps.delivery.models import Bazar, Container, DeliveryDistrict, Passage
+
+
+pytestmark = pytest.mark.django_db
 
 
 def _field_names(model, *, obj=None):
@@ -21,13 +25,55 @@ def _build_add_form(model):
     return form_class()
 
 
-def test_district_add_form_only_shows_simple_fields():
+def _district_feature(name: str):
+    return {
+        "type": "Feature",
+        "id": f"district-{name}",
+        "properties": {"kind": "district", "name": name},
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [[
+                [74.60, 42.87],
+                [74.61, 42.87],
+                [74.61, 42.88],
+                [74.60, 42.88],
+                [74.60, 42.87],
+            ]],
+        },
+    }
+
+
+def test_district_add_form_selects_district_from_saved_map():
     assert _field_names(DeliveryDistrict) == ["name", "fixed_price", "is_active"]
+
+    bazar = Bazar.objects.create(name="Дордой")
+    MarketMapRevision.objects.create(
+        bazar=bazar,
+        version=1,
+        status=MarketMapRevision.Status.DRAFT,
+        geojson={"type": "FeatureCollection", "features": [_district_feature("Северный район")]},
+    )
 
     form = _build_add_form(DeliveryDistrict)
     assert list(form.fields) == ["name", "fixed_price", "is_active"]
-    assert form.fields["name"].widget.__class__.__name__ != "Select"
-    assert form.fields["name"].label == "Название района"
+    assert form.fields["name"].widget.__class__.__name__ == "Select"
+    assert form.fields["name"].label == "Район с карты"
+    assert ("Северный район", "Северный район") in list(form.fields["name"].choices)
+    assert form.fields["fixed_price"].label == "Фиксированная цена, сом"
+
+
+def test_district_with_existing_tariff_is_not_offered_for_duplicate_creation():
+    bazar = Bazar.objects.create(name="Ошский рынок")
+    MarketMapRevision.objects.create(
+        bazar=bazar,
+        version=1,
+        status=MarketMapRevision.Status.DRAFT,
+        geojson={"type": "FeatureCollection", "features": [_district_feature("Центральный")]},
+    )
+    DeliveryDistrict.objects.create(name="Центральный", fixed_price=150)
+
+    form = _build_add_form(DeliveryDistrict)
+    assert ("Центральный", "Центральный") not in list(form.fields["name"].choices)
 
 
 def test_bazar_add_form_hides_legacy_coordinates_and_prices():
