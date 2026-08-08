@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping
 
 import google.auth.transport.requests
 import requests
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 SCOPES = ["https://www.googleapis.com/auth/firebase.messaging"]
 
 _session = requests.Session()
-_credentials: Optional[service_account.Credentials] = None
+_credentials_by_file: dict[str, service_account.Credentials] = {}
 
 
 @dataclass(frozen=True)
@@ -32,30 +33,78 @@ class FCMSendResult:
     error: str = ""
 
 
-def _fcm_config_error() -> str | None:
-    project_id = str(getattr(settings, "FCM_PROJECT_ID", "") or "").strip()
-    service_account_file = str(
+def _platform_config(platform: str) -> tuple[str, str]:
+    """Return the Firebase project/service-account pair for a token platform.
+
+    The current mobile clients intentionally use different Firebase projects:
+    Android -> safa-app-87b24, iOS -> dogoapp-7b7a2. A registration token can
+    only be sent through the project that issued it, so one global FCM project
+    is not sufficient.
+    """
+
+    platform_code = (platform or "android").strip().lower()
+    generic_project = str(getattr(settings, "FCM_PROJECT_ID", "") or "").strip()
+    generic_file = str(
         getattr(settings, "FCM_SERVICE_ACCOUNT_FILE", "") or ""
     ).strip()
 
+    if platform_code == "ios":
+        project_id = str(
+            getattr(settings, "FCM_IOS_PROJECT_ID", "")
+            or os.getenv("FCM_IOS_PROJECT_ID", "")
+            or generic_project
+            or "dogoapp-7b7a2"
+        ).strip()
+        explicit_file = str(
+            getattr(settings, "FCM_IOS_SERVICE_ACCOUNT_FILE", "")
+            or os.getenv("FCM_IOS_SERVICE_ACCOUNT_FILE", "")
+        ).strip()
+    elif platform_code == "android":
+        project_id = str(
+            getattr(settings, "FCM_ANDROID_PROJECT_ID", "")
+            or os.getenv("FCM_ANDROID_PROJECT_ID", "")
+            or "safa-app-87b24"
+        ).strip()
+        explicit_file = str(
+            getattr(settings, "FCM_ANDROID_SERVICE_ACCOUNT_FILE", "")
+            or os.getenv("FCM_ANDROID_SERVICE_ACCOUNT_FILE", "")
+        ).strip()
+    else:
+        project_id = generic_project
+        explicit_file = ""
+
+    # Reuse the old generic credential only when it targets the same project.
+    # This preserves existing deployments without ever silently sending an
+    # Android token through the iOS Firebase project (or vice versa).
+    service_account_file = explicit_file
+    if not service_account_file and generic_project == project_id:
+        service_account_file = generic_file
+
+    return project_id, service_account_file
+
+
+def _fcm_config_error(platform: str) -> str | None:
+    project_id, service_account_file = _platform_config(platform)
+
     if not project_id:
-        return "FCM_PROJECT_ID is empty"
+        return f"FCM project ID is empty for {platform}"
     if not service_account_file:
-        return "FCM_SERVICE_ACCOUNT_FILE is empty"
+        return f"FCM service account is not configured for {platform} ({project_id})"
     if not Path(service_account_file).is_file():
-        return f"FCM_SERVICE_ACCOUNT_FILE does not exist: {service_account_file}"
+        return (
+            f"FCM service account does not exist for {platform}: "
+            f"{service_account_file}"
+        )
     return None
 
 
-def fcm_config_status() -> dict[str, Any]:
-    """Return safe diagnostics without exposing Firebase credentials."""
+def fcm_config_status(platform: str = "android") -> dict[str, Any]:
+    """Return safe platform diagnostics without exposing Firebase secrets."""
 
-    project_id = str(getattr(settings, "FCM_PROJECT_ID", "") or "").strip()
-    service_account_file = str(
-        getattr(settings, "FCM_SERVICE_ACCOUNT_FILE", "") or ""
-    ).strip()
-    error = _fcm_config_error()
+    project_id, service_account_file = _platform_config(platform)
+    error = _fcm_config_error(platform)
     return {
+        "platform": platform,
         "configured": error is None,
         "project_id": project_id,
         "service_account_configured": bool(service_account_file),
@@ -65,18 +114,19 @@ def fcm_config_status() -> dict[str, Any]:
     }
 
 
-def _get_credentials() -> service_account.Credentials:
-    global _credentials
-    if _credentials is None:
-        _credentials = service_account.Credentials.from_service_account_file(
-            settings.FCM_SERVICE_ACCOUNT_FILE,
+def _get_credentials(service_account_file: str) -> service_account.Credentials:
+    credentials = _credentials_by_file.get(service_account_file)
+    if credentials is None:
+        credentials = service_account.Credentials.from_service_account_file(
+            service_account_file,
             scopes=SCOPES,
         )
-    return _credentials
+        _credentials_by_file[service_account_file] = credentials
+    return credentials
 
 
-def _get_access_token() -> str:
-    creds = _get_credentials()
+def _get_access_token(service_account_file: str) -> str:
+    creds = _get_credentials(service_account_file)
     auth_req = google.auth.transport.requests.Request()
     if not creds.valid or creds.expired or not creds.token:
         creds.refresh(auth_req)
@@ -168,23 +218,19 @@ def send_data_message(
     data: Mapping[str, Any],
     ttl: str = "15s",
     collapse_key: str | None = None,
+    platform: str = "android",
 ) -> FCMSendResult:
-    """Send one FCM HTTP v1 message without breaking the business action.
-
-    Normal notifications include both visible notification fields and data, so
-    Android/iOS can display them while the app is backgrounded or terminated.
-    Silent messages remain data-only background pushes.
-    """
+    """Send one FCM HTTP v1 message without breaking the business action."""
 
     if not token:
         return FCMSendResult(success=False, error="empty_token")
 
-    config_error = _fcm_config_error()
+    config_error = _fcm_config_error(platform)
     if config_error:
         logger.warning("FCM send skipped: %s", config_error)
         return FCMSendResult(success=False, error=config_error)
 
-    project_id = str(settings.FCM_PROJECT_ID).strip()
+    project_id, service_account_file = _platform_config(platform)
     url = f"https://fcm.googleapis.com/v1/projects/{project_id}/messages:send"
     message = _build_message(
         token=token,
@@ -194,7 +240,7 @@ def send_data_message(
     )
 
     try:
-        access_token = _get_access_token()
+        access_token = _get_access_token(service_account_file)
         if not access_token:
             raise RuntimeError("Firebase access token is empty")
         headers = {
@@ -208,7 +254,7 @@ def send_data_message(
             timeout=5,
         )
     except Exception as exc:
-        logger.warning("FCM send transport/auth error: %s", exc)
+        logger.warning("FCM send transport/auth error platform=%s: %s", platform, exc)
         return FCMSendResult(success=False, error=str(exc))
 
     if 200 <= resp.status_code < 300:
@@ -216,7 +262,8 @@ def send_data_message(
 
     deactivate = _is_unregistered_response(resp)
     logger.warning(
-        "FCM send rejected status=%s deactivate=%s resp=%s",
+        "FCM send rejected platform=%s status=%s deactivate=%s resp=%s",
+        platform,
         resp.status_code,
         deactivate,
         resp.text,
