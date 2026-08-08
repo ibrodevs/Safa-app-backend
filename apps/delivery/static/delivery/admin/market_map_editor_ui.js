@@ -75,7 +75,6 @@
   });
 
   // Дополнительные настройки в редакторе карты всегда видимы.
-  // Даже если браузер/Jazzmin попытается закрыть <details>, сразу открываем его обратно.
   document.querySelectorAll('details.market-map-advanced-fields').forEach((details) => {
     details.open = true;
     details.setAttribute('open', '');
@@ -92,58 +91,18 @@
     });
   });
 
-  // Район карты связан с тарифом через его название. Это сохраняет обратную
-  // совместимость со старыми GeoJSON и позволяет тарифам работать без миграции.
-  const districtTariff = document.getElementById('market-feature-district-tariff');
   const featureKind = document.getElementById('market-feature-kind');
-  const featureName = document.getElementById('market-feature-name');
-  const districtRows = Array.from(document.querySelectorAll('[data-kind-scope="district"]'));
 
-  function selectedDistrictTariffName() {
-    const option = districtTariff?.selectedOptions?.[0];
-    if (!option || !districtTariff?.value) return '';
-    return String(option.textContent || '').split(' — ')[0].trim();
-  }
-
-  function syncDistrictTariffUi() {
-    const isDistrict = featureKind?.value === 'district';
-    districtRows.forEach((row) => { row.hidden = !isDistrict; });
-    if (!isDistrict || !districtTariff || !featureName) return;
-
-    // При открытии уже существующего района восстанавливаем выбор тарифа по имени.
-    const currentName = featureName.value.trim().toLocaleLowerCase('ru');
-    if (!currentName || districtTariff.value) return;
-    const matching = Array.from(districtTariff.options).find((option) => {
-      if (!option.value) return false;
-      const name = String(option.textContent || '').split(' — ')[0].trim().toLocaleLowerCase('ru');
-      return name === currentName;
-    });
-    if (matching) districtTariff.value = matching.value;
-  }
-
-  districtTariff?.addEventListener('change', () => {
-    const tariffName = selectedDistrictTariffName();
-    if (tariffName && featureName) featureName.value = tariffName;
-  });
-
-  // Google Maps меняет выбранный feature не через обычный form change event,
-  // поэтому лёгкая синхронизация нужна после взаимодействия с картой.
-  document.addEventListener('click', () => window.setTimeout(syncDistrictTariffUi, 0), true);
-  syncDistrictTariffUi();
+  // Район на карте теперь является источником для списка районов в тарифах.
+  // Здесь администратор только рисует район и даёт ему название; цена задаётся
+  // отдельно в «Тарифах районов» после сохранения карты.
 
   // Validate the most common admin mistakes before the main editor handler runs.
-  // Capturing phase also copies the selected district tariff into the district
-  // name before market_map_editor.js serializes the GeoJSON.
   document.addEventListener('click', (event) => {
     const action = event.target instanceof Element
       ? event.target.closest('#market-feature-apply, #market-map-save, #market-map-publish')
       : null;
     if (!action) return;
-
-    if (featureKind?.value === 'district' && action.id === 'market-feature-apply') {
-      const tariffName = selectedDistrictTariffName();
-      if (tariffName && featureName) featureName.value = tariffName;
-    }
 
     const passage = document.getElementById('market-feature-passage');
     if (featureKind?.value !== 'container' || passage?.value) return;
