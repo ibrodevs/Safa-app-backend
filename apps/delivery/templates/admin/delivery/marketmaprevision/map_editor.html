@@ -138,17 +138,11 @@
           <input id="market-feature-name" type="text" maxlength="160" placeholder="Например: Проход 1">
         </div>
 
-        <div class="form-row" data-kind-scope="district" hidden>
-          <label for="market-feature-district-tariff">Тариф района</label>
-          <select id="market-feature-district-tariff">
-            <option value="">Без отдельного тарифа</option>
-            {% for tariff in district_tariffs %}
-              <option value="{{ tariff.id }}">
-                {{ tariff.name }}{% if tariff.fixed_price %} — {{ tariff.fixed_price }} сом{% else %} — по км{% endif %}
-              </option>
-            {% endfor %}
-          </select>
-          <p class="help market-map-inline-help">Цена заказов внутри этого контура будет рассчитываться по выбранному тарифу.</p>
+        <div class="form-row market-map-district-tariff-help" data-kind-scope="district" hidden>
+          <p class="help market-map-inline-help">
+            <strong>Тариф задаётся отдельно.</strong>
+            После сохранения карты этот район появится в разделе «Тарифы районов», где его можно выбрать и указать цену в сомах.
+          </p>
         </div>
 
         <div class="form-row" data-kind-scope="container">
