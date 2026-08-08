@@ -10,30 +10,25 @@ permissions:
 
 jobs:
   apply:
-    if: github.event.head_commit.message == 'Retry one-time order API display refactor'
+    if: github.event.head_commit.message == 'Fix generated serializer indentation'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/unify-order-display-and-pricing
           fetch-depth: 0
-      - name: Apply focused refactor
+      - name: Repair serializer blocks
         run: |
           python - <<'PY'
           from pathlib import Path
           import re
+          from textwrap import dedent
 
           p = Path('apps/delivery/serializer.py')
           s = p.read_text()
-          import_line = 'from .specialists import point_inside_bazar\n'
-          assert import_line in s
-          s = s.replace(
-              import_line,
-              import_line + 'from .map_point_resolver import resolve_market_point\n',
-              1,
-          )
 
-          stop_block = '''class ShipmentStopReadSerializer(serializers.ModelSerializer):
+          stop_block = dedent('''
+          class ShipmentStopReadSerializer(serializers.ModelSerializer):
               bazar = serializers.SerializerMethodField()
               district = serializers.SerializerMethodField()
               passage = serializers.SerializerMethodField()
@@ -102,15 +97,17 @@ jobs:
                   if container:
                       parts.append(f"Контейнер: {container}")
                   return " · ".join(parts) or (obj.title or "")
-          '''.replace('          ', '')
-          pattern = re.compile(
+          ''').strip()
+
+          stop_pattern = re.compile(
               r'class ShipmentStopReadSerializer\(serializers\.ModelSerializer\):.*?\n\nMAX_SHIPMENT_STOPS = 30',
               re.S,
           )
-          assert pattern.search(s), 'ShipmentStopReadSerializer not found'
-          s = pattern.sub(stop_block.rstrip() + '\n\n\nMAX_SHIPMENT_STOPS = 30', s, count=1)
+          assert stop_pattern.search(s)
+          s = stop_pattern.sub(stop_block + '\n\n\nMAX_SHIPMENT_STOPS = 30', s, count=1)
 
-          nearby_block = '''class ShipmentNearbySerializer(serializers.ModelSerializer):
+          nearby_block = dedent('''
+          class ShipmentNearbySerializer(serializers.ModelSerializer):
               distance_m = serializers.SerializerMethodField()
               stops = ShipmentStopReadSerializer(many=True, read_only=True)
               stops_count = serializers.SerializerMethodField()
@@ -160,32 +157,21 @@ jobs:
 
                   d = haversine_m(lat, lon, float(stop.lat), float(stop.lon))
                   return int(round(d))
-          '''.replace('          ', '')
-          pattern = re.compile(
+          ''').strip()
+
+          nearby_pattern = re.compile(
               r'class ShipmentNearbySerializer\(serializers\.ModelSerializer\):.*\Z',
               re.S,
           )
-          assert pattern.search(s), 'ShipmentNearbySerializer not found'
-          s = pattern.sub(nearby_block.rstrip() + '\n', s, count=1)
-          p.write_text(s)
-
-          p = Path('tests/test_map_point_resolution.py')
-          s = p.read_text()
-          import_old = 'from apps.delivery.map_point_resolver import resolve_market_point\n'
-          assert import_old in s
-          s = s.replace(
-              import_old,
-              import_old + 'from apps.delivery.serializer import ShipmentDetailSerializer, ShipmentNearbySerializer\n',
-              1,
-          )
-          assert 'test_shipment_serializers_share_compact_map_hierarchy_and_fare' not in s
-          s += '''\n\n@pytest.mark.django_db\ndef test_shipment_serializers_share_compact_map_hierarchy_and_fare(mapped_container):\n    user = User.objects.create(phone_number="996555009876", first_name="Client")\n    shipment = Shipment.objects.create(\n        client=user,\n        title="Реальный заказ",\n        service_type=Shipment.ServiceType.DELIVERY,\n        estimated_fare=275,\n        final_fare=0,\n    )\n    ShipmentStop.objects.create(\n        shipment=shipment,\n        position=0,\n        container=mapped_container,\n    )\n\n    detail = ShipmentDetailSerializer(shipment).data\n    nearby = ShipmentNearbySerializer(\n        shipment,\n        context={"user_lat": 42.9, "user_lon": 74.6},\n    ).data\n\n    expected = {\n        "bazar": "Дордой",\n        "district": "Центральный",\n        "passage": "8",\n        "container": "125",\n        "label": "Базар: Дордой · Район: Центральный · Проход: 8 · Контейнер: 125",\n    }\n    for key, value in expected.items():\n        assert detail["stops"][0][key] == value\n        assert nearby["stops"][0][key] == value\n\n    assert detail["estimated_fare"] == nearby["estimated_fare"] == 275\n    assert nearby["service_type"] == Shipment.ServiceType.DELIVERY\n    assert nearby["stops_count"] == 1\n    assert nearby["commission"] == shipment.commission_amount\n    assert nearby["courier_income"] == shipment.courier_income\n'''
+          assert nearby_pattern.search(s)
+          s = nearby_pattern.sub(nearby_block + '\n', s, count=1)
           p.write_text(s)
           PY
-      - name: Commit changes
+          python -m py_compile apps/delivery/serializer.py
+      - name: Commit repair
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/delivery/serializer.py tests/test_map_point_resolution.py
-          git commit -m "Unify shipment data for clients and specialists"
+          git add apps/delivery/serializer.py
+          git commit -m "Fix serializer formatting"
           git push origin HEAD:agent/unify-order-display-and-pricing
