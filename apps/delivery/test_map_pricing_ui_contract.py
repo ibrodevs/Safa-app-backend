@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-def test_map_editor_exposes_district_tariff_selector():
+def test_map_editor_keeps_district_creation_separate_from_tariff_setup():
     template = Path(
         "apps/delivery/templates/admin/delivery/marketmaprevision/map_editor.html"
     ).read_text(encoding="utf-8")
@@ -10,8 +10,11 @@ def test_map_editor_exposes_district_tariff_selector():
     ).read_text(encoding="utf-8")
     admin = Path("apps/delivery/map_admin.py").read_text(encoding="utf-8")
 
-    assert 'id="market-feature-district-tariff"' in template
+    assert 'id="market-feature-district-tariff"' not in template
     assert 'data-kind-scope="district"' in template
-    assert '"district_tariffs": district_tariffs' in admin
-    assert "selectedDistrictTariffName" in ui
-    assert "featureKind?.value === 'district'" in ui
+    assert "После сохранения карты этот район появится" in template
+    assert "цену в сомах" in template
+    assert "selectedDistrictTariffName" not in ui
+    # После создания тарифа backend всё ещё может автоматически прикрепить его
+    # к GeoJSON по точному имени района при следующем сохранении карты.
+    assert "attach_district_tariff_ids" in admin
