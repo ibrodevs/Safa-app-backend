@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
-
 from .map_models import MarketMapRevision
 from .models import Bazar, DeliveryDistrict
 
