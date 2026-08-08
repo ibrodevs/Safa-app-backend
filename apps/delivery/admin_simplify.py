@@ -7,6 +7,22 @@ from .map_models import MarketMapRevision
 from .models import Bazar, Container, DeliveryDistrict, Passage
 
 
+def _configure_field(form: forms.ModelForm, name: str, *, label: str | None = None, help_text: str | None = None) -> None:
+    """Configure a field only when Django included it in the current admin form.
+
+    ModelAdmin.get_form() narrows ModelForm fields to the active fieldsets. Add
+    forms intentionally hide legacy/advanced fields, so touching them
+    unconditionally raises KeyError and turns the admin page into HTTP 500.
+    """
+    field = form.fields.get(name)
+    if field is None:
+        return
+    if label is not None:
+        field.label = label
+    if help_text is not None:
+        field.help_text = help_text
+
+
 class SimpleDistrictAdminForm(forms.ModelForm):
     class Meta:
         model = DeliveryDistrict
@@ -14,14 +30,30 @@ class SimpleDistrictAdminForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["name"].label = "Название района"
-        self.fields["name"].help_text = "Например: Дордой, Восток-5, Аламедин."
-        self.fields["fixed_price"].label = "Цена доставки в районе"
-        self.fields["fixed_price"].help_text = "Основная фиксированная цена. Если не нужна — оставьте пустой."
-        self.fields["is_active"].label = "Район активен"
-        self.fields["base_price"].help_text = "Дополнительный тариф. Обычно менять не нужно."
-        self.fields["per_km_price"].help_text = "Дополнительный тариф за километр. Обычно менять не нужно."
-        self.fields["min_fare"].help_text = "Минимальная цена для расширенного тарифа. Обычно менять не нужно."
+        _configure_field(
+            self,
+            "name",
+            label="Название района",
+            help_text="Например: Дордой, Восток-5, Аламедин.",
+        )
+        _configure_field(
+            self,
+            "fixed_price",
+            label="Цена доставки в районе",
+            help_text="Основная фиксированная цена. Если не нужна — оставьте пустой.",
+        )
+        _configure_field(self, "is_active", label="Район активен")
+        _configure_field(self, "base_price", help_text="Дополнительный тариф. Обычно менять не нужно.")
+        _configure_field(
+            self,
+            "per_km_price",
+            help_text="Дополнительный тариф за километр. Обычно менять не нужно.",
+        )
+        _configure_field(
+            self,
+            "min_fare",
+            help_text="Минимальная цена для расширенного тарифа. Обычно менять не нужно.",
+        )
 
 
 class SimpleBazarAdminForm(forms.ModelForm):
@@ -31,16 +63,40 @@ class SimpleBazarAdminForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["name"].label = "Название базара"
-        self.fields["name"].help_text = "Например: Дордой, Орто-Сай, Ошский рынок."
-        self.fields["district_tariff"].label = "Район"
-        self.fields["district_tariff"].help_text = "Выберите район, к которому относится базар."
-        self.fields["fixed_price"].label = "Своя цена базара"
-        self.fields["fixed_price"].help_text = "Необязательно. Если пусто — используется цена выбранного района."
-        self.fields["district"].label = "Старое название района"
-        self.fields["district"].help_text = "Служебное поле совместимости. Обычно менять не нужно."
-        self.fields["price_from"].help_text = "Старое поле тарифа. Оставьте как есть, если не знаете зачем оно нужно."
-        self.fields["price_to"].help_text = "Старое поле тарифа. Оставьте как есть, если не знаете зачем оно нужно."
+        _configure_field(
+            self,
+            "name",
+            label="Название базара",
+            help_text="Например: Дордой, Орто-Сай, Ошский рынок.",
+        )
+        _configure_field(
+            self,
+            "district_tariff",
+            label="Район",
+            help_text="Выберите район, к которому относится базар.",
+        )
+        _configure_field(
+            self,
+            "fixed_price",
+            label="Своя цена базара",
+            help_text="Необязательно. Если пусто — используется цена выбранного района.",
+        )
+        _configure_field(
+            self,
+            "district",
+            label="Старое название района",
+            help_text="Служебное поле совместимости. Обычно менять не нужно.",
+        )
+        _configure_field(
+            self,
+            "price_from",
+            help_text="Старое поле тарифа. Оставьте как есть, если не знаете зачем оно нужно.",
+        )
+        _configure_field(
+            self,
+            "price_to",
+            help_text="Старое поле тарифа. Оставьте как есть, если не знаете зачем оно нужно.",
+        )
 
 
 class SimplePassageAdminForm(forms.ModelForm):
@@ -50,10 +106,18 @@ class SimplePassageAdminForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["bazar"].label = "Базар"
-        self.fields["bazar"].help_text = "Сначала выберите базар, внутри которого находится проход."
-        self.fields["number"].label = "Название или номер прохода"
-        self.fields["number"].help_text = "Например: 1, 7А или Центральный проход."
+        _configure_field(
+            self,
+            "bazar",
+            label="Базар",
+            help_text="Сначала выберите базар, внутри которого находится проход.",
+        )
+        _configure_field(
+            self,
+            "number",
+            label="Название или номер прохода",
+            help_text="Например: 1, 7А или Центральный проход.",
+        )
 
 
 class SimpleContainerAdminForm(forms.ModelForm):
@@ -63,17 +127,37 @@ class SimpleContainerAdminForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["passage"].label = "Проход"
-        self.fields["passage"].help_text = "Выберите проход. Базар определится автоматически через проход."
-        self.fields["number"].label = "Номер контейнера"
-        self.fields["number"].help_text = "Например: 101, A-12 или 4/7."
-        self.fields["title"].label = "Название (необязательно)"
-        self.fields["title"].help_text = "Можно оставить пустым, если достаточно номера контейнера."
-        self.fields["lat"].label = "Широта"
-        self.fields["lon"].label = "Долгота"
-        self.fields["lat"].help_text = "Координата контейнера. Проще создавать контейнеры через редактор карты."
-        self.fields["lon"].help_text = "Координата контейнера. Проще создавать контейнеры через редактор карты."
-        self.fields["is_active"].label = "Контейнер активен"
+        _configure_field(
+            self,
+            "passage",
+            label="Проход",
+            help_text="Выберите проход. Базар определится автоматически через проход.",
+        )
+        _configure_field(
+            self,
+            "number",
+            label="Номер контейнера",
+            help_text="Например: 101, A-12 или 4/7.",
+        )
+        _configure_field(
+            self,
+            "title",
+            label="Название (необязательно)",
+            help_text="Можно оставить пустым, если достаточно номера контейнера.",
+        )
+        _configure_field(
+            self,
+            "lat",
+            label="Широта",
+            help_text="Координата контейнера. Проще создавать контейнеры через редактор карты.",
+        )
+        _configure_field(
+            self,
+            "lon",
+            label="Долгота",
+            help_text="Координата контейнера. Проще создавать контейнеры через редактор карты.",
+        )
+        _configure_field(self, "is_active", label="Контейнер активен")
 
 
 def _district_fieldsets(self, request, obj=None):
