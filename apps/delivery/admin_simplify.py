@@ -3,6 +3,7 @@ from __future__ import annotations
 from django import forms
 from django.contrib import admin
 
+from .district_catalog import available_district_choices
 from .map_models import MarketMapRevision
 from .models import Bazar, Container, DeliveryDistrict, Passage
 
@@ -30,29 +31,51 @@ class SimpleDistrictAdminForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        _configure_field(
-            self,
-            "name",
-            label="Название района",
-            help_text="Например: Дордой, Восток-5, Аламедин.",
-        )
+
+        if "name" in self.fields:
+            current = ""
+            if self.instance and self.instance.pk:
+                current = self.instance.name
+            elif self.is_bound:
+                current = str(self.data.get(self.add_prefix("name")) or "").strip()
+
+            self.fields["name"] = forms.ChoiceField(
+                label="Район с карты",
+                required=True,
+                choices=available_district_choices(
+                    current,
+                    exclude_configured=not bool(self.instance and self.instance.pk),
+                ),
+                help_text=(
+                    "Список формируется из районов, нарисованных и сохранённых в разделе «Карты». "
+                    "Если нужного района нет — сначала создайте его на карте и нажмите «Сохранить»."
+                ),
+            )
+
         _configure_field(
             self,
             "fixed_price",
-            label="Цена доставки в районе",
-            help_text="Основная фиксированная цена. Если не нужна — оставьте пустой.",
+            label="Фиксированная цена, сом",
+            help_text="Цена доставки внутри выбранного района в сомах. Если не нужна — оставьте пустой.",
         )
-        _configure_field(self, "is_active", label="Район активен")
-        _configure_field(self, "base_price", help_text="Дополнительный тариф. Обычно менять не нужно.")
+        _configure_field(self, "is_active", label="Тариф активен")
+        _configure_field(
+            self,
+            "base_price",
+            label="Базовая стоимость, сом",
+            help_text="Базовая часть тарифа в сомах. Обычно менять не нужно.",
+        )
         _configure_field(
             self,
             "per_km_price",
-            help_text="Дополнительный тариф за километр. Обычно менять не нужно.",
+            label="Стоимость за км, сом",
+            help_text="Дополнительная стоимость за каждый километр в сомах.",
         )
         _configure_field(
             self,
             "min_fare",
-            help_text="Минимальная цена для расширенного тарифа. Обычно менять не нужно.",
+            label="Минимальная цена, сом",
+            help_text="Минимальная стоимость доставки по этому тарифу в сомах.",
         )
 
 
@@ -72,14 +95,14 @@ class SimpleBazarAdminForm(forms.ModelForm):
         _configure_field(
             self,
             "district_tariff",
-            label="Район",
-            help_text="Выберите район, к которому относится базар.",
+            label="Тариф района",
+            help_text="Выберите тариф района, который применяется к базару, если у базара нет своей цены.",
         )
         _configure_field(
             self,
             "fixed_price",
-            label="Своя цена базара",
-            help_text="Необязательно. Если пусто — используется цена выбранного района.",
+            label="Своя цена базара, сом",
+            help_text="Необязательно. Если пусто — используется цена выбранного тарифа района.",
         )
         _configure_field(
             self,
@@ -163,10 +186,14 @@ class SimpleContainerAdminForm(forms.ModelForm):
 def _district_fieldsets(self, request, obj=None):
     sections = [
         (
-            "Создание района",
+            "Создание тарифа района",
             {
                 "fields": ("name", "fixed_price", "is_active"),
-                "description": "Для обычной работы достаточно названия и цены. Остальные тарифы не обязательны.",
+                "description": (
+                    "1. Выберите район, который уже создан на карте. "
+                    "2. Укажите стоимость доставки в сомах. "
+                    "3. Сохраните тариф."
+                ),
             },
         )
     ]
@@ -177,7 +204,7 @@ def _district_fieldsets(self, request, obj=None):
                 {
                     "fields": ("base_price", "per_km_price", "min_fare"),
                     "classes": ("collapse",),
-                    "description": "Открывайте этот блок только если используется расчёт по километражу.",
+                    "description": "Открывайте этот блок только если используется расчёт по километражу. Все суммы указаны в сомах.",
                 },
             )
         )
@@ -190,7 +217,7 @@ def _bazar_fieldsets(self, request, obj=None):
             "Создание базара",
             {
                 "fields": ("name", "district_tariff", "fixed_price"),
-                "description": "1. Укажите название. 2. Выберите район. 3. При необходимости задайте отдельную цену. Границу базара рисуйте в разделе карты.",
+                "description": "1. Укажите название. 2. При необходимости выберите тариф района. 3. При необходимости задайте отдельную цену. Границу базара рисуйте в разделе карты.",
             },
         )
     ]
