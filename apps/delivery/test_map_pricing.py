@@ -2,17 +2,13 @@ from decimal import Decimal
 
 import pytest
 
-from apps.delivery.map_models import MarketMapRevision
-from apps.delivery.map_pricing import MapPricingResolver, tariff_price
-from apps.delivery.models import (
-    Bazar,
-    DeliveryDistrict,
-    GlobalDeliveryConfig,
-    Shipment,
-    ShipmentStop,
-)
-from apps.delivery.specialists import point_inside_bazar
 from apps.delivery import views
+from apps.delivery.district_per_km import per_km_tariff_price
+from apps.delivery.geo import polyline_len_km
+from apps.delivery.map_models import MarketMapRevision
+from apps.delivery.map_pricing import MapPricingResolver
+from apps.delivery.models import Bazar, DeliveryDistrict, Shipment, ShipmentStop
+from apps.delivery.specialists import point_inside_bazar
 from apps.users.models import User
 
 
@@ -57,9 +53,15 @@ def _publish_map(bazar, districts):
 
 @pytest.mark.django_db
 class TestPublishedMapPricing:
-    def test_different_drawn_districts_produce_different_real_prices(self):
-        west = DeliveryDistrict.objects.create(name="Западный", fixed_price=150)
-        east = DeliveryDistrict.objects.create(name="Восточный", fixed_price=230)
+    def test_different_drawn_districts_use_their_own_price_per_km(self):
+        west = DeliveryDistrict.objects.create(
+            name="Западный",
+            per_km_price=Decimal("50"),
+        )
+        east = DeliveryDistrict.objects.create(
+            name="Восточный",
+            per_km_price=Decimal("80"),
+        )
         bazar = Bazar.objects.create(name="Тестовый базар")
         _publish_map(
             bazar,
@@ -71,27 +73,30 @@ class TestPublishedMapPricing:
 
         resolver = MapPricingResolver(Decimal("3.00"))
         assert resolver.local_price(lat=42.85, lon=74.55) == 150
-        assert resolver.local_price(lat=42.85, lon=74.65) == 230
+        assert resolver.local_price(lat=42.85, lon=74.65) == 240
 
-    def test_bazar_own_price_overrides_district_price(self):
-        district = DeliveryDistrict.objects.create(name="Центр", fixed_price=150)
+    def test_bazar_own_price_still_overrides_district_price(self):
+        district = DeliveryDistrict.objects.create(
+            name="Центр",
+            per_km_price=Decimal("75"),
+        )
         bazar = Bazar.objects.create(name="Базар с override", fixed_price=190)
         _publish_map(bazar, [(district.name, (74.52, 42.82, 74.68, 42.95))])
 
         resolver = MapPricingResolver(Decimal("2"))
         assert resolver.local_price(lat=42.88, lon=74.60) == 190
 
-    def test_dynamic_district_tariff_uses_route_distance_and_minimum(self):
-        GlobalDeliveryConfig.get_config()
+    def test_district_tariff_ignores_all_legacy_price_fields(self):
         tariff = DeliveryDistrict.objects.create(
-            name="По километру",
+            name="Только километр",
+            fixed_price=999,
             base_price=Decimal("100"),
             per_km_price=Decimal("10"),
             min_fare=Decimal("120"),
         )
 
-        assert tariff_price(tariff, Decimal("1")) == 120
-        assert tariff_price(tariff, Decimal("5")) == 150
+        assert per_km_tariff_price(tariff, Decimal("1")) == 10
+        assert per_km_tariff_price(tariff, Decimal("5")) == 50
 
     def test_published_boundary_is_used_even_without_legacy_rectangle(self):
         bazar = Bazar.objects.create(name="Только карта")
@@ -101,8 +106,11 @@ class TestPublishedMapPricing:
         assert point_inside_bazar(42.90, 74.60) is True
         assert point_inside_bazar(43.10, 74.60) is False
 
-    def test_shipment_estimate_uses_same_drawn_district_tariff(self):
-        district = DeliveryDistrict.objects.create(name="Район заказа", fixed_price=175)
+    def test_shipment_estimate_uses_map_district_price_per_km(self):
+        district = DeliveryDistrict.objects.create(
+            name="Район заказа",
+            per_km_price=Decimal("40"),
+        )
         bazar = Bazar.objects.create(name="Базар заказа")
         _publish_map(bazar, [(district.name, (74.52, 42.82, 74.68, 42.95))])
         user = User.objects.create(phone_number="996555000901", first_name="Client")
@@ -122,11 +130,16 @@ class TestPublishedMapPricing:
             title="Куда",
         )
 
-        assert shipment.estimate() == 175
-        assert shipment.estimated_fare == 175
+        expected = per_km_tariff_price(district, shipment.route_distance_km())
+        assert expected is not None
+        assert shipment.estimate() == expected
+        assert shipment.estimated_fare == expected
 
-    def test_quote_and_created_shipment_use_same_tariff(self):
-        district = DeliveryDistrict.objects.create(name="Единая цена", fixed_price=205)
+    def test_quote_and_created_shipment_use_same_per_km_tariff(self):
+        district = DeliveryDistrict.objects.create(
+            name="Единая цена",
+            per_km_price=Decimal("55"),
+        )
         bazar = Bazar.objects.create(name="Единый базар")
         _publish_map(bazar, [(district.name, (74.52, 42.82, 74.68, 42.95))])
         stops = [
@@ -134,9 +147,11 @@ class TestPublishedMapPricing:
             {"lat": 42.90, "lon": 74.64},
         ]
 
-        # apps.ready подменяет legacy helper тем же map resolver, который
-        # используется Shipment.estimate().
-        assert views._quote_fixed_bazar_fare(stops) == 205
+        quote_distance = Decimal(
+            str(polyline_len_km([(stop["lat"], stop["lon"]) for stop in stops]))
+        ).quantize(Decimal("0.01"))
+        expected_quote = per_km_tariff_price(district, quote_distance)
+        assert views._quote_fixed_bazar_fare(stops) == expected_quote
 
         user = User.objects.create(phone_number="996555000902", first_name="Client")
         shipment = Shipment.objects.create(client=user, title="Quote parity")
@@ -148,14 +163,21 @@ class TestPublishedMapPricing:
                 lon=Decimal(str(stop["lon"])),
                 title=str(position),
             )
-        assert shipment.estimate() == 205
 
-    def test_legacy_price_from_no_longer_overrides_selected_district(self):
-        district = DeliveryDistrict.objects.create(name="Новый тариф", fixed_price=160)
+        expected_shipment = per_km_tariff_price(district, shipment.route_distance_km())
+        assert expected_shipment is not None
+        assert shipment.estimate() == expected_shipment
+        assert views._quote_fixed_bazar_fare(stops) == expected_shipment
+
+    def test_effective_fixed_price_does_not_use_old_district_fixed_price(self):
+        district = DeliveryDistrict.objects.create(
+            name="Новый тариф",
+            fixed_price=160,
+            per_km_price=Decimal("70"),
+        )
         bazar = Bazar.objects.create(
             name="Legacy bazar",
             district_tariff=district,
-            price_from=90,
         )
 
-        assert bazar.effective_fixed_price == 160
+        assert bazar.effective_fixed_price is None
