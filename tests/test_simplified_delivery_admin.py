@@ -1,4 +1,6 @@
 from django.contrib import admin
+from django.contrib.auth.models import AnonymousUser
+from django.test import RequestFactory
 
 from apps.delivery.map_models import MarketMapRevision
 from apps.delivery.models import Bazar, Container, DeliveryDistrict, Passage
@@ -12,8 +14,10 @@ def _field_names(model, *, obj=None):
 
 def _build_add_form(model):
     """Build the exact form Django admin uses on /add/ pages."""
+    request = RequestFactory().get("/admin/")
+    request.user = AnonymousUser()
     model_admin = admin.site._registry[model]
-    form_class = model_admin.get_form(request=None, obj=None)
+    form_class = model_admin.get_form(request=request, obj=None)
     return form_class()
 
 
