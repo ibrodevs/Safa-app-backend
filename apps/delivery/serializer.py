@@ -20,6 +20,7 @@ from .models import (
     ShipmentStop,
 )
 from .specialists import point_inside_bazar
+from .map_point_resolver import resolve_market_point
 
 logger = logging.getLogger(__name__)
 
@@ -373,25 +374,73 @@ class ShipmentStopInSerializer(serializers.Serializer):
 
 class ShipmentStopReadSerializer(serializers.ModelSerializer):
     bazar = serializers.SerializerMethodField()
+    district = serializers.SerializerMethodField()
     passage = serializers.SerializerMethodField()
     container = serializers.SerializerMethodField()
     label = serializers.SerializerMethodField()
 
     class Meta:
         model = ShipmentStop
-        fields = ["position", "title", "lat", "lon", "bazar", "passage", "container", "label"]
+        fields = [
+            "position",
+            "title",
+            "lat",
+            "lon",
+            "bazar",
+            "district",
+            "passage",
+            "container",
+            "label",
+        ]
+
+    def _resolved_market_point(self, obj: ShipmentStop):
+        if not obj.container_id or obj.lat is None or obj.lon is None:
+            return None
+        cache = self.context.setdefault("_safa_market_stop_cache", {})
+        if obj.container_id not in cache:
+            match = resolve_market_point(float(obj.lat), float(obj.lon))
+            if match is not None and match.container.id != obj.container_id:
+                match = None
+            cache[obj.container_id] = match
+        return cache[obj.container_id]
 
     def get_bazar(self, obj: ShipmentStop):
+        match = self._resolved_market_point(obj)
+        if match is not None:
+            return match.bazar_name
         return obj.container.passage.bazar.name if obj.container_id else None
 
+    def get_district(self, obj: ShipmentStop):
+        match = self._resolved_market_point(obj)
+        return match.district_name if match is not None and match.district_name else None
+
     def get_passage(self, obj: ShipmentStop):
+        match = self._resolved_market_point(obj)
+        if match is not None:
+            return match.passage_number
         return obj.container.passage.number if obj.container_id else None
 
     def get_container(self, obj: ShipmentStop):
+        match = self._resolved_market_point(obj)
+        if match is not None:
+            return match.container_number
         return obj.container.number if obj.container_id else None
 
     def get_label(self, obj: ShipmentStop):
-        return obj.container.display_title if obj.container_id else None
+        parts = []
+        bazar = self.get_bazar(obj)
+        district = self.get_district(obj)
+        passage = self.get_passage(obj)
+        container = self.get_container(obj)
+        if bazar:
+            parts.append(f"Базар: {bazar}")
+        if district:
+            parts.append(f"Район: {district}")
+        if passage:
+            parts.append(f"Проход: {passage}")
+        if container:
+            parts.append(f"Контейнер: {container}")
+        return " · ".join(parts) or (obj.title or "")
 
 
 MAX_SHIPMENT_STOPS = 30
@@ -679,6 +728,9 @@ class ShipmentCardSerializer(serializers.ModelSerializer):
 class ShipmentNearbySerializer(serializers.ModelSerializer):
     distance_m = serializers.SerializerMethodField()
     stops = ShipmentStopReadSerializer(many=True, read_only=True)
+    stops_count = serializers.SerializerMethodField()
+    commission = serializers.SerializerMethodField()
+    courier_income = serializers.SerializerMethodField()
 
     class Meta:
         model = Shipment
@@ -686,12 +738,30 @@ class ShipmentNearbySerializer(serializers.ModelSerializer):
             "id",
             "public_code",
             "title",
+            "service_type",
+            "description",
             "estimated_fare",
+            "final_fare",
+            "commission",
+            "courier_income",
             "status",
             "created_at",
+            "finished_at",
+            "is_paid",
+            "paid_at",
             "distance_m",
+            "stops_count",
             "stops",
         )
+
+    def get_stops_count(self, obj) -> int:
+        return obj.stops.count()
+
+    def get_commission(self, obj) -> int:
+        return obj.commission_amount
+
+    def get_courier_income(self, obj) -> int:
+        return obj.courier_income
 
     def get_distance_m(self, obj) -> int | None:
         lat = self.context.get("user_lat")

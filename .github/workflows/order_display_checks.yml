@@ -1,0 +1,29 @@
+name: Order display API checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - apps/delivery/serializer.py
+      - tests/test_map_point_resolution.py
+      - .github/workflows/order_display_checks.yml
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_DEBUG: "1"
+      DJANGO_SECRET_KEY: test-secret-key
+      DJANGO_USE_SQLITE: "1"
+      CHANNEL_BACKEND: memory
+      GOOGLE_MAPS_BROWSER_API_KEY: test-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: req.txt
+      - run: pip install -r req.txt pytest pytest-django
+      - run: python manage.py check
+      - run: python -m pytest tests/test_map_point_resolution.py apps/delivery/test_map_pricing.py -q

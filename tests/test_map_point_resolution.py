@@ -4,6 +4,7 @@ import pytest
 
 from apps.delivery.map_models import MarketMapRevision
 from apps.delivery.map_point_resolver import resolve_market_point
+from apps.delivery.serializer import ShipmentDetailSerializer, ShipmentNearbySerializer
 from apps.delivery.models import Bazar, Container, Passage, Shipment, ShipmentStop
 from apps.users.models import User
 
@@ -129,3 +130,43 @@ def test_coordinate_stop_is_automatically_linked_to_mapped_container(
     assert stop.container_id == mapped_container.id
     assert stop.lat == mapped_container.lat
     assert stop.lon == mapped_container.lon
+
+
+@pytest.mark.django_db
+def test_shipment_serializers_share_compact_map_hierarchy_and_fare(mapped_container):
+    user = User.objects.create(phone_number="996555009876", first_name="Client")
+    shipment = Shipment.objects.create(
+        client=user,
+        title="Реальный заказ",
+        service_type=Shipment.ServiceType.DELIVERY,
+        estimated_fare=275,
+        final_fare=0,
+    )
+    ShipmentStop.objects.create(
+        shipment=shipment,
+        position=0,
+        container=mapped_container,
+    )
+
+    detail = ShipmentDetailSerializer(shipment).data
+    nearby = ShipmentNearbySerializer(
+        shipment,
+        context={"user_lat": 42.9, "user_lon": 74.6},
+    ).data
+
+    expected = {
+        "bazar": "Дордой",
+        "district": "Центральный",
+        "passage": "8",
+        "container": "125",
+        "label": "Базар: Дордой · Район: Центральный · Проход: 8 · Контейнер: 125",
+    }
+    for key, value in expected.items():
+        assert detail["stops"][0][key] == value
+        assert nearby["stops"][0][key] == value
+
+    assert detail["estimated_fare"] == nearby["estimated_fare"] == 275
+    assert nearby["service_type"] == Shipment.ServiceType.DELIVERY
+    assert nearby["stops_count"] == 1
+    assert nearby["commission"] == shipment.commission_amount
+    assert nearby["courier_income"] == shipment.courier_income
