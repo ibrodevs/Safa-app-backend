@@ -1,11 +1,6 @@
-from uuid import UUID
-import logging
+from rest_framework import serializers
 
-from rest_framework import serializers, status
-from apps.delivery.models import Shipment
-from .models import PaymentAttempt, new_finik_request_id
-
-logger = logging.getLogger("payments.finik")
+from .models import CarrierSettlement, PaymentAttempt
 
 class CreateFinikPaymentOutSerializer(serializers.Serializer):
     paymentId = serializers.UUIDField()
@@ -14,23 +9,35 @@ class CreateFinikPaymentOutSerializer(serializers.Serializer):
     requiredFields = serializers.DictField(child=serializers.CharField())
     amount = serializers.IntegerField()
     currency = serializers.CharField()
+    accountId = serializers.CharField()
 
 class FinikCallbackInSerializer(serializers.Serializer):
     """
     Мы делаем tolerant-парсер.
-    ОБЯЗАТЕЛЬНО: status и fields.paymentId (мы сами его кладём в requiredFields).
+    Required fields are echoed by Finik from the hidden fields configured in
+    the mobile SDK. They bind a callback to one server-created attempt.
     """
     status = serializers.ChoiceField(choices=["SUCCEEDED", "FAILED"])
     fields = serializers.DictField(required=False)
     requestId = serializers.CharField(required=False, allow_blank=True)
-    transactionId = serializers.CharField(required=False, allow_blank=True)
+    transactionId = serializers.CharField()
     item = serializers.DictField(required=False)
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    accountId = serializers.CharField()
 
     def validate(self, attrs):
         fields = attrs.get("fields") or {}
-        pid = fields.get("paymentId") or fields.get("payment_id")
-        if not pid:
-            raise serializers.ValidationError({"fields": "paymentId required in fields"})
+        required = {
+            "paymentId": fields.get("paymentId") or fields.get("payment_id"),
+            "finikRequestId": fields.get("finikRequestId")
+            or fields.get("finik_request_id"),
+            "shipmentId": fields.get("shipmentId") or fields.get("shipment_id"),
+        }
+        missing = [name for name, value in required.items() if not value]
+        if missing:
+            raise serializers.ValidationError(
+                {"fields": f"required callback fields missing: {', '.join(missing)}"}
+            )
         return attrs
 
 class PaymentAttemptSerializer(serializers.ModelSerializer):
@@ -41,5 +48,27 @@ class PaymentAttemptSerializer(serializers.ModelSerializer):
             "amount", "currency",
             "finik_request_id", "finik_transaction_id", "finik_item_id",
             "status", "created_at", "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class CarrierSettlementSerializer(serializers.ModelSerializer):
+    shipment_code = serializers.CharField(
+        source="shipment.public_code",
+        read_only=True,
+    )
+
+    class Meta:
+        model = CarrierSettlement
+        fields = [
+            "id",
+            "shipment",
+            "shipment_code",
+            "gross_amount",
+            "commission_amount",
+            "net_amount",
+            "currency",
+            "status",
+            "credited_at",
         ]
         read_only_fields = fields

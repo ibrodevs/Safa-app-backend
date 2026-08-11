@@ -266,12 +266,17 @@ def reestimate_action(modeladmin, request, queryset):
         s.save(update_fields=["distance_km", "estimated_fare"])
 
 
-@admin.action(description="Завершить и зафиксировать цену")
+@admin.action(description="Завершить оплаченные заказы")
 def complete_action(modeladmin, request, queryset):
     for s in queryset:
-        s.status = Shipment.Status.COMPLETED
-        s.finalize()
-        s.save(update_fields=["status", "final_fare", "finished_at"])
+        if not s.is_paid or s.status != Shipment.Status.AWAITING_PAYMENT:
+            continue
+        attempt = s.payment_attempts.filter(status="SUCCEEDED").order_by("-updated_at").first()
+        if not attempt:
+            continue
+        from apps.payments.settlement import complete_paid_shipment
+
+        complete_paid_shipment(shipment=s, payment_attempt=attempt)
 
 
 @admin.action(description="Отменить")

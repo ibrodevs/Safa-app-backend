@@ -296,6 +296,7 @@ class Shipment(models.Model):
         PENDING = "pending", "В ожидании"
         ASSIGNED = "assigned", "Назначен"
         IN_TRANSIT = "in_transit", "В пути"
+        AWAITING_PAYMENT = "awaiting_payment", "Ожидает оплаты"
         COMPLETED = "completed", "Завершено"
         CANCELED = "canceled", "Отменено"
 
@@ -340,6 +341,11 @@ class Shipment(models.Model):
     eta_to_next_min = models.DecimalField(max_digits=6, decimal_places=1, default=0, verbose_name="ETA, мин")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
     finished_at = models.DateTimeField(null=True, blank=True, verbose_name="Завершено")
+    work_completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Работа выполнена специалистом",
+    )
 
     class Meta:
         ordering = ("-created_at",)

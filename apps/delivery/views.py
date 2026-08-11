@@ -11,6 +11,7 @@ from channels.layers import get_channel_layer
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
+from django.urls import reverse
 from django.utils import timezone
 from drf_spectacular.utils import (
     OpenApiExample,
@@ -28,8 +29,11 @@ from rest_framework.views import APIView
 
 from apps.notification.events import notify_shipment_offer_for_carrier, notify_shipment_status
 from apps.payments.models import PaymentAttempt
-from apps.users.models import User, UserProfile
+from apps.payments.settlement import complete_paid_shipment
+from apps.users.models import User
 from .geocoding import twogis_autocomplete
+from .lifecycle import mark_shipment_awaiting_payment
+from .rating import apply_rating_for_completed_shipment
 from .geo import haversine_m, polyline_len_km, is_in_bishkek
 from .models import AmanatCampaign, AmanatCategory, AmanatDonation, Bazar, Container, CourierPosition, GlobalDeliveryConfig, Passage, Shipment
 from .pagination import StandardResultsSetPagination
@@ -80,15 +84,24 @@ def _broadcast(shipment: Shipment) -> None:
     )
 
 
-def _complete_shipment_if_needed(s: Shipment) -> None:
-    if s.status == Shipment.Status.COMPLETED:
-        if not s.finished_at:
-            s.finalize()
-        s.save(update_fields=["final_fare", "finished_at"])
+def _mark_work_done(s: Shipment) -> None:
+    """Freeze the fare and, for legacy prepaid orders, settle immediately."""
+
+    mark_shipment_awaiting_payment(s)
+    if not s.is_paid:
         return
-    s.status = Shipment.Status.COMPLETED
-    s.finalize()
-    s.save(update_fields=["status", "final_fare", "finished_at"])
+
+    successful_attempt = (
+        s.payment_attempts.filter(status=PaymentAttempt.Status.SUCCEEDED)
+        .order_by("-updated_at")
+        .first()
+    )
+    if successful_attempt is None:
+        logger.error("paid_shipment_has_no_successful_attempt", extra={"shipment_id": s.id})
+        return
+
+    complete_paid_shipment(shipment=s, payment_attempt=successful_attempt)
+    apply_rating_for_completed_shipment(s)
 
 
 def _quote_fixed_bazar_fare(stops: list[dict]) -> int | None:
@@ -119,39 +132,6 @@ def _quote_fixed_bazar_fare(stops: list[dict]) -> int | None:
         prices.append(int(matched_price))
 
     return max(prices) if prices else None
-
-
-def _increment_carrier_rating(shipment: Shipment) -> None:
-    if shipment.rating_applied:
-        return
-    try:
-        with transaction.atomic():
-            locked = (
-                Shipment.objects.select_for_update()
-                .select_related("carrier")
-                .get(pk=shipment.pk)
-            )
-            if locked.rating_applied:
-                shipment.rating_applied = True
-                return
-            carrier = locked.carrier
-            if not carrier or getattr(carrier, "role", None) != User.Roles.CARRIER:
-                return
-            profile, _ = UserProfile.objects.select_for_update().get_or_create(user=carrier)
-            profile.rate = int(profile.rate or 0) + 1
-            profile.client_rate_count = str(int(profile.client_rate_count or 0) + 1)
-            profile.save(update_fields=["rate", "client_rate_count"])
-            locked.rating_applied = True
-            locked.save(update_fields=["rating_applied"])
-            shipment.rating_applied = True
-    except Exception as e:
-        logger.exception(
-            "increment_carrier_rating_failed",
-            extra={"shipment_id": shipment.id, "carrier_id": shipment.carrier_id, "error": str(e)},
-        )
-
-
-
 
 
 @extend_schema_view(
@@ -341,7 +321,11 @@ class AmanatCampaignViewSet(viewsets.ReadOnlyModelViewSet):
     ),
 )
 class ShipmentViewSet(viewsets.ModelViewSet):
-    queryset = Shipment.objects.select_related("client", "carrier").prefetch_related("stops")
+    queryset = Shipment.objects.select_related(
+        "client",
+        "carrier",
+        "carrier_settlement",
+    ).prefetch_related("stops")
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardResultsSetPagination
 
@@ -397,7 +381,11 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         shipment = self.get_object()
         if shipment.client_id != request.user.id and not request.user.is_staff:
             return response.Response({"detail": "only_for_client"}, status=status.HTTP_403_FORBIDDEN)
-        if shipment.status in (Shipment.Status.COMPLETED, Shipment.Status.CANCELED):
+        if shipment.status in (
+            Shipment.Status.AWAITING_PAYMENT,
+            Shipment.Status.COMPLETED,
+            Shipment.Status.CANCELED,
+        ):
             return response.Response({"detail": "terminal_shipment"}, status=status.HTTP_409_CONFLICT)
         shipment.status = Shipment.Status.CANCELED
         shipment.save(update_fields=["status"])
@@ -480,7 +468,11 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 Shipment.Status.IN_TRANSIT,
                 Shipment.Status.CANCELED,
             },
-            Shipment.Status.IN_TRANSIT: {Shipment.Status.COMPLETED, Shipment.Status.CANCELED},
+            Shipment.Status.IN_TRANSIT: {
+                Shipment.Status.AWAITING_PAYMENT,
+                Shipment.Status.CANCELED,
+            },
+            Shipment.Status.AWAITING_PAYMENT: set(),
             Shipment.Status.COMPLETED: set(),
             Shipment.Status.CANCELED: set(),
         }
@@ -505,9 +497,14 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         if new_status not in allowed.get(old_status, set()):
             return response.Response({"detail": "status_transition_not_allowed"}, status=status.HTTP_409_CONFLICT)
 
-        if new_status == Shipment.Status.COMPLETED:
-            _complete_shipment_if_needed(s)
-            _increment_carrier_rating(s)
+        if new_status == Shipment.Status.AWAITING_PAYMENT:
+            try:
+                _mark_work_done(s)
+            except ValueError as exc:
+                return response.Response(
+                    {"detail": str(exc)},
+                    status=status.HTTP_409_CONFLICT,
+                )
             notify_shipment_status(s)
         else:
             s.status = new_status
@@ -707,6 +704,25 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             )
             return response.Response({"detail": "already_paid"}, status=status.HTTP_409_CONFLICT)
 
+        if (
+            s.status != Shipment.Status.AWAITING_PAYMENT
+            or not s.carrier_id
+            or not s.work_completed_at
+        ):
+            return response.Response(
+                {"detail": "payment_not_due"},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        account_id = str(getattr(settings, "FINIK_ACCOUNT_ID", "") or "").strip()
+        api_key = str(getattr(settings, "FINIK_API_KEY", "") or "").strip()
+        if not account_id or not api_key:
+            logger.error("pay_finik_account_not_configured")
+            return response.Response(
+                {"detail": "finik_not_configured"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
         amount = int(s.final_fare or s.estimated_fare or 0)
         if amount <= 0:
             logger.warning(
@@ -726,7 +742,9 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             status=PaymentAttempt.Status.PENDING,
         )
 
-        callback_url = settings.FINIK_CALLBACK_URL
+        callback_url = str(getattr(settings, "FINIK_CALLBACK_URL", "") or "").strip()
+        if not callback_url:
+            callback_url = request.build_absolute_uri(reverse("finik-callback"))
 
         logger.info(
             "pay_finik_created",
@@ -744,9 +762,14 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 "paymentId": str(attempt.id),
                 "finikRequestId": finik_request_id,
                 "callbackUrl": callback_url,
-                "requiredFields": {"paymentId": str(attempt.id), "shipmentId": str(s.id)},
+                "requiredFields": {
+                    "paymentId": str(attempt.id),
+                    "finikRequestId": finik_request_id,
+                    "shipmentId": str(s.id),
+                },
                 "amount": amount,
                 "currency": attempt.currency,
+                "accountId": account_id,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -770,19 +793,15 @@ class ShipmentViewSet(viewsets.ModelViewSet):
 
         nxt = s.next_stop()
         if not nxt:
-            if s.status != Shipment.Status.COMPLETED:
-                _complete_shipment_if_needed(s)
-                _increment_carrier_rating(s)
-                notify_shipment_status(s)
+            _mark_work_done(s)
+            notify_shipment_status(s)
         else:
             if s.status == Shipment.Status.ASSIGNED:
                 s.status = Shipment.Status.IN_TRANSIT
             s.current_stop_index += 1
             if s.current_stop_index >= s.stops.count():
-                if s.status != Shipment.Status.COMPLETED:
-                    _complete_shipment_if_needed(s)
-                    _increment_carrier_rating(s)
-                    notify_shipment_status(s)
+                _mark_work_done(s)
+                notify_shipment_status(s)
             else:
                 s.save(update_fields=["current_stop_index", "status"])
                 notify_shipment_status(s)

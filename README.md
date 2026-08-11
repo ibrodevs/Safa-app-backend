@@ -55,4 +55,4 @@ Admins can manage bazaars, passages, containers and shipments in Django Admin. C
 pytest
 ```
 
-Known external dependencies: reverse geocoding needs `YANDEX_API_KEY`, WhatsApp OTP needs ChatFlow env values, FCM needs a service account file, payments need Finik settings.
+Known external dependencies: reverse geocoding needs `YANDEX_API_KEY`, WhatsApp OTP needs Chatflow env values, FCM needs a service account file, and payments need Finik settings. See [`docs/FINIK_CHATFLOW_SETUP.md`](docs/FINIK_CHATFLOW_SETUP.md) for the complete key and deployment checklist.

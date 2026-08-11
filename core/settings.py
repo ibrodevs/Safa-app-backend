@@ -202,9 +202,12 @@ SPECTACULAR_SETTINGS = {
     "SECURITY": [{"Bearer": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}}],
 }
 
-CHATFLOW_BASE_URL = os.getenv("CHATFLOW_BASE_URL", "https://lk.chatflow.kz")
-CHATFLOW_TOKEN = os.getenv("CHATFLOW_TOKEN", "")
-CHATFLOW_INSTANCE_ID = os.getenv("CHATFLOW_INSTANCE_ID", "")
+CHATFLOW_BASE_URL = os.getenv("CHATFLOW_BASE_URL", "https://app.chatflow.kz").strip()
+CHATFLOW_TOKEN = os.getenv("CHATFLOW_TOKEN", "").strip()
+CHATFLOW_FLOW_ID = os.getenv("CHATFLOW_FLOW_ID", "").strip()
+# Only needed by accounts that are still on the legacy lk.chatflow.kz API.
+CHATFLOW_INSTANCE_ID = os.getenv("CHATFLOW_INSTANCE_ID", "").strip()
+CHATFLOW_TIMEOUT_SECONDS = float(os.getenv("CHATFLOW_TIMEOUT_SECONDS", "15"))
 OTP_TTL_SECONDS = int(os.getenv("OTP_TTL_SECONDS", "300"))
 OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
 DEMO_OTP_CODE = os.getenv("DEMO_OTP_CODE", "").strip()
@@ -226,7 +229,19 @@ SPECIALIST_OFFER_MAX_CANDIDATES = int(os.getenv("SPECIALIST_OFFER_MAX_CANDIDATES
 SPECIALIST_POSITION_STALE_MINUTES = int(os.getenv("SPECIALIST_POSITION_STALE_MINUTES", "30"))
 
 FINIK_CURRENCY = os.getenv("FINIK_CURRENCY", "KGS")
-FINIK_CALLBACK_URL = os.getenv("FINIK_CALLBACK_URL", "")
+FINIK_ACCOUNT_ID = os.getenv("FINIK_ACCOUNT_ID", "").strip()
+FINIK_API_KEY = os.getenv("FINIK_API_KEY", "").strip()
+FINIK_BETA = os.getenv("FINIK_BETA", "0").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+FINIK_TIMEOUT_SECONDS = float(os.getenv("FINIK_TIMEOUT_SECONDS", "15"))
+FINIK_GRAPHQL_URL = os.getenv("FINIK_GRAPHQL_URL", "").strip()
+# Optional override. When empty, the API derives the public callback URL from
+# the incoming request (including SECURE_PROXY_SSL_HEADER behind a proxy).
+FINIK_CALLBACK_URL = os.getenv("FINIK_CALLBACK_URL", "").strip()
 
 STATIC_OTP = dict(
     item.split(":", 1)
