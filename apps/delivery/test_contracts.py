@@ -51,8 +51,8 @@ class ShipmentContractTests(APITestCase):
         self.assertEqual(self.shipment.status, Shipment.Status.IN_TRANSIT)
         self.assertEqual(self.shipment.current_stop_index, 1)
 
-        completed = self.client.post(f"/api/delivery/shipments/{self.shipment.id}/advance/")
-        self.assertEqual(completed.status_code, 200)
+        awaiting_payment = self.client.post(f"/api/delivery/shipments/{self.shipment.id}/advance/")
+        self.assertEqual(awaiting_payment.status_code, 200)
         self.shipment.refresh_from_db()
-        self.assertEqual(self.shipment.status, Shipment.Status.COMPLETED)
-        self.assertTrue(self.shipment.rating_applied)
+        self.assertEqual(self.shipment.status, Shipment.Status.AWAITING_PAYMENT)
+        self.assertFalse(self.shipment.rating_applied)

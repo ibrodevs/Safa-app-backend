@@ -160,6 +160,7 @@ def notify_shipment_status(shipment) -> None:
         shipment.Status.PENDING: "Новая заявка создана",
         shipment.Status.ASSIGNED: "Курьер назначен",
         shipment.Status.IN_TRANSIT: "Посылка в пути",
+        shipment.Status.AWAITING_PAYMENT: "Ожидается оплата",
         shipment.Status.COMPLETED: "Доставка завершена",
         shipment.Status.CANCELED: "Доставка отменена",
     }
@@ -167,6 +168,7 @@ def notify_shipment_status(shipment) -> None:
         shipment.Status.PENDING: f"Заявка №{shipment.public_code} создана.",
         shipment.Status.ASSIGNED: f"Заказ №{shipment.public_code}: курьер назначен.",
         shipment.Status.IN_TRANSIT: f"Заказ №{shipment.public_code}: курьер в пути.",
+        shipment.Status.AWAITING_PAYMENT: f"Заказ №{shipment.public_code} выполнен. Оплатите заказ, чтобы завершить его.",
         shipment.Status.COMPLETED: f"Заказ №{shipment.public_code} успешно доставлен.",
         shipment.Status.CANCELED: f"Заказ №{shipment.public_code} отменён.",
     }
@@ -174,6 +176,7 @@ def notify_shipment_status(shipment) -> None:
         shipment.Status.PENDING: f"Заявка №{shipment.public_code} создана.",
         shipment.Status.ASSIGNED: f"Вы назначены на заказ №{shipment.public_code}.",
         shipment.Status.IN_TRANSIT: f"Заказ №{shipment.public_code}: в пути.",
+        shipment.Status.AWAITING_PAYMENT: f"Заказ №{shipment.public_code}: ожидаем оплату клиента.",
         shipment.Status.COMPLETED: f"Заказ №{shipment.public_code} завершён.",
         shipment.Status.CANCELED: f"Заказ №{shipment.public_code} отменён.",
     }

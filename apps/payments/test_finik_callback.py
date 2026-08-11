@@ -1,5 +1,6 @@
 import pytest
 from django.test import override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.delivery.models import Shipment
@@ -24,11 +25,20 @@ def _shipment():
         password="secret123",
         first_name="Client",
     )
+    carrier = User.objects.create_user(
+        phone_number="996700123457",
+        password="secret123",
+        first_name="Carrier",
+        role=User.Roles.CARRIER,
+    )
     return Shipment.objects.create(
         client=client,
+        carrier=carrier,
         title="Delivery",
         estimated_fare=450,
         final_fare=450,
+        status=Shipment.Status.AWAITING_PAYMENT,
+        work_completed_at=timezone.now(),
     )
 
 
@@ -75,9 +85,15 @@ def test_verified_success_callback_marks_shipment_paid_and_records_ids():
     attempt.refresh_from_db()
     assert shipment.is_paid is True
     assert shipment.paid_at is not None
+    assert shipment.status == Shipment.Status.COMPLETED
+    assert shipment.finished_at is not None
     assert attempt.status == PaymentAttempt.Status.SUCCEEDED
     assert attempt.finik_transaction_id == "transaction-123"
     assert attempt.finik_item_id == "item-123"
+    settlement = shipment.carrier_settlement
+    assert settlement.gross_amount == 450
+    assert settlement.commission_amount == 45
+    assert settlement.net_amount == 405
 
 
 @pytest.mark.django_db
@@ -133,6 +149,30 @@ def test_callback_is_rejected_when_finik_does_not_confirm_transaction(monkeypatc
     assert response.status_code == 400
     shipment.refresh_from_db()
     assert shipment.is_paid is False
+
+
+@pytest.mark.django_db
+@override_settings(FINIK_ACCOUNT_ID=ACCOUNT_ID)
+def test_repeated_callback_does_not_credit_carrier_twice():
+    shipment = _shipment()
+    attempt = _attempt(shipment)
+    client = APIClient()
+    payload = _callback(attempt)
+
+    first = client.post("/api/payments/finik/callback/", payload, format="json")
+    second = client.post("/api/payments/finik/callback/", payload, format="json")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert shipment.carrier_settlement.pk
+    assert shipment.__class__.objects.get(pk=shipment.pk).status == Shipment.Status.COMPLETED
+    assert shipment.carrier.carrier_settlements.count() == 1
+
+    client.force_authenticate(shipment.carrier)
+    wallet = client.get("/api/payments/carrier/wallet/")
+    assert wallet.status_code == 200
+    assert wallet.data["balance"] == 405
+    assert wallet.data["settlements"][0]["shipment"] == shipment.id
 
 
 @pytest.mark.django_db

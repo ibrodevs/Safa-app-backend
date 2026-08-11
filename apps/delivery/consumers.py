@@ -145,8 +145,13 @@ class ShipmentTrackingConsumer(JsonWebsocketConsumer):
                 if arrived:
                     stops = list(shipment.stops.order_by("position"))
                     if shipment.current_stop_index >= len(stops) - 1:
-                        shipment.status = Shipment.Status.COMPLETED
-                        shipment.finalize()
+                        shipment.status = Shipment.Status.AWAITING_PAYMENT
+                        shipment.final_fare = int(
+                            shipment.final_fare or shipment.estimated_fare or 0
+                        )
+                        shipment.work_completed_at = (
+                            shipment.work_completed_at or timezone.now()
+                        )
                     else:
                         shipment.current_stop_index += 1
                         shipment.eta_to_next_min = Decimal("0.0")
@@ -169,6 +174,7 @@ class ShipmentTrackingConsumer(JsonWebsocketConsumer):
                         "eta_to_next_min",
                         "status",
                         "final_fare",
+                        "work_completed_at",
                     ]
                 )
 

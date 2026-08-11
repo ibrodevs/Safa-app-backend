@@ -8,6 +8,7 @@ from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
 from apps.delivery.geo import haversine_m
+from apps.payments.models import CarrierSettlement
 from .geocoding import GeocodeNotFound, twogis_resolve_best
 from .models import (
     AmanatCampaign,
@@ -634,6 +635,8 @@ class ShipmentDetailSerializer(serializers.ModelSerializer):
     public_code = serializers.CharField(read_only=True)
     commission = serializers.SerializerMethodField()
     courier_income = serializers.SerializerMethodField()
+    settlement_status = serializers.SerializerMethodField()
+    settled_amount = serializers.SerializerMethodField()
 
     class Meta:
         model = Shipment
@@ -653,8 +656,11 @@ class ShipmentDetailSerializer(serializers.ModelSerializer):
             "final_fare",
             "commission",
             "courier_income",
+            "settlement_status",
+            "settled_amount",
             "created_at",
             "finished_at",
+            "work_completed_at",
             "is_paid",
             "paid_at",
         ]
@@ -668,6 +674,18 @@ class ShipmentDetailSerializer(serializers.ModelSerializer):
 
     def get_courier_income(self, obj):
         return obj.courier_income
+
+    def get_settlement_status(self, obj):
+        try:
+            return obj.carrier_settlement.status
+        except (AttributeError, CarrierSettlement.DoesNotExist):
+            return None
+
+    def get_settled_amount(self, obj):
+        try:
+            return obj.carrier_settlement.net_amount
+        except (AttributeError, CarrierSettlement.DoesNotExist):
+            return 0
 
 
 class ShipmentStatusSerializer(serializers.ModelSerializer):

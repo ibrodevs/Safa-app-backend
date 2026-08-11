@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import PaymentAttempt
+from .models import CarrierSettlement, PaymentAttempt
 
 class CreateFinikPaymentOutSerializer(serializers.Serializer):
     paymentId = serializers.UUIDField()
@@ -48,5 +48,27 @@ class PaymentAttemptSerializer(serializers.ModelSerializer):
             "amount", "currency",
             "finik_request_id", "finik_transaction_id", "finik_item_id",
             "status", "created_at", "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class CarrierSettlementSerializer(serializers.ModelSerializer):
+    shipment_code = serializers.CharField(
+        source="shipment.public_code",
+        read_only=True,
+    )
+
+    class Meta:
+        model = CarrierSettlement
+        fields = [
+            "id",
+            "shipment",
+            "shipment_code",
+            "gross_amount",
+            "commission_amount",
+            "net_amount",
+            "currency",
+            "status",
+            "credited_at",
         ]
         read_only_fields = fields

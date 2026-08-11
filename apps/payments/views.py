@@ -5,18 +5,25 @@ from uuid import UUID
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import status as drf_status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.payments.models import PaymentAttempt
-from apps.payments.serializers import FinikCallbackInSerializer
+from apps.payments.models import CarrierSettlement, PaymentAttempt
+from apps.payments.serializers import (
+    CarrierSettlementSerializer,
+    FinikCallbackInSerializer,
+)
 from apps.payments.finik import (
     FinikVerificationUnavailable,
     verify_finik_transaction,
 )
+from apps.payments.settlement import complete_paid_shipment
+from apps.delivery.rating import apply_rating_for_completed_shipment
+from apps.notification.events import notify_shipment_status
 
 
 logger = logging.getLogger("payments.finik")
@@ -24,6 +31,31 @@ logger = logging.getLogger("payments.finik")
 
 def _same(left: object, right: object) -> bool:
     return secrets.compare_digest(str(left), str(right))
+
+
+class CarrierWalletView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if getattr(request.user, "role", None) != "carrier":
+            return Response(
+                {"detail": "only_for_carrier"},
+                status=drf_status.HTTP_403_FORBIDDEN,
+            )
+
+        settlements = CarrierSettlement.objects.filter(carrier=request.user)
+        balance = settlements.aggregate(total=Sum("net_amount"))["total"] or 0
+        recent = settlements.select_related("shipment")[:50]
+        return Response(
+            {
+                "balance": int(balance),
+                "currency": "KGS",
+                "settlements": CarrierSettlementSerializer(
+                    recent,
+                    many=True,
+                ).data,
+            }
+        )
 
 
 class FinikCallbackView(APIView):
@@ -109,6 +141,7 @@ class FinikCallbackView(APIView):
                 status=drf_status.HTTP_400_BAD_REQUEST,
             )
 
+        completed_shipment = None
         with transaction.atomic():
             attempt = (
                 PaymentAttempt.objects.select_for_update()
@@ -135,6 +168,14 @@ class FinikCallbackView(APIView):
             if payload["status"] == PaymentAttempt.Status.SUCCEEDED:
                 attempt.status = PaymentAttempt.Status.SUCCEEDED
                 shipment = attempt.shipment
+                if shipment.status not in (
+                    shipment.Status.AWAITING_PAYMENT,
+                    shipment.Status.COMPLETED,
+                ):
+                    return Response(
+                        {"detail": "payment_not_due"},
+                        status=drf_status.HTTP_409_CONFLICT,
+                    )
                 if not shipment.is_paid:
                     shipment.is_paid = True
                     shipment.paid_at = timezone.now()
@@ -151,5 +192,16 @@ class FinikCallbackView(APIView):
                     "updated_at",
                 ]
             )
+
+            if attempt.status == PaymentAttempt.Status.SUCCEEDED:
+                complete_paid_shipment(
+                    shipment=shipment,
+                    payment_attempt=attempt,
+                )
+                completed_shipment = shipment
+
+        if completed_shipment is not None:
+            apply_rating_for_completed_shipment(completed_shipment)
+            notify_shipment_status(completed_shipment)
 
         return Response({"ok": True})
