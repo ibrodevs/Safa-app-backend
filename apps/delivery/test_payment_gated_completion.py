@@ -1,4 +1,5 @@
 import pytest
+from django.db import IntegrityError, transaction
 from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -128,3 +129,21 @@ def test_client_cannot_cancel_after_work_is_finished():
     assert response.status_code == 409
     shipment.refresh_from_db()
     assert shipment.status == Shipment.Status.AWAITING_PAYMENT
+
+
+@pytest.mark.django_db
+def test_database_rejects_completed_unpaid_shipment():
+    client_user, carrier = _users()
+    shipment = Shipment.objects.create(
+        client=client_user,
+        carrier=carrier,
+        title="Delivery",
+        estimated_fare=500,
+        status=Shipment.Status.IN_TRANSIT,
+    )
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Shipment.objects.filter(pk=shipment.pk).update(
+            status=Shipment.Status.COMPLETED,
+            is_paid=False,
+        )

@@ -1,3 +1,5 @@
+import hashlib
+
 import pytest
 from django.test import override_settings
 from django.utils import timezone
@@ -94,6 +96,27 @@ def test_verified_success_callback_marks_shipment_paid_and_records_ids():
     assert settlement.gross_amount == 450
     assert settlement.commission_amount == 45
     assert settlement.net_amount == 405
+
+
+@pytest.mark.django_db
+@override_settings(FINIK_ACCOUNT_ID=ACCOUNT_ID)
+def test_callback_accepts_lowercase_status_and_nested_account_id():
+    shipment = _shipment()
+    attempt = _attempt(shipment)
+    payload = _callback(attempt, status="succeeded")
+    payload.pop("accountId")
+    payload["data"] = {"accountId": ACCOUNT_ID}
+
+    response = APIClient().post(
+        "/api/payments/finik/callback/",
+        payload,
+        format="json",
+    )
+
+    assert response.status_code == 200
+    shipment.refresh_from_db()
+    assert shipment.is_paid is True
+    assert shipment.status == Shipment.Status.COMPLETED
 
 
 @pytest.mark.django_db
@@ -226,3 +249,26 @@ def test_test_amount_is_used_for_payment_and_settlement():
     assert shipment.carrier_settlement.gross_amount == 1
     assert shipment.carrier_settlement.commission_amount == 0
     assert shipment.carrier_settlement.net_amount == 1
+
+
+@pytest.mark.django_db
+@override_settings(
+    FINIK_ACCOUNT_ID=ACCOUNT_ID,
+    FINIK_API_KEY="api-key",
+    FINIK_BETA=False,
+    FINIK_TEST_AMOUNT=1,
+    FINIK_CALLBACK_URL="https://example.com/api/payments/finik/callback/",
+)
+def test_public_config_reports_payment_flow_without_exposing_secrets():
+    response = APIClient().get("/api/payments/finik/config/")
+
+    assert response.status_code == 200
+    assert response.data == {
+        "paymentFlowVersion": 2,
+        "configured": True,
+        "keyFingerprint": hashlib.sha256(b"api-key").hexdigest()[:16],
+        "beta": False,
+        "testAmount": 1,
+        "callbackUrl": "https://example.com/api/payments/finik/callback/",
+    }
+    assert "api-key" not in str(response.data)

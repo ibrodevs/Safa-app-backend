@@ -77,6 +77,27 @@ https://safabackend21.pythonanywhere.com/admin/
 
 Reload the Web app after every deploy.
 
+For this payment update, deploy in this order:
+
+```bash
+cd /home/safabackend21/DoGO
+git pull --ff-only
+source .venv/bin/activate
+python manage.py migrate
+python manage.py check --deploy
+```
+
+Then press **Reload** on the PythonAnywhere Web tab and verify:
+
+```bash
+curl https://safabackend21.pythonanywhere.com/api/payments/finik/config/
+```
+
+Do not build the APK until this returns `paymentFlowVersion: 2`,
+`configured: true`, the expected `beta`, and the configured HTTPS callback.
+The guarded Flutter build additionally checks that the backend and APK use the
+same Finik key fingerprint.
+
 ## Limitations
 
 PythonAnywhere Web apps are WSGI. REST API and admin work through WSGI. Django Channels/WebSocket realtime parts will not run as ordinary WebSocket service there; keep `CHANNEL_BACKEND=memory` for REST-only deploy or host ASGI/WebSockets somewhere else later.

@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import secrets
 from decimal import Decimal
@@ -27,6 +28,33 @@ from apps.notification.events import notify_shipment_status
 
 
 logger = logging.getLogger("payments.finik")
+
+
+class FinikConfigView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        api_key = str(getattr(settings, "FINIK_API_KEY", "") or "").strip()
+        account_id = str(
+            getattr(settings, "FINIK_ACCOUNT_ID", "") or ""
+        ).strip()
+        return Response(
+            {
+                "paymentFlowVersion": 2,
+                "configured": bool(api_key and account_id),
+                "keyFingerprint": (
+                    hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
+                    if api_key
+                    else ""
+                ),
+                "beta": bool(getattr(settings, "FINIK_BETA", False)),
+                "testAmount": getattr(settings, "FINIK_TEST_AMOUNT", None),
+                "callbackUrl": str(
+                    getattr(settings, "FINIK_CALLBACK_URL", "") or ""
+                ).strip(),
+            }
+        )
 
 
 def _same(left: object, right: object) -> bool:

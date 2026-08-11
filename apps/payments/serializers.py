@@ -17,15 +17,37 @@ class FinikCallbackInSerializer(serializers.Serializer):
     Required fields are echoed by Finik from the hidden fields configured in
     the mobile SDK. They bind a callback to one server-created attempt.
     """
-    status = serializers.ChoiceField(choices=["SUCCEEDED", "FAILED"])
+    status = serializers.CharField()
     fields = serializers.DictField(required=False)
     requestId = serializers.CharField(required=False, allow_blank=True)
     transactionId = serializers.CharField()
     item = serializers.DictField(required=False)
+    data = serializers.DictField(required=False)
     amount = serializers.DecimalField(max_digits=12, decimal_places=2)
-    accountId = serializers.CharField()
+    accountId = serializers.CharField(required=False, allow_blank=True)
 
     def validate(self, attrs):
+        status = str(attrs.get("status") or "").strip().upper()
+        if status not in {"SUCCEEDED", "FAILED"}:
+            raise serializers.ValidationError({"status": "unsupported status"})
+        attrs["status"] = status
+
+        item = attrs.get("item") or {}
+        data = attrs.get("data") or {}
+        item_account = item.get("account") if isinstance(item, dict) else {}
+        account_id = (
+            attrs.get("accountId")
+            or (data.get("accountId") if isinstance(data, dict) else None)
+            or (
+                item_account.get("id")
+                if isinstance(item_account, dict)
+                else None
+            )
+        )
+        if not account_id:
+            raise serializers.ValidationError({"accountId": "required"})
+        attrs["accountId"] = str(account_id)
+
         fields = attrs.get("fields") or {}
         required = {
             "paymentId": fields.get("paymentId") or fields.get("payment_id"),

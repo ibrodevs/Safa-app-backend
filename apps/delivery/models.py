@@ -351,6 +351,15 @@ class Shipment(models.Model):
         ordering = ("-created_at",)
         verbose_name = "Посылка"
         verbose_name_plural = "Посылки"
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    ~models.Q(status="completed")
+                    | models.Q(is_paid=True)
+                ),
+                name="delivery_completed_requires_payment",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"Посылка №{self.id} {self.title}"
