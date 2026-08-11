@@ -29,6 +29,7 @@ from rest_framework.views import APIView
 
 from apps.notification.events import notify_shipment_offer_for_carrier, notify_shipment_status
 from apps.payments.models import PaymentAttempt
+from apps.payments.amounts import payment_amount_for_shipment
 from apps.payments.settlement import complete_paid_shipment
 from apps.users.models import User
 from .geocoding import twogis_autocomplete
@@ -723,7 +724,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
-        amount = int(s.final_fare or s.estimated_fare or 0)
+        amount = payment_amount_for_shipment(s)
         if amount <= 0:
             logger.warning(
                 "pay_finik_bad_amount",

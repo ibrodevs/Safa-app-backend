@@ -239,6 +239,13 @@ FINIK_BETA = os.getenv("FINIK_BETA", "0").strip().lower() in {
 }
 FINIK_TIMEOUT_SECONDS = float(os.getenv("FINIK_TIMEOUT_SECONDS", "15"))
 FINIK_GRAPHQL_URL = os.getenv("FINIK_GRAPHQL_URL", "").strip()
+_FINIK_TEST_AMOUNT_RAW = os.getenv("FINIK_TEST_AMOUNT", "false").strip().lower()
+if _FINIK_TEST_AMOUNT_RAW in {"", "0", "false", "no", "off"}:
+    FINIK_TEST_AMOUNT = None
+else:
+    FINIK_TEST_AMOUNT = int(_FINIK_TEST_AMOUNT_RAW)
+    if FINIK_TEST_AMOUNT <= 0:
+        raise ValueError("FINIK_TEST_AMOUNT must be a positive integer or false")
 # Optional override. When empty, the API derives the public callback URL from
 # the incoming request (including SECURE_PROXY_SSL_HEADER behind a proxy).
 FINIK_CALLBACK_URL = os.getenv("FINIK_CALLBACK_URL", "").strip()

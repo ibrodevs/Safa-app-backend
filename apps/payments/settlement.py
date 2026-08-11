@@ -3,6 +3,7 @@ from django.utils import timezone
 
 from apps.delivery.models import Shipment
 from apps.payments.models import CarrierSettlement, PaymentAttempt
+from apps.payments.amounts import commission_for_payment_amount
 
 
 def complete_paid_shipment(
@@ -22,8 +23,10 @@ def complete_paid_shipment(
     ):
         raise ValueError("shipment_is_not_ready_for_settlement")
 
-    gross = int(shipment.final_fare or shipment.estimated_fare or 0)
-    commission = int(shipment.commission_amount)
+    # The verified PaymentAttempt is the financial source of truth. In test
+    # mode it can intentionally differ from the shipment's commercial fare.
+    gross = int(payment_attempt.amount)
+    commission = commission_for_payment_amount(gross)
     net = gross - commission
     if gross <= 0 or net < 0:
         raise ValueError("invalid_settlement_amount")

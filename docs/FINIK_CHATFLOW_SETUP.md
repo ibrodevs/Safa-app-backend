@@ -56,7 +56,20 @@ FINIK_ACCOUNT_ID=your-corporate-account-id
 FINIK_API_KEY=your-flutter-api-client-key
 FINIK_BETA=1
 FINIK_CURRENCY=KGS
+FINIK_TEST_AMOUNT=false
 ```
+
+Для контролируемого теста всех платежей на 1 сом временно задайте:
+
+```dotenv
+FINIK_TEST_AMOUNT=1
+```
+
+Backend выставит Finik ровно 1 сом, проверит callback на 1 сом и запишет
+тестовое начисление специалисту также от 1 сома. Значения `false`, `0`, `off`
+или пустая строка отключают подмену и возвращают реальные итоговые цены.
+После теста обязательно установите `FINIK_TEST_AMOUNT=false` и перезапустите
+backend. Не оставляйте тестовую сумму включённой в рабочем приложении.
 
 Backend сам формирует callback URL из публичного адреса запроса. Если внешний
 домен отличается от того, который видит Django, задайте его явно:

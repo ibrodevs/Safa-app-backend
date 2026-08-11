@@ -192,3 +192,37 @@ def test_payment_init_derives_callback_url_and_returns_account_id():
     assert response.data["callbackUrl"].endswith("/api/payments/finik/callback/")
     assert response.data["accountId"] == ACCOUNT_ID
     assert response.data["requiredFields"]["finikRequestId"] == response.data["finikRequestId"]
+
+
+@pytest.mark.django_db
+@override_settings(
+    FINIK_ACCOUNT_ID=ACCOUNT_ID,
+    FINIK_API_KEY="api-key",
+    FINIK_TEST_AMOUNT=1,
+)
+def test_test_amount_is_used_for_payment_and_settlement():
+    shipment = _shipment()
+    client = APIClient()
+    client.force_authenticate(shipment.client)
+
+    init_response = client.post(
+        f"/api/delivery/shipments/{shipment.id}/pay/finik/"
+    )
+
+    assert init_response.status_code == 201
+    assert init_response.data["amount"] == 1
+    attempt = PaymentAttempt.objects.get(id=init_response.data["paymentId"])
+    assert attempt.amount == 1
+
+    callback_response = APIClient().post(
+        "/api/payments/finik/callback/",
+        _callback(attempt, amount="1.00"),
+        format="json",
+    )
+
+    assert callback_response.status_code == 200
+    shipment.refresh_from_db()
+    assert shipment.status == Shipment.Status.COMPLETED
+    assert shipment.carrier_settlement.gross_amount == 1
+    assert shipment.carrier_settlement.commission_amount == 0
+    assert shipment.carrier_settlement.net_amount == 1

@@ -9,6 +9,10 @@ from rest_framework import serializers
 
 from apps.delivery.geo import haversine_m
 from apps.payments.models import CarrierSettlement
+from apps.payments.amounts import (
+    carrier_income_for_shipment,
+    payment_amount_for_shipment,
+)
 from .geocoding import GeocodeNotFound, twogis_resolve_best
 from .models import (
     AmanatCampaign,
@@ -637,6 +641,8 @@ class ShipmentDetailSerializer(serializers.ModelSerializer):
     courier_income = serializers.SerializerMethodField()
     settlement_status = serializers.SerializerMethodField()
     settled_amount = serializers.SerializerMethodField()
+    payment_due_amount = serializers.SerializerMethodField()
+    payment_due_income = serializers.SerializerMethodField()
 
     class Meta:
         model = Shipment
@@ -658,6 +664,8 @@ class ShipmentDetailSerializer(serializers.ModelSerializer):
             "courier_income",
             "settlement_status",
             "settled_amount",
+            "payment_due_amount",
+            "payment_due_income",
             "created_at",
             "finished_at",
             "work_completed_at",
@@ -686,6 +694,12 @@ class ShipmentDetailSerializer(serializers.ModelSerializer):
             return obj.carrier_settlement.net_amount
         except (AttributeError, CarrierSettlement.DoesNotExist):
             return 0
+
+    def get_payment_due_amount(self, obj):
+        return payment_amount_for_shipment(obj)
+
+    def get_payment_due_income(self, obj):
+        return carrier_income_for_shipment(obj)
 
 
 class ShipmentStatusSerializer(serializers.ModelSerializer):
