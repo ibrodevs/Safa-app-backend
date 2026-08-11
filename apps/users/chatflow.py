@@ -1,35 +1,93 @@
-import re, requests
+import re
+from typing import Any
+from urllib.parse import urljoin
+
+import requests
 from django.conf import settings
 
-class ChatFlowError(Exception): pass
 
-def _phone_to_jid(phone: str) -> str:
+class ChatFlowError(Exception):
+    """Safe, user-displayable Chatflow integration error."""
+
+
+def _normalized_phone(phone: str) -> str:
     digits = re.sub(r"\D+", "", str(phone))
-    if not digits.startswith("996"):
-        raise ChatFlowError("phone_must_start_with_996")
-    return f"{digits}@c.us"
+    if not re.fullmatch(r"996\d{9}", digits):
+        raise ChatFlowError("phone_must_be_996XXXXXXXXX")
+    return digits
+
+
+def _setting(name: str) -> str:
+    return str(getattr(settings, name, "") or "").strip()
+
+
+def _error_message(response: requests.Response, data: Any) -> str:
+    if isinstance(data, dict):
+        for key in ("message", "error", "detail", "response"):
+            value = data.get(key)
+            if value:
+                return str(value)[:300]
+    return f"http_{response.status_code}"
+
 
 def chatflow_send_text(phone: str, msg: str) -> None:
-    jid = _phone_to_jid(phone)
-    url = "https://lk.chatflow.kz/api/v1/send-text"
-    params = {
-        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiJoMzVsalJCWVllblM1Z05HOTdXRlBJSkdkeUlnVWdBQSIsInJvbGUiOiJ1c2VyIiwiaWF0IjoxNzc4NDk5NTc4fQ.gYUTo2934PSGWTUOH1wkcOJq6Fbnp7r2gAdd4FdShn8",
-        "instance_id": settings.CHATFLOW_INSTANCE_ID.strip(), 
-        "jid": jid,
-        "msg": msg,
-    }
-    try:
-        r = requests.get(url, params=params, timeout=15)
-    except requests.RequestException as e:
-        raise ChatFlowError(f"net_error: {e}") from e
+    """Send an OTP through the current Chatflow API or its legacy API.
+
+    New Chatflow accounts use a Bearer token and Flow ID on app.chatflow.kz.
+    CHATFLOW_INSTANCE_ID remains supported for installations that still use the
+    legacy lk.chatflow.kz endpoint.
+    """
+
+    token = _setting("CHATFLOW_TOKEN")
+    flow_id = _setting("CHATFLOW_FLOW_ID")
+    instance_id = _setting("CHATFLOW_INSTANCE_ID")
+    if not token:
+        raise ChatFlowError("chatflow_token_not_configured")
+    if not flow_id and not instance_id:
+        raise ChatFlowError("chatflow_flow_id_not_configured")
+
+    recipient = _normalized_phone(phone)
+    base_url = _setting("CHATFLOW_BASE_URL") or "https://app.chatflow.kz"
+    timeout = float(getattr(settings, "CHATFLOW_TIMEOUT_SECONDS", 15))
+
+    if flow_id:
+        url = urljoin(f"{base_url.rstrip('/')}/", "api/v1/n8n/action/text")
+        params = {"flow_id": flow_id, "recipient": recipient, "msg": str(msg)}
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+        }
+    else:
+        url = urljoin(f"{base_url.rstrip('/')}/", "api/v1/send-text")
+        params = {
+            "token": token,
+            "instance_id": instance_id,
+            "jid": f"{recipient}@c.us",
+            "msg": str(msg),
+        }
+        headers = {"Accept": "application/json"}
 
     try:
-        data = r.json()
-    except ValueError:
-        raise ChatFlowError(f"bad_json({r.status_code}): {r.text[:300]}")
+        response = requests.get(
+            url,
+            params=params,
+            headers=headers,
+            timeout=timeout,
+        )
+    except requests.RequestException as exc:
+        raise ChatFlowError("chatflow_unavailable") from exc
 
-    if data is True or data.get("success") is True:
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise ChatFlowError(f"chatflow_invalid_response_{response.status_code}") from exc
+
+    if not response.ok:
+        raise ChatFlowError(_error_message(response, data))
+
+    if data is True:
+        return
+    if isinstance(data, dict) and data.get("success") is not False:
         return
 
-    err = data.get("message") or data.get("error") or data.get("response") or r.text
-    raise ChatFlowError(f"api_error: {err}")
+    raise ChatFlowError(_error_message(response, data))

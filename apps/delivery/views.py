@@ -11,6 +11,7 @@ from channels.layers import get_channel_layer
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
+from django.urls import reverse
 from django.utils import timezone
 from drf_spectacular.utils import (
     OpenApiExample,
@@ -707,6 +708,15 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             )
             return response.Response({"detail": "already_paid"}, status=status.HTTP_409_CONFLICT)
 
+        account_id = str(getattr(settings, "FINIK_ACCOUNT_ID", "") or "").strip()
+        api_key = str(getattr(settings, "FINIK_API_KEY", "") or "").strip()
+        if not account_id or not api_key:
+            logger.error("pay_finik_account_not_configured")
+            return response.Response(
+                {"detail": "finik_not_configured"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
         amount = int(s.final_fare or s.estimated_fare or 0)
         if amount <= 0:
             logger.warning(
@@ -726,7 +736,9 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             status=PaymentAttempt.Status.PENDING,
         )
 
-        callback_url = settings.FINIK_CALLBACK_URL
+        callback_url = str(getattr(settings, "FINIK_CALLBACK_URL", "") or "").strip()
+        if not callback_url:
+            callback_url = request.build_absolute_uri(reverse("finik-callback"))
 
         logger.info(
             "pay_finik_created",
@@ -744,9 +756,14 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 "paymentId": str(attempt.id),
                 "finikRequestId": finik_request_id,
                 "callbackUrl": callback_url,
-                "requiredFields": {"paymentId": str(attempt.id), "shipmentId": str(s.id)},
+                "requiredFields": {
+                    "paymentId": str(attempt.id),
+                    "finikRequestId": finik_request_id,
+                    "shipmentId": str(s.id),
+                },
                 "amount": amount,
                 "currency": attempt.currency,
+                "accountId": account_id,
             },
             status=status.HTTP_201_CREATED,
         )
