@@ -33,7 +33,7 @@ from apps.payments.amounts import payment_amount_for_shipment
 from apps.payments.settlement import complete_paid_shipment
 from apps.users.models import User
 from .geocoding import twogis_autocomplete
-from .lifecycle import mark_shipment_awaiting_payment
+from .lifecycle import ShipmentFareUnavailable, mark_shipment_awaiting_payment
 from .rating import apply_rating_for_completed_shipment
 from .geo import haversine_m, polyline_len_km, is_in_bishkek
 from .models import AmanatCampaign, AmanatCategory, AmanatDonation, Bazar, Container, CourierPosition, GlobalDeliveryConfig, Passage, Shipment
@@ -792,20 +792,34 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         prev_index = s.current_stop_index
         prev_status = s.status
 
-        nxt = s.next_stop()
-        if not nxt:
-            _mark_work_done(s)
-            notify_shipment_status(s)
-        else:
-            if s.status == Shipment.Status.ASSIGNED:
-                s.status = Shipment.Status.IN_TRANSIT
-            s.current_stop_index += 1
-            if s.current_stop_index >= s.stops.count():
+        try:
+            nxt = s.next_stop()
+            if not nxt:
                 _mark_work_done(s)
                 notify_shipment_status(s)
             else:
-                s.save(update_fields=["current_stop_index", "status"])
-                notify_shipment_status(s)
+                if s.status == Shipment.Status.ASSIGNED:
+                    s.status = Shipment.Status.IN_TRANSIT
+                s.current_stop_index += 1
+                if s.current_stop_index >= s.stops.count():
+                    _mark_work_done(s)
+                    notify_shipment_status(s)
+                else:
+                    s.save(update_fields=["current_stop_index", "status"])
+                    notify_shipment_status(s)
+        except ShipmentFareUnavailable:
+            logger.warning(
+                "shipment_advance_missing_fare",
+                extra={
+                    "request_id": rid,
+                    "user_id": request.user.id,
+                    "shipment_id": s.id,
+                },
+            )
+            return response.Response(
+                {"detail": "shipment_has_no_final_fare"},
+                status=status.HTTP_409_CONFLICT,
+            )
 
         _broadcast(s)
 

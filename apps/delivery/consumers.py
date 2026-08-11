@@ -7,8 +7,8 @@ from asgiref.sync import async_to_sync
 from channels.generic.websocket import JsonWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
 from django.db import transaction
-from django.utils import timezone
 
+from .lifecycle import mark_shipment_awaiting_payment
 from .models import Shipment, CourierPosition, ARRIVAL_RADIUS_M
 from .geo import haversine_m
 
@@ -145,13 +145,7 @@ class ShipmentTrackingConsumer(JsonWebsocketConsumer):
                 if arrived:
                     stops = list(shipment.stops.order_by("position"))
                     if shipment.current_stop_index >= len(stops) - 1:
-                        shipment.status = Shipment.Status.AWAITING_PAYMENT
-                        shipment.final_fare = int(
-                            shipment.final_fare or shipment.estimated_fare or 0
-                        )
-                        shipment.work_completed_at = (
-                            shipment.work_completed_at or timezone.now()
-                        )
+                        mark_shipment_awaiting_payment(shipment)
                     else:
                         shipment.current_stop_index += 1
                         shipment.eta_to_next_min = Decimal("0.0")
@@ -169,13 +163,7 @@ class ShipmentTrackingConsumer(JsonWebsocketConsumer):
                     shipment.eta_to_next_min = eta or Decimal("0.0")
 
                 shipment.save(
-                    update_fields=[
-                        "current_stop_index",
-                        "eta_to_next_min",
-                        "status",
-                        "final_fare",
-                        "work_completed_at",
-                    ]
+                    update_fields=["current_stop_index", "eta_to_next_min"]
                 )
 
             payload = {

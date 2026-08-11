@@ -105,7 +105,10 @@ def per_km_tariff_price(
 
     distance = Decimal(str(distance_km or 0))
     cost = Decimal(tariff.per_km_price) * distance
-    return int(cost.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    rounded = int(cost.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    # Finik не принимает нулевые платежи. Даже совпадающие/очень близкие точки
+    # должны образовывать положительную стоимость заказа.
+    return max(1, rounded)
 
 
 def _effective_bazar_fixed_price(bazar: Bazar) -> int | None:

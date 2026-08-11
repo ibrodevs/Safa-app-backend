@@ -49,6 +49,54 @@ def test_carrier_finishing_work_waits_for_client_payment():
 
 
 @pytest.mark.django_db
+@override_settings(FINIK_TEST_AMOUNT=1)
+def test_zero_fare_legacy_order_uses_configured_test_amount():
+    client_user, carrier = _users()
+    shipment = Shipment.objects.create(
+        client=client_user,
+        carrier=carrier,
+        title="Zero fare test order",
+        estimated_fare=0,
+        final_fare=0,
+        status=Shipment.Status.IN_TRANSIT,
+    )
+    api = APIClient()
+    api.force_authenticate(carrier)
+
+    response = api.post(f"/api/delivery/shipments/{shipment.id}/advance/")
+
+    assert response.status_code == 200
+    shipment.refresh_from_db()
+    assert shipment.status == Shipment.Status.AWAITING_PAYMENT
+    assert shipment.final_fare == 1
+    assert shipment.is_paid is False
+
+
+@pytest.mark.django_db
+@override_settings(FINIK_TEST_AMOUNT=None)
+def test_missing_fare_returns_conflict_instead_of_server_error(monkeypatch):
+    client_user, carrier = _users()
+    shipment = Shipment.objects.create(
+        client=client_user,
+        carrier=carrier,
+        title="Invalid zero fare order",
+        estimated_fare=0,
+        final_fare=0,
+        status=Shipment.Status.IN_TRANSIT,
+    )
+    monkeypatch.setattr(Shipment, "estimate", lambda self: 0)
+    api = APIClient()
+    api.force_authenticate(carrier)
+
+    response = api.post(f"/api/delivery/shipments/{shipment.id}/advance/")
+
+    assert response.status_code == 409
+    assert response.data["detail"] == "shipment_has_no_final_fare"
+    shipment.refresh_from_db()
+    assert shipment.status == Shipment.Status.IN_TRANSIT
+
+
+@pytest.mark.django_db
 def test_carrier_cannot_force_completed_status_before_payment():
     client_user, carrier = _users()
     shipment = Shipment.objects.create(

@@ -1,6 +1,11 @@
+from django.conf import settings
 from django.utils import timezone
 
 from .models import Shipment
+
+
+class ShipmentFareUnavailable(ValueError):
+    pass
 
 
 def mark_shipment_awaiting_payment(shipment: Shipment) -> Shipment:
@@ -16,9 +21,20 @@ def mark_shipment_awaiting_payment(shipment: Shipment) -> Shipment:
     if not shipment.carrier_id:
         raise ValueError("shipment_has_no_carrier")
 
-    shipment.final_fare = int(shipment.final_fare or shipment.estimated_fare or 0)
-    if shipment.final_fare <= 0:
-        raise ValueError("shipment_has_no_final_fare")
+    fare = int(shipment.final_fare or shipment.estimated_fare or 0)
+    if fare <= 0:
+        # Старые/тестовые заказы могли быть созданы с нулевой ценой. В режиме
+        # фиксированной тестовой суммы это валидный платёж и завершение работы
+        # не должно падать с HTTP 500.
+        test_amount = getattr(settings, "FINIK_TEST_AMOUNT", None)
+        if test_amount is not None:
+            fare = int(test_amount)
+        else:
+            fare = int(shipment.estimate() or 0)
+    if fare <= 0:
+        raise ShipmentFareUnavailable("shipment_has_no_final_fare")
+
+    shipment.final_fare = fare
     shipment.status = Shipment.Status.AWAITING_PAYMENT
     shipment.work_completed_at = shipment.work_completed_at or timezone.now()
     shipment.save(

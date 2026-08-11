@@ -169,6 +169,14 @@ class TestPublishedMapPricing:
         assert shipment.estimate() == expected_shipment
         assert views._quote_fixed_bazar_fare(stops) == expected_shipment
 
+    def test_zero_distance_per_km_tariff_stays_payable(self):
+        tariff = DeliveryDistrict.objects.create(
+            name="Нулевая дистанция",
+            per_km_price=Decimal("50"),
+        )
+
+        assert per_km_tariff_price(tariff, Decimal("0")) == 1
+
     def test_effective_fixed_price_does_not_use_old_district_fixed_price(self):
         district = DeliveryDistrict.objects.create(
             name="Новый тариф",
