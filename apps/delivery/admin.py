@@ -295,12 +295,13 @@ class ShipmentAdmin(admin.ModelAdmin):
         "carrier",
         "status",
         "service_type",
+        "is_demo",
         "distance_km",
         "estimated_fare",
         "final_fare",
         "created_at",
     )
-    list_filter = ("status", "service_type")
+    list_filter = ("status", "service_type", "is_demo")
     search_fields = ("title", "client__first_name", "client__phone_number")
     date_hierarchy = "created_at"
     readonly_fields = (
@@ -318,7 +319,20 @@ class ShipmentAdmin(admin.ModelAdmin):
     ordering = ("-created_at",)
 
     fieldsets = (
-        ("Основное", {"fields": ("title", "service_type", "description", "client", "carrier", "status")}),
+        (
+            "Основное",
+            {
+                "fields": (
+                    "title",
+                    "service_type",
+                    "description",
+                    "client",
+                    "carrier",
+                    "status",
+                    "is_demo",
+                )
+            },
+        ),
         (
             "Расчёт",
             {

@@ -1,4 +1,6 @@
 from django.contrib.auth import get_user_model
+from decimal import Decimal
+
 from django.test import TestCase
 
 from apps.delivery.models import Bazar, Container, Passage, Shipment, ShipmentStop
@@ -35,6 +37,6 @@ class ContainerDeletionTests(TestCase):
         stop.refresh_from_db()
         self.assertIsNone(stop.container_id)
         self.assertEqual(stop.title, original_title)
-        self.assertEqual(stop.lat, original_lat)
-        self.assertEqual(stop.lon, original_lon)
+        self.assertEqual(stop.lat, Decimal(original_lat))
+        self.assertEqual(stop.lon, Decimal(original_lon))
         self.assertTrue(Shipment.objects.filter(pk=shipment.pk).exists())

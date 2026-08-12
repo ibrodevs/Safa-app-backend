@@ -18,10 +18,17 @@ CHATFLOW_BASE_URL=https://app.chatflow.kz
 CHATFLOW_TOKEN=your-chatflow-api-token
 CHATFLOW_FLOW_ID=your-chatflow-flow-id
 CHATFLOW_TIMEOUT_SECONDS=15
+OTP_TTL_SECONDS=300
+OTP_MAX_ATTEMPTS=5
+OTP_RESEND_COOLDOWN_SECONDS=60
 ```
 
 `CHATFLOW_TOKEN` должен находиться только на backend. После изменения `.env`
 перезапустите WSGI/ASGI-процесс.
+
+В production оставьте `DEMO_OTP_CODE` и `STATIC_OTP` пустыми. Сервер
+автоматически игнорирует глобальный demo-код при `DJANGO_DEBUG=0`, а повторную
+отправку на один номер ограничивает `OTP_RESEND_COOLDOWN_SECONDS`.
 
 Для старого кабинета `lk.chatflow.kz` поддерживается legacy-конфигурация:
 

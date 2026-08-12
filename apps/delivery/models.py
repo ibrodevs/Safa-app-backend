@@ -329,6 +329,11 @@ class Shipment(models.Model):
     )
 
     description = models.CharField(max_length=255, blank=True, verbose_name="Описание")
+    is_demo = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Демонстрационный заказ",
+    )
 
     distance_km = models.DecimalField(max_digits=7, decimal_places=2, default=0, verbose_name="Дистанция, км")
     estimated_fare = models.PositiveIntegerField(default=0, verbose_name="Предварительная стоимость")
@@ -367,11 +372,6 @@ class Shipment(models.Model):
     @property
     def public_code(self) -> str:
         return f"{self.id:04d}"
-
-    @property
-    def is_demo(self) -> bool:
-        text = f"{self.title or ''} {self.description or ''}".strip().lower()
-        return text.startswith(("demo", "test", "демо", "тест"))
 
     def _route_points(self) -> List[Tuple[float, float]]:
         qs = self.stops.order_by("position")

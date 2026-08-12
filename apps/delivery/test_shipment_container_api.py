@@ -13,7 +13,14 @@ def test_create_shipment_with_existing_container_does_not_fail_logging():
         first_name="Container API",
         is_verify=True,
     )
-    bazar = Bazar.objects.create(name="Дордой", price_from=180)
+    bazar = Bazar.objects.create(
+        name="Дордой",
+        price_from=180,
+        top_left_lat=42.95,
+        top_left_lon=74.61,
+        bottom_right_lat=42.93,
+        bottom_right_lon=74.64,
+    )
     passage = Passage.objects.create(bazar=bazar, number="1")
     Container.objects.create(
         passage=passage,
@@ -31,7 +38,11 @@ def test_create_shipment_with_existing_container_does_not_fail_logging():
             "title": "Container order",
             "service_type": Shipment.ServiceType.DELIVERY,
             "stops": [
-                {"title": "Площадь Ала-Тоо", "lat": 42.876530, "lon": 74.603830},
+                {
+                    "title": "Точка внутри базара",
+                    "lat": 42.941700,
+                    "lon": 74.622500,
+                },
                 {"bazar": "Дордой", "passage": "1", "container": "101"},
             ],
         },

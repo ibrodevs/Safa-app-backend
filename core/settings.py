@@ -210,6 +210,9 @@ CHATFLOW_INSTANCE_ID = os.getenv("CHATFLOW_INSTANCE_ID", "").strip()
 CHATFLOW_TIMEOUT_SECONDS = float(os.getenv("CHATFLOW_TIMEOUT_SECONDS", "15"))
 OTP_TTL_SECONDS = int(os.getenv("OTP_TTL_SECONDS", "300"))
 OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
+OTP_RESEND_COOLDOWN_SECONDS = int(
+    os.getenv("OTP_RESEND_COOLDOWN_SECONDS", "60")
+)
 DEMO_OTP_CODE = os.getenv("DEMO_OTP_CODE", "").strip()
 YANDEX_API_KEY = os.getenv("YANDEX_API_KEY", "").strip()
 

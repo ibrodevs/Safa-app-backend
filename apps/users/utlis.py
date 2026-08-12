@@ -14,6 +14,10 @@ def _norm(s: Optional[str]) -> Optional[str]:
     return re.sub(r'\D+', '', s) if s else None
 
 def is_static_otp_phone(phone: str) -> bool:
+    if not settings.DEBUG and not getattr(
+        settings, "ENABLE_DEBUG_OTP_ENDPOINT", False
+    ):
+        return False
     p = normalize_phone(phone)
     mapping = getattr(settings, "STATIC_OTP", None)
     if isinstance(mapping, dict):

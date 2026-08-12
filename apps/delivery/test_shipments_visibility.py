@@ -33,6 +33,7 @@ def _shipment(client: User, title: str, status: str = Shipment.Status.PENDING) -
     shipment = Shipment.objects.create(
         client=client,
         title=title,
+        is_demo=title.startswith("DEMO "),
         status=status,
         service_type=Shipment.ServiceType.DELIVERY,
     )

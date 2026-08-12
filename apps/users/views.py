@@ -80,6 +80,10 @@ def _otp_text(code: str) -> str:
 
 
 def _demo_otp_code() -> str:
+    if not settings.DEBUG and not getattr(
+        settings, "ENABLE_DEBUG_OTP_ENDPOINT", False
+    ):
+        return ""
     return str(getattr(settings, "DEMO_OTP_CODE", "") or "").strip()
 
 
@@ -97,6 +101,20 @@ class RequestCodeWhatsAppView(generics.GenericAPIView):
         except ValueError as e:
             return Response({"detail": str(e)}, status=400)
 
+        cooldown = max(
+            1,
+            int(getattr(settings, "OTP_RESEND_COOLDOWN_SECONDS", 60)),
+        )
+        send_lock_key = f"otp-send-lock:{phone}"
+        if not cache.add(send_lock_key, True, timeout=cooldown):
+            return Response(
+                {
+                    "detail": "Код уже отправлен. Попробуйте немного позже.",
+                    "retry_after": cooldown,
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
         demo_code = _demo_otp_code()
         code = demo_code or generate_otp(phone=phone)
         cache.set(
@@ -112,7 +130,8 @@ class RequestCodeWhatsAppView(generics.GenericAPIView):
             try:
                 chatflow_send_text(phone, _otp_text(code)) 
             except ChatFlowError as e:
-                cache.delete(f"otp:{phone}")  
+                cache.delete(f"otp:{phone}")
+                cache.delete(send_lock_key)
                 return Response({"detail": f"WhatsApp send failed: {e}"}, status=502)
 
         return Response({"detail": "sent_whatsapp", "phone": phone}, status=200)

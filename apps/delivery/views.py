@@ -64,16 +64,7 @@ def _rid(request) -> str:
 
 
 def _demo_shipment_q() -> Q:
-    return (
-        Q(title__istartswith="DEMO")
-        | Q(title__istartswith="TEST")
-        | Q(title__istartswith="ДЕМО")
-        | Q(title__istartswith="ТЕСТ")
-        | Q(description__istartswith="DEMO")
-        | Q(description__istartswith="TEST")
-        | Q(description__istartswith="ДЕМО")
-        | Q(description__istartswith="ТЕСТ")
-    )
+    return Q(is_demo=True)
 
 
 def _broadcast(shipment: Shipment) -> None:
@@ -730,7 +721,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
 
         page = self.paginate_queryset(ordered_shipments)
         serializer = self.get_serializer(
-            page or ordered_shipments,
+            page if page is not None else ordered_shipments,
             many=True,
             context={"request": request, "user_lat": lat, "user_lon": lon},
         )

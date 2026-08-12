@@ -14,7 +14,7 @@ Django REST Framework backend for DoGO/SafaApp delivery flows: users, JWT auth, 
 cd DoGO
 python -m venv .venv
 source .venv/bin/activate
-pip install -r req.txt
+pip install -r req-dev.txt
 cp .env.example .env
 ```
 

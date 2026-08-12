@@ -146,7 +146,7 @@ class Command(BaseCommand):
         containers = self._seed_containers()
 
         if options["clear_demo_shipments"]:
-            Shipment.objects.filter(title__startswith="DEMO ").delete()
+            Shipment.objects.filter(is_demo=True).delete()
 
         created_shipments = []
         for item in SHIPMENTS:
@@ -221,6 +221,7 @@ class Command(BaseCommand):
                 "carrier": carrier if item.get("assign_carrier") else None,
                 "service_type": item["service_type"],
                 "description": item["description"],
+                "is_demo": True,
                 "status": item["status"],
                 "is_paid": False,
             },
