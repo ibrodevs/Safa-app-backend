@@ -35,7 +35,6 @@ lib/
 lib64/
 parts/
 sdist/
-var/
 wheels/
 share/python-wheels/
 *.egg-info/
@@ -142,7 +141,13 @@ venv.bak/
 
 # Service account / cloud credentials
 firebase/*.json
+secrets/*
+!secrets/.gitkeep
 *.pem
+
+# Docker production bind mounts
+var/*
+!var/.gitkeep
 
 # Spyder project settings
 .spyderproject

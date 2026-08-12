@@ -20,6 +20,8 @@ cp .env.example .env
 
 Edit `.env`. Do not commit real secrets. For production set `DJANGO_DEBUG=0`, a strong `DJANGO_SECRET_KEY`, explicit `DJANGO_ALLOWED_HOSTS`, Firebase service account path, and provider keys.
 
+For a production Ubuntu server with Docker Compose, Daphne, Redis, host Nginx, TLS and Firebase, use [deploy/DIGITALOCEAN.md](deploy/DIGITALOCEAN.md).
+
 For PythonAnywhere use [deploy/PYTHONANYWHERE.md](deploy/PYTHONANYWHERE.md). The backend accepts `DATABASE_URL` for production database configuration.
 
 ## Database

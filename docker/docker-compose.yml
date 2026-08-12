@@ -19,6 +19,11 @@ services:
     image: redis:7-alpine
     container_name: dogo-redis
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     networks:
       - dogo-net
 
@@ -29,13 +34,17 @@ services:
     container_name: dogo-web
     restart: unless-stopped
     env_file: ../.env
+    environment:
+      POSTGRES_HOST: db
+      CHANNEL_BACKEND: redis
+      REDIS_URL: redis://redis:6379/0
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     depends_on:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - ..:/app
       - ../static_root:/app/static_root

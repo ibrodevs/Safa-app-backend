@@ -19,9 +19,11 @@ from django.contrib import admin
 from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from django.http import HttpResponse
+from .health import health
 
 urlpatterns = [
     path("", lambda request: HttpResponse("DoGO работает 🚀"), name="home"),
+    path("health/", health, name="health"),
     path('admin/', admin.site.urls),
     path('api/users/', include('apps.users.urls')),
     path('api/delivery/', include('apps.delivery.urls')),

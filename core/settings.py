@@ -19,22 +19,33 @@ if not DEBUG and not SECRET_KEY:
 
 if not SECRET_KEY:
     SECRET_KEY = "dev-only-change-me"
+elif not DEBUG and SECRET_KEY in {
+    "change-me",
+    "replace-with-a-long-random-secret",
+}:
+    raise RuntimeError("Replace the placeholder DJANGO_SECRET_KEY in production")
 
-ALLOWED_HOSTS = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",") if h.strip()] or [
-    "safabackend21.pythonanywhere.com",
-    "dordoi-go.tech",
-    "www.dordoi-go.tech",
-    "164.92.182.171",
-    "localhost",
-    "127.0.0.1",
-]
+_ALLOWED_HOSTS_RAW = os.getenv("DJANGO_ALLOWED_HOSTS", "").strip()
+if not DEBUG and not _ALLOWED_HOSTS_RAW:
+    raise RuntimeError("DJANGO_ALLOWED_HOSTS is required when DJANGO_DEBUG=0")
+
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in _ALLOWED_HOSTS_RAW.split(",")
+    if host.strip()
+] or ["localhost", "127.0.0.1"]
 
 
-CSRF_TRUSTED_ORIGINS = [
+_DERIVED_CSRF_TRUSTED_ORIGINS = [
     f"http://{h.strip()}" for h in ALLOWED_HOSTS if h.strip() and h.strip() != "*"
 ] + [
     f"https://{h.strip()}" for h in ALLOWED_HOSTS if h.strip() and h.strip() != "*"
 ]
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin.strip()
+] or _DERIVED_CSRF_TRUSTED_ORIGINS
 
 
 INSTALLED_APPS = [
@@ -108,12 +119,28 @@ elif os.getenv("DJANGO_USE_SQLITE", "0") == "1":
         }
     }
 else:
+    if not DEBUG:
+        missing_postgres = [
+            name
+            for name in (
+                "POSTGRES_DB",
+                "POSTGRES_USER",
+                "POSTGRES_PASSWORD",
+                "POSTGRES_HOST",
+            )
+            if not os.getenv(name, "").strip()
+        ]
+        if missing_postgres:
+            raise RuntimeError(
+                "Missing production PostgreSQL settings: "
+                + ", ".join(missing_postgres)
+            )
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
             "NAME": os.getenv("POSTGRES_DB", "dogo"),
             "USER": os.getenv("POSTGRES_USER", "dogo"),
-            "PASSWORD": os.getenv("POSTGRES_PASSWORD", "dogo_pass_123"),
+            "PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
             "HOST": os.getenv("POSTGRES_HOST", "localhost"),
             "PORT": os.getenv("POSTGRES_PORT", "5432"),
         }
@@ -128,7 +155,9 @@ else:
 #     }
 # }
 
-CHANNEL_BACKEND = os.getenv("CHANNEL_BACKEND", "memory")  
+CHANNEL_BACKEND = os.getenv("CHANNEL_BACKEND", "memory").strip().lower()
+if CHANNEL_BACKEND not in {"memory", "redis"}:
+    raise RuntimeError("CHANNEL_BACKEND must be either 'memory' or 'redis'")
 
 if CHANNEL_BACKEND == "redis":
     CHANNEL_LAYERS = {
@@ -145,6 +174,8 @@ else:
             "BACKEND": "channels.layers.InMemoryChannelLayer",
         }
     }
+
+DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
 
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -170,6 +201,11 @@ SECURE_SSL_REDIRECT = os.getenv("DJANGO_SECURE_SSL_REDIRECT", "0") == "1"
 SESSION_COOKIE_SECURE = os.getenv("DJANGO_SESSION_COOKIE_SECURE", "0") == "1"
 CSRF_COOKIE_SECURE = os.getenv("DJANGO_CSRF_COOKIE_SECURE", "0") == "1"
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_SECURE_HSTS_SECONDS", "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = (
+    os.getenv("DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS", "0") == "1"
+)
+SECURE_HSTS_PRELOAD = os.getenv("DJANGO_SECURE_HSTS_PRELOAD", "0") == "1"
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = "users.User"
@@ -217,15 +253,20 @@ DEMO_OTP_CODE = os.getenv("DEMO_OTP_CODE", "").strip()
 YANDEX_API_KEY = os.getenv("YANDEX_API_KEY", "").strip()
 
 
-OSRM_URL = "https://router.project-osrm.org"
+OSRM_URL = os.getenv("OSRM_URL", "https://router.project-osrm.org").strip()
 
 
-FCM_PROJECT_ID = os.getenv("FCM_PROJECT_ID", "dogoapp-7b7a2")
+FCM_PROJECT_ID = os.getenv("FCM_PROJECT_ID", "").strip()
 
-FCM_SERVICE_ACCOUNT_FILE = os.getenv(
-    "FCM_SERVICE_ACCOUNT_FILE",
-    str(BASE_DIR / "firebase" / "dogoapp-7b7a2-firebase-adminsdk-fbsvc-61e2b5bc29.json"),
-)
+FCM_SERVICE_ACCOUNT_FILE = os.getenv("FCM_SERVICE_ACCOUNT_FILE", "").strip()
+FCM_ANDROID_PROJECT_ID = os.getenv("FCM_ANDROID_PROJECT_ID", "").strip()
+FCM_ANDROID_SERVICE_ACCOUNT_FILE = os.getenv(
+    "FCM_ANDROID_SERVICE_ACCOUNT_FILE", ""
+).strip()
+FCM_IOS_PROJECT_ID = os.getenv("FCM_IOS_PROJECT_ID", "").strip()
+FCM_IOS_SERVICE_ACCOUNT_FILE = os.getenv(
+    "FCM_IOS_SERVICE_ACCOUNT_FILE", ""
+).strip()
 PLATFORM_COMMISSION_PCT = Decimal(os.getenv("PLATFORM_COMMISSION_PCT", "0.10"))
 SPECIALIST_OFFER_RADIUS_M = int(os.getenv("SPECIALIST_OFFER_RADIUS_M", "2500"))
 SPECIALIST_OFFER_MAX_CANDIDATES = int(os.getenv("SPECIALIST_OFFER_MAX_CANDIDATES", "20"))

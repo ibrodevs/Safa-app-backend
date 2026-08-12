@@ -1,10 +1,24 @@
 #!/bin/sh
+set -eu
 
-# Wait for postgres (optional, but good practice if using a separate wait-for-it script, 
-# for now we rely on depends_on and simple retry or just assuming it's ready quickly enough)
+if [ "${DJANGO_USE_SQLITE:-0}" != "1" ]; then
+    postgres_host="${POSTGRES_HOST:-postgres}"
+    postgres_port="${POSTGRES_PORT:-5432}"
+    postgres_user="${POSTGRES_USER:?POSTGRES_USER is required}"
 
-echo "Running migrations..."
-python manage.py migrate
+    echo "Waiting for PostgreSQL at ${postgres_host}:${postgres_port}..."
+    until pg_isready -h "$postgres_host" -p "$postgres_port" -U "$postgres_user" >/dev/null 2>&1; do
+        sleep 2
+    done
+fi
 
-echo "Starting server on port 8001..."
-python manage.py runserver 0.0.0.0:8001
+mkdir -p /app/static_root /app/media
+
+echo "Applying database migrations..."
+python manage.py migrate --noinput
+
+echo "Collecting static files..."
+python manage.py collectstatic --noinput
+
+echo "Starting ASGI server..."
+exec "$@"
