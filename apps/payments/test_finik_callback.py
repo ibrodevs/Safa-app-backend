@@ -5,8 +5,8 @@ from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.delivery.models import Shipment
-from apps.payments.models import PaymentAttempt
+from apps.delivery.models import AmanatCampaign, AmanatCategory, AmanatDonation, Shipment
+from apps.payments.models import AmanatPaymentAttempt, PaymentAttempt
 from apps.users.models import User
 
 
@@ -264,7 +264,8 @@ def test_public_config_reports_payment_flow_without_exposing_secrets():
 
     assert response.status_code == 200
     assert response.data == {
-        "paymentFlowVersion": 2,
+        "paymentFlowVersion": 3,
+        "paymentPurposes": ["shipment", "amanat"],
         "configured": True,
         "keyFingerprint": hashlib.sha256(b"api-key").hexdigest()[:16],
         "beta": False,
@@ -272,3 +273,71 @@ def test_public_config_reports_payment_flow_without_exposing_secrets():
         "callbackUrl": "https://example.com/api/payments/finik/callback/",
     }
     assert "api-key" not in str(response.data)
+
+
+@pytest.mark.django_db
+@override_settings(
+    FINIK_ACCOUNT_ID=ACCOUNT_ID,
+    FINIK_API_KEY="api-key",
+    FINIK_TEST_AMOUNT=1,
+    FINIK_CALLBACK_URL="https://example.com/api/payments/finik/callback/",
+)
+def test_amanat_donation_is_counted_only_after_verified_finik_callback():
+    user = User.objects.create_user(
+        phone_number="996700999111",
+        password="secret123",
+        first_name="Donor",
+    )
+    category, _ = AmanatCategory.objects.get_or_create(
+        slug="finik-test-education",
+        defaults={"name": "Finik test education"},
+    )
+    campaign = AmanatCampaign.objects.create(
+        category=category,
+        title="Medrese",
+        needed_amount=10000,
+    )
+    client = APIClient()
+    client.force_authenticate(user)
+
+    init_response = client.post(
+        f"/api/delivery/amanat/campaigns/{campaign.id}/donate/",
+        {"amount": 500, "is_anonymous": False},
+        format="json",
+    )
+
+    assert init_response.status_code == 201
+    assert init_response.data["amount"] == 1
+    donation = AmanatDonation.objects.get(id=init_response.data["donationId"])
+    attempt = AmanatPaymentAttempt.objects.get(donation=donation)
+    assert donation.status == AmanatDonation.Status.PENDING
+    assert campaign.paid_donations_amount == 0
+
+    callback = {
+        "status": "SUCCEEDED",
+        "accountId": ACCOUNT_ID,
+        "amount": "1.00",
+        "transactionId": "amanat-transaction-123",
+        "item": {"id": "amanat-item-123"},
+        "fields": init_response.data["requiredFields"],
+    }
+    callback_response = APIClient().post(
+        "/api/payments/finik/callback/",
+        callback,
+        format="json",
+    )
+
+    assert callback_response.status_code == 200
+    donation.refresh_from_db()
+    attempt.refresh_from_db()
+    campaign.refresh_from_db()
+    assert donation.status == AmanatDonation.Status.PAID
+    assert donation.paid_at is not None
+    assert attempt.status == PaymentAttempt.Status.SUCCEEDED
+    assert campaign.paid_donations_amount == 1
+
+    status_response = client.get(
+        f"/api/delivery/amanat/campaigns/{campaign.id}/donations/{donation.id}/"
+    )
+    assert status_response.status_code == 200
+    assert status_response.data["status"] == AmanatDonation.Status.PAID

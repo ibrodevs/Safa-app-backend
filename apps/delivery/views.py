@@ -28,7 +28,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.notification.events import notify_shipment_offer_for_carrier, notify_shipment_status
-from apps.payments.models import PaymentAttempt
+from apps.payments.models import AmanatPaymentAttempt, PaymentAttempt
 from apps.payments.amounts import payment_amount_for_shipment
 from apps.payments.settlement import complete_paid_shipment
 from apps.users.models import User
@@ -297,18 +297,75 @@ class AmanatCampaignViewSet(viewsets.ReadOnlyModelViewSet):
         serializer.is_valid(raise_exception=True)
         user = request.user if request.user.is_authenticated else None
         donor_label = getattr(user, "phone_number", "") if user else ""
-        donation = AmanatDonation.objects.create(
-            campaign=campaign,
-            donor=user,
-            donor_label=donor_label,
-            amount=serializer.validated_data["amount"],
-            is_anonymous=serializer.validated_data.get("is_anonymous", False),
-            comment=serializer.validated_data.get("comment", ""),
-            status=AmanatDonation.Status.PAID,
-        )
+        account_id = str(getattr(settings, "FINIK_ACCOUNT_ID", "") or "").strip()
+        api_key = str(getattr(settings, "FINIK_API_KEY", "") or "").strip()
+        if not account_id or not api_key:
+            return Response(
+                {"detail": "finik_not_configured"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        requested_amount = int(serializer.validated_data["amount"])
+        test_amount = getattr(settings, "FINIK_TEST_AMOUNT", None)
+        amount = int(test_amount if test_amount is not None else requested_amount)
+        finik_request_id = uuid.uuid4().hex
+        with transaction.atomic():
+            donation = AmanatDonation.objects.create(
+                campaign=campaign,
+                donor=user,
+                donor_label=donor_label,
+                amount=amount,
+                is_anonymous=serializer.validated_data.get("is_anonymous", False),
+                comment=serializer.validated_data.get("comment", ""),
+                status=AmanatDonation.Status.PENDING,
+            )
+            attempt = AmanatPaymentAttempt.objects.create(
+                donation=donation,
+                amount=amount,
+                currency=getattr(settings, "FINIK_CURRENCY", "KGS"),
+                finik_request_id=finik_request_id,
+            )
+
+        callback_url = str(
+            getattr(settings, "FINIK_CALLBACK_URL", "") or ""
+        ).strip() or request.build_absolute_uri(reverse("finik-callback"))
+        required_fields = {
+            "paymentId": str(attempt.id),
+            "finikRequestId": finik_request_id,
+            "paymentKind": "amanat",
+            "donationId": str(donation.id),
+            "campaignId": str(campaign.id),
+        }
         return Response(
-            AmanatDonationSerializer(donation, context=self.get_serializer_context()).data,
+            {
+                "paymentId": str(attempt.id),
+                "finikRequestId": finik_request_id,
+                "callbackUrl": callback_url,
+                "requiredFields": required_fields,
+                "amount": amount,
+                "currency": attempt.currency,
+                "accountId": account_id,
+                "donationId": donation.id,
+            },
             status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path=r"donations/(?P<donation_id>[^/.]+)",
+    )
+    def donation_status(self, request, pk=None, donation_id=None):
+        campaign = self.get_object()
+        try:
+            donation = campaign.donations.get(id=donation_id, donor=request.user)
+        except AmanatDonation.DoesNotExist:
+            return Response({"detail": "not_found"}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            AmanatDonationSerializer(
+                donation,
+                context=self.get_serializer_context(),
+            ).data
         )
 
 

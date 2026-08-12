@@ -247,7 +247,7 @@ class AmanatDonation(models.Model):
     )
     donor_label = models.CharField(max_length=120, blank=True, verbose_name="Имя/телефон для отображения")
     amount = models.PositiveIntegerField(validators=[MinValueValidator(1)], verbose_name="Сумма")
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PAID, verbose_name="Статус")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, verbose_name="Статус")
     is_anonymous = models.BooleanField(default=False, verbose_name="Анонимно")
     comment = models.CharField(max_length=255, blank=True, verbose_name="Комментарий")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")

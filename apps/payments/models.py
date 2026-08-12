@@ -43,6 +43,35 @@ class PaymentAttempt(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
+class AmanatPaymentAttempt(models.Model):
+    """Finik attempt for an Amanat donation."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    donation = models.OneToOneField(
+        "delivery.AmanatDonation",
+        on_delete=models.CASCADE,
+        related_name="payment_attempt",
+    )
+    provider = models.CharField(
+        max_length=16,
+        choices=PaymentAttempt.Provider.choices,
+        default=PaymentAttempt.Provider.FINIK,
+    )
+    amount = models.PositiveIntegerField()
+    currency = models.CharField(max_length=8, default="KGS")
+    finik_request_id = models.CharField(max_length=64, unique=True)
+    status = models.CharField(
+        max_length=16,
+        choices=PaymentAttempt.Status.choices,
+        default=PaymentAttempt.Status.PENDING,
+    )
+    finik_transaction_id = models.CharField(max_length=128, null=True, blank=True)
+    finik_item_id = models.CharField(max_length=128, null=True, blank=True)
+    raw_callback_payload = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class CarrierSettlement(models.Model):
     """Immutable internal credit created once after a verified payment."""
 

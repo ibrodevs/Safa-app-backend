@@ -80,10 +80,11 @@ FINIK_CALLBACK_URL=https://api.example.com/api/payments/finik/callback/
 
 В production URL обязан быть публичным HTTPS URL без VPN/Basic Auth. Reverse
 proxy должен передавать `Host` и `X-Forwarded-Proto: https`. Callback не требует
-JWT: backend сверяет payment ID, уникальный Finik request ID, shipment ID,
+JWT: backend сверяет payment ID, уникальный Finik request ID, назначение
+платежа (`shipment` или `amanat`), ID заказа либо пожертвования/кампании,
 сумму и account ID, а затем подтверждает transaction ID через Finik GraphQL.
-Только после ответа Finik заказ отмечается оплаченным; повторная доставка
-callback обрабатывается идемпотентно.
+Только после ответа Finik заказ или пожертвование отмечается оплаченным;
+повторная доставка callback обрабатывается идемпотентно.
 
 ## 3. Логика завершения заказа и начисления специалисту
 
@@ -100,6 +101,10 @@ callback обрабатывается идемпотентно.
 повторное нажатие не создают второе начисление. Баланс и последние начисления
 специалиста доступны авторизованному специалисту по
 `GET /api/payments/carrier/wallet/`.
+
+Пожертвование «Аманат» сначала создаётся со статусом `pending`. В сумму сбора
+оно попадает только после проверенного callback Finik. Отмена окна Finik или
+один лишь ответ Flutter SDK не считаются подтверждением платежа.
 
 `CarrierSettlement` — внутренний бухгалтерский реестр приложения. Finik
 зачисляет платёж клиента на корпоративный счёт `FINIK_ACCOUNT_ID`. Реальный
@@ -148,7 +153,8 @@ flutter build apk --release \
    curl https://safabackend21.pythonanywhere.com/api/payments/finik/config/
    ```
 
-   Должны быть `paymentFlowVersion: 2`, `configured: true`, нужный `beta` и
+   Должны быть `paymentFlowVersion: 3`,
+   `paymentPurposes: ["shipment", "amanat"]`, `configured: true`, нужный `beta` и
    публичный HTTPS `callbackUrl`. `keyFingerprint` — безопасный короткий хеш,
    по которому приложение проверяет, что в APK и backend передан один и тот же
    ключ; сам ключ endpoint не раскрывает.
@@ -164,6 +170,8 @@ flutter build apk --release \
 7. Finik должен вызвать `/api/payments/finik/callback/`; заказ получит
    `is_paid=true`, `status=completed`, а в кошельке специалиста появится одно
    начисление чистой суммы.
+8. Отдельно сделайте пожертвование в разделе «Аманат»: сумма кампании должна
+   увеличиться только после подтверждённого callback от Finik.
 
 Сначала полностью проверьте beta-окружение. Не смешивайте beta API key с
 production account ID.

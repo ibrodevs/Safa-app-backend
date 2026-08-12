@@ -13,7 +13,12 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.payments.models import CarrierSettlement, PaymentAttempt
+from apps.delivery.models import AmanatDonation
+from apps.payments.models import (
+    AmanatPaymentAttempt,
+    CarrierSettlement,
+    PaymentAttempt,
+)
 from apps.payments.serializers import (
     CarrierSettlementSerializer,
     FinikCallbackInSerializer,
@@ -41,7 +46,8 @@ class FinikConfigView(APIView):
         ).strip()
         return Response(
             {
-                "paymentFlowVersion": 2,
+                "paymentFlowVersion": 3,
+                "paymentPurposes": ["shipment", "amanat"],
                 "configured": bool(api_key and account_id),
                 "keyFingerprint": (
                     hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
@@ -111,11 +117,18 @@ class FinikCallbackView(APIView):
                 status=drf_status.HTTP_400_BAD_REQUEST,
             )
 
+        payment_kind = payload["paymentKind"]
+        attempt_model = (
+            AmanatPaymentAttempt if payment_kind == "amanat" else PaymentAttempt
+        )
+        attempt_qs = attempt_model.objects
+        if payment_kind == "amanat":
+            attempt_qs = attempt_qs.select_related("donation__campaign")
+        else:
+            attempt_qs = attempt_qs.select_related("shipment")
         try:
-            attempt = PaymentAttempt.objects.select_related("shipment").get(
-                id=attempt_id
-            )
-        except PaymentAttempt.DoesNotExist:
+            attempt = attempt_qs.get(id=attempt_id)
+        except attempt_model.DoesNotExist:
             return Response(
                 {"detail": "payment_not_found"},
                 status=drf_status.HTTP_404_NOT_FOUND,
@@ -124,14 +137,29 @@ class FinikCallbackView(APIView):
         finik_request_id = fields.get("finikRequestId") or fields.get(
             "finik_request_id"
         )
-        shipment_id = fields.get("shipmentId") or fields.get("shipment_id")
+        if payment_kind == "amanat":
+            target_matches = (
+                _same(
+                    fields.get("donationId") or fields.get("donation_id"),
+                    attempt.donation_id,
+                )
+                and _same(
+                    fields.get("campaignId") or fields.get("campaign_id"),
+                    attempt.donation.campaign_id,
+                )
+            )
+        else:
+            target_matches = _same(
+                fields.get("shipmentId") or fields.get("shipment_id"),
+                attempt.shipment_id,
+            )
         configured_account_id = str(
             getattr(settings, "FINIK_ACCOUNT_ID", "") or ""
         ).strip()
 
         callback_matches = (
             _same(finik_request_id, attempt.finik_request_id)
-            and _same(shipment_id, attempt.shipment_id)
+            and target_matches
             and Decimal(payload["amount"]) == Decimal(attempt.amount)
             and bool(configured_account_id)
             and _same(payload["accountId"], configured_account_id)
@@ -167,6 +195,13 @@ class FinikCallbackView(APIView):
             return Response(
                 {"detail": "transaction_not_verified"},
                 status=drf_status.HTTP_400_BAD_REQUEST,
+            )
+
+        if payment_kind == "amanat":
+            return self._process_amanat_callback(
+                request=request,
+                payload=payload,
+                attempt_id=attempt_id,
             )
 
         completed_shipment = None
@@ -232,4 +267,50 @@ class FinikCallbackView(APIView):
             apply_rating_for_completed_shipment(completed_shipment)
             notify_shipment_status(completed_shipment)
 
+        return Response({"ok": True})
+
+    def _process_amanat_callback(self, *, request, payload, attempt_id):
+        with transaction.atomic():
+            attempt = (
+                AmanatPaymentAttempt.objects.select_for_update()
+                .select_related("donation")
+                .get(id=attempt_id)
+            )
+            donation = attempt.donation
+            attempt.raw_callback_payload = request.data
+
+            if attempt.status in (
+                PaymentAttempt.Status.SUCCEEDED,
+                PaymentAttempt.Status.FAILED,
+            ):
+                attempt.save(
+                    update_fields=["raw_callback_payload", "updated_at"]
+                )
+                return Response({"ok": True})
+
+            transaction_id = payload["transactionId"]
+            item = payload.get("item") or {}
+            item_id = item.get("id") if isinstance(item, dict) else ""
+            attempt.finik_transaction_id = str(transaction_id)[:128] or None
+            attempt.finik_item_id = str(item_id)[:128] or None
+
+            if payload["status"] == PaymentAttempt.Status.SUCCEEDED:
+                attempt.status = PaymentAttempt.Status.SUCCEEDED
+                donation.status = AmanatDonation.Status.PAID
+                donation.paid_at = donation.paid_at or timezone.now()
+                donation.save(update_fields=["status", "paid_at"])
+            else:
+                attempt.status = PaymentAttempt.Status.FAILED
+                donation.status = AmanatDonation.Status.FAILED
+                donation.save(update_fields=["status"])
+
+            attempt.save(
+                update_fields=[
+                    "status",
+                    "finik_transaction_id",
+                    "finik_item_id",
+                    "raw_callback_payload",
+                    "updated_at",
+                ]
+            )
         return Response({"ok": True})

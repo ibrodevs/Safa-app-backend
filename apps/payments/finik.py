@@ -4,7 +4,7 @@ from typing import Any
 import requests
 from django.conf import settings
 
-from apps.payments.models import PaymentAttempt
+from apps.payments.models import AmanatPaymentAttempt, PaymentAttempt
 
 
 class FinikVerificationUnavailable(Exception):
@@ -55,7 +55,7 @@ def _required_field_map(item: dict[str, Any]) -> dict[str, str]:
 
 def verify_finik_transaction(
     transaction_id: str,
-    attempt: PaymentAttempt,
+    attempt: PaymentAttempt | AmanatPaymentAttempt,
 ) -> bool:
     """Confirm that Finik knows a paid transaction for this exact attempt."""
 
@@ -104,6 +104,14 @@ def verify_finik_transaction(
 
     account = item.get("account") or {}
     fields = _required_field_map(item)
+    if isinstance(attempt, AmanatPaymentAttempt):
+        target_matches = (
+            fields.get("paymentKind") == "amanat"
+            and fields.get("donationId") == str(attempt.donation_id)
+            and fields.get("campaignId") == str(attempt.donation.campaign_id)
+        )
+    else:
+        target_matches = fields.get("shipmentId") == str(attempt.shipment_id)
     return (
         payment_count >= 1
         and amount_matches
@@ -112,5 +120,5 @@ def verify_finik_transaction(
         == str(getattr(settings, "FINIK_ACCOUNT_ID", "") or "").strip()
         and fields.get("paymentId") == str(attempt.id)
         and fields.get("finikRequestId") == attempt.finik_request_id
-        and fields.get("shipmentId") == str(attempt.shipment_id)
+        and target_matches
     )

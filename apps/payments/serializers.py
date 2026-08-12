@@ -19,6 +19,7 @@ class FinikCallbackInSerializer(serializers.Serializer):
     """
     status = serializers.CharField()
     fields = serializers.DictField(required=False)
+    paymentKind = serializers.CharField(required=False, allow_blank=True)
     requestId = serializers.CharField(required=False, allow_blank=True)
     transactionId = serializers.CharField()
     item = serializers.DictField(required=False)
@@ -49,12 +50,35 @@ class FinikCallbackInSerializer(serializers.Serializer):
         attrs["accountId"] = str(account_id)
 
         fields = attrs.get("fields") or {}
+        payment_kind = str(
+            fields.get("paymentKind")
+            or fields.get("payment_kind")
+            or attrs.get("paymentKind")
+            or ("amanat" if fields.get("donationId") else "shipment")
+        ).strip().lower()
+        if payment_kind not in {"shipment", "amanat"}:
+            raise serializers.ValidationError(
+                {"fields": "unsupported paymentKind"}
+            )
+        attrs["paymentKind"] = payment_kind
         required = {
             "paymentId": fields.get("paymentId") or fields.get("payment_id"),
             "finikRequestId": fields.get("finikRequestId")
             or fields.get("finik_request_id"),
-            "shipmentId": fields.get("shipmentId") or fields.get("shipment_id"),
         }
+        if payment_kind == "amanat":
+            required.update(
+                {
+                    "donationId": fields.get("donationId")
+                    or fields.get("donation_id"),
+                    "campaignId": fields.get("campaignId")
+                    or fields.get("campaign_id"),
+                }
+            )
+        else:
+            required["shipmentId"] = fields.get("shipmentId") or fields.get(
+                "shipment_id"
+            )
         missing = [name for name, value in required.items() if not value]
         if missing:
             raise serializers.ValidationError(

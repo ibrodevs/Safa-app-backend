@@ -3,9 +3,9 @@ from unittest.mock import Mock, patch
 import pytest
 from django.test import override_settings
 
-from apps.delivery.models import Shipment
+from apps.delivery.models import AmanatCampaign, AmanatCategory, AmanatDonation, Shipment
 from apps.payments.finik import verify_finik_transaction
-from apps.payments.models import PaymentAttempt
+from apps.payments.models import AmanatPaymentAttempt, PaymentAttempt
 from apps.users.models import User
 
 
@@ -89,3 +89,58 @@ def test_transaction_with_wrong_amount_is_rejected(mock_post):
     mock_post.return_value = response
 
     assert verify_finik_transaction("transaction-456", attempt) is False
+
+
+@pytest.mark.django_db
+@override_settings(FINIK_API_KEY="api-key", FINIK_ACCOUNT_ID="account-123")
+@patch("apps.payments.finik.requests.post")
+def test_amanat_transaction_is_bound_to_exact_donation(mock_post):
+    user = User.objects.create_user(
+        phone_number="996700555333",
+        password="secret123",
+        first_name="Donor",
+    )
+    category = AmanatCategory.objects.create(
+        slug="verification-test",
+        name="Verification test",
+    )
+    campaign = AmanatCampaign.objects.create(
+        category=category,
+        title="Medrese",
+        needed_amount=10000,
+    )
+    donation = AmanatDonation.objects.create(
+        campaign=campaign,
+        donor=user,
+        amount=500,
+    )
+    attempt = AmanatPaymentAttempt.objects.create(
+        donation=donation,
+        amount=500,
+        finik_request_id="amanat-request-123",
+    )
+    response = Mock()
+    response.raise_for_status.return_value = None
+    response.json.return_value = {
+        "data": {
+            "getItem": {
+                "requestId": "amanat-request-123",
+                "fixedAmount": 500,
+                "paymentCount": 1,
+                "account": {"id": "account-123"},
+                "requiredFields": [
+                    {"fieldId": "paymentId", "value": str(attempt.id)},
+                    {
+                        "fieldId": "finikRequestId",
+                        "value": "amanat-request-123",
+                    },
+                    {"fieldId": "paymentKind", "value": "amanat"},
+                    {"fieldId": "donationId", "value": str(donation.id)},
+                    {"fieldId": "campaignId", "value": str(campaign.id)},
+                ],
+            }
+        }
+    }
+    mock_post.return_value = response
+
+    assert verify_finik_transaction("amanat-transaction-123", attempt) is True
