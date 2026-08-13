@@ -127,6 +127,12 @@ class Container(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["passage", "number"], name="uniq_container_passage_number"),
         ]
+        indexes = [
+            models.Index(
+                fields=("is_active", "lat", "lon"),
+                name="container_viewport_idx",
+            ),
+        ]
 
     @property
     def bazar(self) -> Bazar:
@@ -201,6 +207,9 @@ class AmanatCampaign(models.Model):
 
     @property
     def paid_donations_amount(self) -> int:
+        annotated = getattr(self, "_paid_donations_amount", None)
+        if annotated is not None:
+            return int(annotated)
         value = self.donations.filter(status=AmanatDonation.Status.PAID).aggregate(
             total=models.Sum("amount")
         )["total"]
@@ -220,6 +229,9 @@ class AmanatCampaign(models.Model):
 
     @property
     def helpers_count(self) -> int:
+        annotated = getattr(self, "_paid_donations_count", None)
+        if annotated is not None:
+            return int(self.helpers_count_manual or 0) + int(annotated)
         paid_count = self.donations.filter(status=AmanatDonation.Status.PAID).count()
         return int(self.helpers_count_manual or 0) + paid_count
 
@@ -363,6 +375,12 @@ class Shipment(models.Model):
                     | models.Q(is_paid=True)
                 ),
                 name="delivery_completed_requires_payment",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=("status", "carrier", "is_demo", "created_at"),
+                name="shipment_nearby_idx",
             ),
         ]
 

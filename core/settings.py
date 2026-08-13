@@ -73,6 +73,9 @@ INSTALLED_APPS = [
 SECURE_CROSS_ORIGIN_OPENER_POLICY = None
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # GeoJSON and directory responses compress particularly well. Django only
+    # applies this above its minimum size and adds the correct Vary header.
+    'django.middleware.gzip.GZipMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',

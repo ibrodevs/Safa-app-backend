@@ -10,7 +10,8 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, IntegerField, Prefetch, Q, Sum, Value
+from django.db.models.functions import Coalesce
 from django.urls import reverse
 from django.utils import timezone
 from drf_spectacular.utils import (
@@ -34,9 +35,10 @@ from apps.payments.settlement import complete_paid_shipment
 from apps.users.models import User
 from .geocoding import twogis_autocomplete
 from .lifecycle import ShipmentFareUnavailable, mark_shipment_awaiting_payment
+from .map_pricing import MapPricingResolver
 from .rating import apply_rating_for_completed_shipment
 from .geo import haversine_m, polyline_len_km, is_in_bishkek
-from .models import AmanatCampaign, AmanatCategory, AmanatDonation, Bazar, Container, CourierPosition, GlobalDeliveryConfig, Passage, Shipment
+from .models import AmanatCampaign, AmanatCategory, AmanatDonation, Bazar, Container, CourierPosition, GlobalDeliveryConfig, Passage, Shipment, ShipmentStop
 from .pagination import StandardResultsSetPagination
 from .serializer import (
     AmanatCampaignSerializer,
@@ -258,7 +260,31 @@ class AmanatCategoryViewSet(viewsets.ReadOnlyModelViewSet):
 class AmanatCampaignViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = (
         AmanatCampaign.objects.select_related("category")
-        .prefetch_related("donations", "donations__donor")
+        .annotate(
+            _paid_donations_amount=Coalesce(
+                Sum(
+                    "donations__amount",
+                    filter=Q(donations__status=AmanatDonation.Status.PAID),
+                ),
+                Value(0),
+                output_field=IntegerField(),
+            ),
+            _paid_donations_count=Count(
+                "donations",
+                filter=Q(donations__status=AmanatDonation.Status.PAID),
+            ),
+        )
+        .prefetch_related(
+            Prefetch(
+                "donations",
+                queryset=AmanatDonation.objects.filter(
+                    status=AmanatDonation.Status.PAID,
+                )
+                .select_related("donor")
+                .order_by("-created_at")[:5],
+                to_attr="_latest_paid_donations",
+            )
+        )
         .filter(status=AmanatCampaign.Status.ACTIVE)
         .order_by("sort_order", "-created_at")
     )
@@ -374,7 +400,16 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         "client",
         "carrier",
         "carrier_settlement",
-    ).prefetch_related("stops")
+    ).prefetch_related(
+        Prefetch(
+            "stops",
+            queryset=ShipmentStop.objects.select_related(
+                "container",
+                "container__passage",
+                "container__passage__bazar",
+            ).order_by("position"),
+        )
+    )
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardResultsSetPagination
 
@@ -698,26 +733,45 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         qs = (
             Shipment.objects.filter(status=Shipment.Status.PENDING, carrier__isnull=True)
             .exclude(_demo_shipment_q())
-            .prefetch_related("stops")
+            .prefetch_related(
+                Prefetch(
+                    "stops",
+                    queryset=ShipmentStop.objects.select_related(
+                        "container",
+                        "container__passage",
+                        "container__passage__bazar",
+                    ).order_by("position"),
+                )
+            )
             .order_by("created_at")
         )
 
         # Оставляем только заказы, где первая точка (забор) в Бишкеке
-        filtered_distances = []
+        filtered_shipments = []
+        map_resolver = MapPricingResolver()
         for s in qs:
-            first_stop = s.stops.order_by("position").first()
+            # `stops` is already ordered and prefetched above. Calling
+            # `.order_by().first()` here used to bypass that cache and issue one
+            # SQL query per shipment.
+            stops = list(s.stops.all())
+            first_stop = stops[0] if stops else None
             if first_stop and first_stop.lat and first_stop.lon:
-                if is_in_bishkek(float(first_stop.lat), float(first_stop.lon)) and shipment_matches_specialist(s, request.user):
-                    filtered_distances.append(
+                if is_in_bishkek(float(first_stop.lat), float(first_stop.lon)) and shipment_matches_specialist(
+                    s,
+                    request.user,
+                    resolver=map_resolver,
+                ):
+                    filtered_shipments.append(
                         (
-                            s.id,
                             haversine_m(lat, lon, float(first_stop.lat), float(first_stop.lon)),
+                            s,
                         )
                     )
-        
-        filtered_ids = [item[0] for item in sorted(filtered_distances, key=lambda item: item[1])]
-        qs_by_id = {shipment.id: shipment for shipment in qs.filter(id__in=filtered_ids)}
-        ordered_shipments = [qs_by_id[shipment_id] for shipment_id in filtered_ids if shipment_id in qs_by_id]
+
+        ordered_shipments = [
+            shipment
+            for _, shipment in sorted(filtered_shipments, key=lambda item: item[0])
+        ]
 
         page = self.paginate_queryset(ordered_shipments)
         serializer = self.get_serializer(

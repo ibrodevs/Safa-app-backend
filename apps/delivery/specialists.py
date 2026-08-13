@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from apps.users.models import User
 from .geo import haversine_m
-from .map_pricing import point_inside_published_or_legacy_bazar
+from .map_pricing import MapPricingResolver
 from .models import CourierPosition, Shipment
 
 
@@ -20,25 +20,41 @@ class SpecialistCandidate:
 def point_inside_bazar(lat, lon) -> bool:
     """Проверяет опубликованную границу карты, затем legacy-прямоугольник."""
 
-    return point_inside_published_or_legacy_bazar(lat, lon)
+    return MapPricingResolver().point_inside_any_bazar(lat, lon)
 
 
-def shipment_all_stops_in_bazars(shipment: Shipment) -> bool:
+def shipment_all_stops_in_bazars(
+    shipment: Shipment,
+    *,
+    resolver: MapPricingResolver | None = None,
+) -> bool:
+    resolver = resolver or MapPricingResolver()
     stops = list(shipment.stops.all())
     if not stops:
         return False
     for stop in stops:
         if stop.container_id:
             continue
-        if not point_inside_bazar(stop.lat, stop.lon):
+        if not resolver.point_inside_any_bazar(stop.lat, stop.lon):
             return False
     return True
 
 
-def shipment_matches_specialist(shipment: Shipment, user: User) -> bool:
+def shipment_matches_specialist(
+    shipment: Shipment,
+    user: User,
+    *,
+    resolver: MapPricingResolver | None = None,
+    route_inside_bazars: bool | None = None,
+) -> bool:
     if not user.is_active or getattr(user, "role", None) != User.Roles.CARRIER:
         return False
-    if not shipment_all_stops_in_bazars(shipment):
+    if route_inside_bazars is None:
+        route_inside_bazars = shipment_all_stops_in_bazars(
+            shipment,
+            resolver=resolver,
+        )
+    if not route_inside_bazars:
         return False
 
     specialist_type = getattr(user, "specialist_type", None)
@@ -76,10 +92,18 @@ def nearest_specialist_candidates(shipment: Shipment) -> list[SpecialistCandidat
         .exclude(user_id=shipment.client_id)
     )
 
+    route_inside_bazars = shipment_all_stops_in_bazars(shipment)
+    if not route_inside_bazars:
+        return []
+
     candidates: list[SpecialistCandidate] = []
     for position in positions:
         user = position.user
-        if not shipment_matches_specialist(shipment, user):
+        if not shipment_matches_specialist(
+            shipment,
+            user,
+            route_inside_bazars=route_inside_bazars,
+        ):
             continue
         distance_m = haversine_m(
             float(position.lat),

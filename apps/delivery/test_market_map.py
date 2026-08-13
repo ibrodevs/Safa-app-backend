@@ -210,6 +210,12 @@ def test_publish_syncs_container_and_returns_only_published_map():
         "bazar",
         "container",
     }
+    etag = response["ETag"]
+    cached_response = client.get(
+        "/api/delivery/map/features/?bazar_id=%s&zoom=17" % bazar.id,
+        HTTP_IF_NONE_MATCH=etag,
+    )
+    assert cached_response.status_code == 304
 
 
 @pytest.mark.django_db

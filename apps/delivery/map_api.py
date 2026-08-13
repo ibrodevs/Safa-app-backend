@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 
+from django.core.cache import cache
 from django.http import HttpResponseNotModified
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -36,6 +37,27 @@ class PublishedMarketMapView(APIView):
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
+        signature = list(
+            MarketMapRevision.objects.filter(
+                status=MarketMapRevision.Status.PUBLISHED,
+                **({"bazar_id": bazar_id} if bazar_id is not None else {}),
+            )
+            .order_by("bazar_id", "-version")
+            .values_list("id", "bazar_id", "version", "updated_at")
+        )
+        cache_key = self._cache_key(
+            signature=signature,
+            bazar_id=bazar_id,
+            zoom=zoom,
+            bbox=bbox,
+            center=center,
+            max_containers=max_containers,
+        )
+        cached = cache.get(cache_key)
+        if cached is not None:
+            payload, etag = cached
+            return self._response(request, payload=payload, etag=etag)
+
         revisions = self._latest_revisions(bazar_id=bazar_id)
         features = []
         versions = {}
@@ -64,6 +86,11 @@ class PublishedMarketMapView(APIView):
         }
         encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
         etag = '"' + hashlib.sha256(encoded).hexdigest() + '"'
+        cache.set(cache_key, (payload, etag), timeout=60)
+        return self._response(request, payload=payload, etag=etag)
+
+    @staticmethod
+    def _response(request, *, payload, etag):
         if request.headers.get("If-None-Match") == etag:
             response = HttpResponseNotModified()
             response["ETag"] = etag
@@ -73,6 +100,25 @@ class PublishedMarketMapView(APIView):
         response["ETag"] = etag
         response["Cache-Control"] = "private, max-age=60"
         return response
+
+    @staticmethod
+    def _cache_key(*, signature, bazar_id, zoom, bbox, center, max_containers):
+        raw = json.dumps(
+            {
+                "signature": [
+                    [revision_id, market_id, version, updated_at.isoformat()]
+                    for revision_id, market_id, version, updated_at in signature
+                ],
+                "bazar_id": bazar_id,
+                "zoom": zoom,
+                "bbox": bbox,
+                "center": center,
+                "max_containers": max_containers,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return "published-market-map:" + hashlib.sha256(raw).hexdigest()
 
     @staticmethod
     def _latest_revisions(*, bazar_id: int | None):

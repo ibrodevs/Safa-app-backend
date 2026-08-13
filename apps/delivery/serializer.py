@@ -330,7 +330,11 @@ class AmanatCampaignSerializer(serializers.ModelSerializer):
         return min(obj.collected_amount / obj.needed_amount, 1)
 
     def get_latest_donations(self, obj: AmanatCampaign):
-        qs = obj.donations.filter(status=AmanatDonation.Status.PAID).select_related("donor")[:5]
+        qs = getattr(obj, "_latest_paid_donations", None)
+        if qs is None:
+            qs = obj.donations.filter(
+                status=AmanatDonation.Status.PAID,
+            ).select_related("donor")[:5]
         return AmanatDonationSerializer(qs, many=True, context=self.context).data
 
 
@@ -801,7 +805,8 @@ class ShipmentNearbySerializer(serializers.ModelSerializer):
         if lat is None or lon is None:
             return None
 
-        stop = obj.stops.order_by("position").first()
+        stops = list(obj.stops.all())
+        stop = stops[0] if stops else None
         if not stop or stop.lat is None or stop.lon is None:
             return None
 
