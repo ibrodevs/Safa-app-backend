@@ -19,10 +19,19 @@ from rest_framework.parsers import MultiPartParser, JSONParser, FormParser
 from apps.users.utlis import *
 from rest_framework.exceptions import MethodNotAllowed
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView
 from django.utils import timezone
+from .enrollment import (
+    InvalidKYCEnrollmentToken,
+    user_from_kyc_enrollment_token,
+)
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+class VerifiedTokenObtainPairView(TokenObtainPairView):
+    serializer_class = VerifiedTokenObtainPairSerializer
 
 
 @extend_schema(tags=["Аутентификация"])
@@ -317,9 +326,11 @@ class CarrierLoginView(generics.GenericAPIView):
             return Response({"detail": str(e)}, status=400)
 
         try:
-            user = User.objects.get(phone_number=phone, role=User.Roles.CARRIER)
-        except User.DoesNotExist:
-            return Response({"detail": "Перевозчик с таким телефоном не найден."}, status=404)
+            user = user_from_kyc_enrollment_token(ser.validated_data["kyc_token"])
+        except InvalidKYCEnrollmentToken:
+            return Response({"detail": "invalid_kyc_token"}, status=401)
+        if user.phone_number != phone:
+            return Response({"detail": "invalid_kyc_token"}, status=401)
 
         kyc = getattr(user, "kyc", None)
         if not kyc:
@@ -347,6 +358,12 @@ class CarrierLoginView(generics.GenericAPIView):
                     "detail": "Ваши данные отклонены.",
                     "comment": kyc.comment or "",
                 },
+                status=403,
+            )
+
+        if not user.is_active or not user.is_verify:
+            return Response(
+                {"status": "pending", "detail": "Доступ специалиста ещё не активирован."},
                 status=403,
             )
 

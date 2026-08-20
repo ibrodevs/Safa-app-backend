@@ -25,6 +25,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework import permissions, response, serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -446,6 +447,11 @@ class ShipmentViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         rid = _rid(self.request)
+        if (
+            getattr(self.request.user, "role", None) != User.Roles.CLIENT
+            and not self.request.user.is_staff
+        ):
+            raise PermissionDenied("only_for_client")
         try:
             shipment = serializer.save()
             _broadcast(shipment)
@@ -826,24 +832,41 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
-        amount = payment_amount_for_shipment(s)
-        if amount <= 0:
-            logger.warning(
-                "pay_finik_bad_amount",
-                extra={"request_id": rid, "user_id": request.user.id, "shipment_id": s.id, "amount": amount},
+        with transaction.atomic():
+            locked = Shipment.objects.select_for_update().get(pk=s.pk)
+            if locked.is_paid:
+                return response.Response({"detail": "already_paid"}, status=status.HTTP_409_CONFLICT)
+            if (
+                locked.status != Shipment.Status.AWAITING_PAYMENT
+                or not locked.carrier_id
+                or not locked.work_completed_at
+            ):
+                return response.Response({"detail": "payment_not_due"}, status=status.HTTP_409_CONFLICT)
+
+            amount = payment_amount_for_shipment(locked)
+            if amount <= 0:
+                logger.warning(
+                    "pay_finik_bad_amount",
+                    extra={"request_id": rid, "user_id": request.user.id, "shipment_id": locked.id, "amount": amount},
+                )
+                return response.Response({"detail": "bad_amount"}, status=status.HTTP_400_BAD_REQUEST)
+
+            attempt = (
+                locked.payment_attempts.filter(status=PaymentAttempt.Status.PENDING)
+                .order_by("-created_at")
+                .first()
             )
-            return response.Response({"detail": "bad_amount"}, status=status.HTTP_400_BAD_REQUEST)
-
-        finik_request_id = uuid.uuid4().hex
-
-        attempt = PaymentAttempt.objects.create(
-            provider="FINIK",
-            shipment=s,
-            amount=amount,
-            currency=getattr(settings, "FINIK_CURRENCY", "KGS"),
-            finik_request_id=finik_request_id,
-            status=PaymentAttempt.Status.PENDING,
-        )
+            if attempt is None:
+                attempt = PaymentAttempt.objects.create(
+                    provider="FINIK",
+                    shipment=locked,
+                    amount=amount,
+                    currency=getattr(settings, "FINIK_CURRENCY", "KGS"),
+                    finik_request_id=uuid.uuid4().hex,
+                    status=PaymentAttempt.Status.PENDING,
+                )
+            else:
+                amount = int(attempt.amount)
 
         callback_url = str(getattr(settings, "FINIK_CALLBACK_URL", "") or "").strip()
         if not callback_url:
@@ -863,11 +886,11 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         return response.Response(
             {
                 "paymentId": str(attempt.id),
-                "finikRequestId": finik_request_id,
+                "finikRequestId": attempt.finik_request_id,
                 "callbackUrl": callback_url,
                 "requiredFields": {
                     "paymentId": str(attempt.id),
-                    "finikRequestId": finik_request_id,
+                    "finikRequestId": attempt.finik_request_id,
                     "shipmentId": str(s.id),
                 },
                 "amount": amount,

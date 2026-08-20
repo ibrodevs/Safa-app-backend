@@ -42,6 +42,15 @@ class PaymentAttempt(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("shipment",),
+                condition=models.Q(status="PENDING"),
+                name="one_pending_payment_per_shipment",
+            ),
+        ]
+
 
 class AmanatPaymentAttempt(models.Model):
     """Finik attempt for an Amanat donation."""

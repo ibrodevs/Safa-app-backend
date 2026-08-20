@@ -28,6 +28,7 @@ from apps.payments.finik import (
     verify_finik_transaction,
 )
 from apps.payments.settlement import complete_paid_shipment
+from apps.payments.amounts import effective_finik_test_amount
 from apps.delivery.rating import apply_rating_for_completed_shipment
 from apps.notification.events import notify_shipment_status
 
@@ -55,7 +56,7 @@ class FinikConfigView(APIView):
                     else ""
                 ),
                 "beta": bool(getattr(settings, "FINIK_BETA", False)),
-                "testAmount": getattr(settings, "FINIK_TEST_AMOUNT", None),
+                "testAmount": effective_finik_test_amount(),
                 "callbackUrl": str(
                     getattr(settings, "FINIK_CALLBACK_URL", "") or ""
                 ).strip(),

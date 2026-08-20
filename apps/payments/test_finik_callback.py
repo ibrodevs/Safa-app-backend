@@ -222,6 +222,7 @@ def test_payment_init_derives_callback_url_and_returns_account_id():
     FINIK_ACCOUNT_ID=ACCOUNT_ID,
     FINIK_API_KEY="api-key",
     FINIK_TEST_AMOUNT=1,
+    FINIK_ALLOW_TEST_AMOUNT=True,
 )
 def test_test_amount_is_used_for_payment_and_settlement():
     shipment = _shipment()
@@ -257,6 +258,7 @@ def test_test_amount_is_used_for_payment_and_settlement():
     FINIK_API_KEY="api-key",
     FINIK_BETA=False,
     FINIK_TEST_AMOUNT=1,
+    FINIK_ALLOW_TEST_AMOUNT=False,
     FINIK_CALLBACK_URL="https://example.com/api/payments/finik/callback/",
 )
 def test_public_config_reports_payment_flow_without_exposing_secrets():
@@ -269,7 +271,7 @@ def test_public_config_reports_payment_flow_without_exposing_secrets():
         "configured": True,
         "keyFingerprint": hashlib.sha256(b"api-key").hexdigest()[:16],
         "beta": False,
-        "testAmount": 1,
+        "testAmount": None,
         "callbackUrl": "https://example.com/api/payments/finik/callback/",
     }
     assert "api-key" not in str(response.data)

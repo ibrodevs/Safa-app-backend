@@ -29,7 +29,7 @@ class PublishedMarketMapView(APIView):
             zoom = self._optional_int(request.query_params.get("zoom"), minimum=0, maximum=22)
             max_containers = self._optional_int(
                 request.query_params.get("max_containers"),
-                minimum=1,
+                minimum=0,
                 maximum=1000,
             )
             bbox = self._bbox(request)

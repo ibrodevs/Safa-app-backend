@@ -1,5 +1,6 @@
-from django.conf import settings
 from django.utils import timezone
+
+from apps.payments.amounts import effective_finik_test_amount
 
 from .models import Shipment
 
@@ -26,7 +27,7 @@ def mark_shipment_awaiting_payment(shipment: Shipment) -> Shipment:
         # Старые/тестовые заказы могли быть созданы с нулевой ценой. В режиме
         # фиксированной тестовой суммы это валидный платёж и завершение работы
         # не должно падать с HTTP 500.
-        test_amount = getattr(settings, "FINIK_TEST_AMOUNT", None)
+        test_amount = effective_finik_test_amount()
         if test_amount is not None:
             fare = int(test_amount)
         else:

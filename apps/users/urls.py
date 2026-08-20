@@ -1,7 +1,7 @@
 from apps.users.views import *
 from rest_framework import routers
 from django.urls import path, include
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.views import TokenRefreshView
 router = routers.DefaultRouter()
 
 
@@ -9,7 +9,7 @@ router = routers.DefaultRouter()
 
 urlpatterns = [
     path("register/", RegisterView.as_view(), name='reg'),
-    path('token/', TokenObtainPairView.as_view(), name='login'),
+    path('token/', VerifiedTokenObtainPairView.as_view(), name='login'),
     path("kyc/cancel/", CourierKYCCancelView.as_view(), name="courier-kyc-cancel"),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('debug-code/', DebugRequestCodeView.as_view(), name='debug-code'),
@@ -22,4 +22,3 @@ urlpatterns = [
     path('profile/<int:pk>', UserProfileView.as_view(), name='profile_id'),
     path("", include(router.urls)),
 ]
-

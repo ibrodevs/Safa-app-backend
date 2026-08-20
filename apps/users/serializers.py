@@ -1,6 +1,14 @@
 from rest_framework import serializers
 from django.db import IntegrityError
 from apps.users.models import *
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+from .enrollment import (
+    InvalidKYCEnrollmentToken,
+    make_kyc_enrollment_token,
+    user_from_kyc_enrollment_token,
+)
 
 phone_re = RegexValidator(
     regex=r'^996\d{9}$',
@@ -29,6 +37,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class RegisterSerializer(serializers.ModelSerializer):
+    kyc_token = serializers.SerializerMethodField(read_only=True)
     id_front = serializers.ImageField(write_only=True, required=False, allow_null=True)
     id_back  = serializers.ImageField(write_only=True, required=False, allow_null=True)
     password = serializers.CharField(write_only=True, min_length=6, required=True)
@@ -39,6 +48,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = (
             "phone_number", "first_name", "avatar",
             "role", "specialist_type", "id_front", "id_back", "password", "password_confirm",
+            "kyc_token",
         )
         extra_kwargs = {
             "phone_number": {"validators": [phone_re]},
@@ -120,6 +130,27 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         return user
 
+    def get_kyc_token(self, obj) -> str | None:
+        if obj.role != User.Roles.CARRIER:
+            return None
+        return make_kyc_enrollment_token(obj)
+
+
+class VerifiedTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """Password login is available only after phone/KYC verification."""
+
+    def validate(self, attrs):
+        phone = attrs.get(self.username_field)
+        candidate = User.objects.filter(phone_number=phone).first()
+        if candidate and candidate.check_password(attrs.get("password") or ""):
+            if not candidate.is_verify:
+                raise AuthenticationFailed("phone_not_verified")
+            if candidate.role == User.Roles.CARRIER:
+                kyc = getattr(candidate, "kyc", None)
+                if not kyc or kyc.status != CourierKYC.Status.APPROVED:
+                    raise AuthenticationFailed("specialist_not_approved")
+        return super().validate(attrs)
+
 
 
 
@@ -129,6 +160,7 @@ MAX_MB = 32
 
 class SelfieWithIdCardSerializer(serializers.Serializer):
     phone = serializers.CharField(write_only=True, validators=[phone_re])
+    kyc_token = serializers.CharField(write_only=True)
     selfie_id_card = serializers.ImageField(required=True, write_only=True)
 
     def validate_phone(self, value):
@@ -150,11 +182,11 @@ class SelfieWithIdCardSerializer(serializers.Serializer):
         selfie = validated_data["selfie_id_card"]
 
         try:
-            user = User.objects.get(phone_number=phone)
-        except User.DoesNotExist:
-            raise serializers.ValidationError(
-                {"phone": "Пользователь с таким телефоном не найден."}
-            )
+            user = user_from_kyc_enrollment_token(validated_data["kyc_token"])
+        except InvalidKYCEnrollmentToken:
+            raise serializers.ValidationError({"kyc_token": "invalid_kyc_token"})
+        if user.phone_number != phone:
+            raise serializers.ValidationError({"kyc_token": "invalid_kyc_token"})
 
         kyc, _ = CourierKYC.objects.get_or_create(user=user)
         kyc.selfie_id_card = selfie
@@ -244,3 +276,4 @@ class CourierKYCSerializer(serializers.ModelSerializer):
 
 class CarrierLoginSerializer(serializers.Serializer):
     phone = serializers.CharField(validators=[phone_re])
+    kyc_token = serializers.CharField(write_only=True)

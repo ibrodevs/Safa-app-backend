@@ -3,10 +3,22 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.conf import settings
 
 
+def effective_finik_test_amount() -> int | None:
+    test_amount = getattr(settings, "FINIK_TEST_AMOUNT", None)
+    if test_amount is None:
+        return None
+    allowed = (
+        bool(getattr(settings, "DEBUG", False))
+        or bool(getattr(settings, "FINIK_BETA", False))
+        or bool(getattr(settings, "FINIK_ALLOW_TEST_AMOUNT", False))
+    )
+    return int(test_amount) if allowed else None
+
+
 def payment_amount_for_shipment(shipment) -> int:
     """Return the amount Finik must charge for this shipment."""
 
-    test_amount = getattr(settings, "FINIK_TEST_AMOUNT", None)
+    test_amount = effective_finik_test_amount()
     if test_amount is not None:
         return int(test_amount)
     return int(shipment.final_fare or shipment.estimated_fare or 0)

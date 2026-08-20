@@ -49,7 +49,7 @@ def test_carrier_finishing_work_waits_for_client_payment():
 
 
 @pytest.mark.django_db
-@override_settings(FINIK_TEST_AMOUNT=1)
+@override_settings(FINIK_TEST_AMOUNT=1, FINIK_ALLOW_TEST_AMOUNT=True)
 def test_zero_fare_legacy_order_uses_configured_test_amount():
     client_user, carrier = _users()
     shipment = Shipment.objects.create(

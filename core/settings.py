@@ -200,9 +200,16 @@ STATIC_ROOT = BASE_DIR / 'static_root'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-SECURE_SSL_REDIRECT = os.getenv("DJANGO_SECURE_SSL_REDIRECT", "0") == "1"
-SESSION_COOKIE_SECURE = os.getenv("DJANGO_SESSION_COOKIE_SECURE", "0") == "1"
-CSRF_COOKIE_SECURE = os.getenv("DJANGO_CSRF_COOKIE_SECURE", "0") == "1"
+_SECURE_DEFAULT = "0" if DEBUG else "1"
+SECURE_SSL_REDIRECT = os.getenv(
+    "DJANGO_SECURE_SSL_REDIRECT", _SECURE_DEFAULT
+) == "1"
+SESSION_COOKIE_SECURE = os.getenv(
+    "DJANGO_SESSION_COOKIE_SECURE", _SECURE_DEFAULT
+) == "1"
+CSRF_COOKIE_SECURE = os.getenv(
+    "DJANGO_CSRF_COOKIE_SECURE", _SECURE_DEFAULT
+) == "1"
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_SECURE_HSTS_SECONDS", "0"))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = (
@@ -252,6 +259,9 @@ OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
 OTP_RESEND_COOLDOWN_SECONDS = int(
     os.getenv("OTP_RESEND_COOLDOWN_SECONDS", "60")
 )
+KYC_ENROLLMENT_TOKEN_MAX_AGE = int(
+    os.getenv("KYC_ENROLLMENT_TOKEN_MAX_AGE", str(60 * 60 * 24 * 30))
+)
 DEMO_OTP_CODE = os.getenv("DEMO_OTP_CODE", "").strip()
 YANDEX_API_KEY = os.getenv("YANDEX_API_KEY", "").strip()
 
@@ -279,6 +289,12 @@ FINIK_CURRENCY = os.getenv("FINIK_CURRENCY", "KGS")
 FINIK_ACCOUNT_ID = os.getenv("FINIK_ACCOUNT_ID", "").strip()
 FINIK_API_KEY = os.getenv("FINIK_API_KEY", "").strip()
 FINIK_BETA = os.getenv("FINIK_BETA", "0").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+FINIK_ALLOW_TEST_AMOUNT = os.getenv("FINIK_ALLOW_TEST_AMOUNT", "0").strip().lower() in {
     "1",
     "true",
     "yes",
