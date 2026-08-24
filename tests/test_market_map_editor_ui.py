@@ -6,7 +6,7 @@ TEMPLATE = ROOT / "apps/delivery/templates/admin/delivery/marketmaprevision/map_
 CSS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor.css"
 COMPACT_CSS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor_compact.css"
 UI_JS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor_ui.js"
-EDITOR_JS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor_selection_v4.js"
+EDITOR_JS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor_selection_v5.js"
 
 
 def test_map_editor_uses_compact_creation_controls():
@@ -67,7 +67,7 @@ def test_container_size_can_be_reduced_in_both_admin_editors():
         assert 'data-container-size-step="width" data-delta="-0.5"' in template
         assert 'data-container-size-step="height" data-delta="-0.5"' in template
         assert 'min="0.2" max="100" step="0.1"' in template
-        assert "market_map_editor_selection_v4.js' %}" in template
+        assert "market_map_editor_selection_v5.js' %}" in template
 
     assert "resizeSelectedContainer('width', 0)" in javascript
     assert "resizeSelectedContainer('height', 0)" in javascript
@@ -295,6 +295,12 @@ def test_group_selection_and_move_logic():
     # приоритет pickMode до ветки рисования.
     assert "if (entering && state.tool !== 'select') setTool('select');" in javascript
     assert javascript.count("if (state.pickMode) {\n        handleFeatureClick(feature.id, event);") == 3
+    # Даже если Google Maps отдаст первый клик базовой карте, а не маленькому
+    # overlay, координатный fallback обязан выбрать контейнер в тот же кадр.
+    assert "state.lastOverlayPickAt = Date.now();" in javascript
+    assert "if (state.pickMode) {\n      // Google Maps не всегда отдаёт первый клик" in javascript
+    assert "const target = featureAtLatLng(latLng);" in javascript
+    assert "if (target) addGroupSelection(target);" in javascript
     # Выделение видно сразу и для старых контейнеров-точек, и в списке.
     assert "markerIcon(item.feature.properties, highlighted, fillColor, strokeColor)" in javascript
     assert "fillColor: highlighted ? fillColor : style.fillColor" in javascript

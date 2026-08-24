@@ -24,6 +24,7 @@
     groupSelection: new Set(),
     groupDrag: null,
     pickMode: false,
+    lastOverlayPickAt: 0,
     controlsBound: false,
   };
 
@@ -1318,6 +1319,10 @@
   function handleFeatureClick(id, event) {
     const domEvent = event?.domEvent;
     if (state.pickMode) {
+      // Запоминаем, что этот физический клик уже обработал сам overlay.
+      // mapClick() использует отметку, чтобы его резервный поиск не добавил
+      // соседний контейнер вторым участником того же клика.
+      state.lastOverlayPickAt = Date.now();
       // Если событие пришло от самого контейнера, доверяем его точному ID и не
       // запускаем повторный геометрический поиск. Так соседний полигон не может
       // подменить первый клик. Поиск нужен только когда клик перехватил внешний
@@ -2446,6 +2451,22 @@
   }
 
   function mapClick(event) {
+    if (state.pickMode) {
+      // Google Maps не всегда отдаёт первый клик маленькому/перекрытому
+      // полигону: иногда событие получает только базовая карта. На следующем
+      // кадре ищем контейнер по координатам и сразу подсвечиваем его. Если
+      // overlay всё-таки обработал тот же физический клик, его timestamp
+      // отменяет резервный поиск и соседний объект не выбирается случайно.
+      const clickedAt = Date.now();
+      if (clickedAt - state.lastOverlayPickAt < 80) return;
+      const latLng = event?.latLng;
+      window.setTimeout(() => {
+        if (!state.pickMode || state.lastOverlayPickAt >= clickedAt) return;
+        const target = featureAtLatLng(latLng);
+        if (target) addGroupSelection(target);
+      }, 0);
+      return;
+    }
     if (state.tool === 'select') {
       selectFeature(null);
       return;

@@ -17,6 +17,7 @@
     <button type="button" id="market-group-duplicate" disabled>Дублировать группу</button>
     <button type="button" id="market-group-ungroup" disabled>Разгруппировать</button>
     <button type="button" id="market-group-clear">Снять выделение</button>
+    <button type="button" id="simulate-map-click">Клик через базовый слой карты</button>
     <select id="market-group-direction"><option value="right">Справа</option></select>
     <div id="market-group-counter"></div>
     <div id="market-map-canvas"></div>
@@ -148,7 +149,12 @@
       }
 
       class FakeMap extends FakeOverlay {
-        constructor(element, options = {}) { super(options); this.element = element; this.zoom = options.zoom || 15; }
+        constructor(element, options = {}) {
+          super(options);
+          this.element = element;
+          this.zoom = options.zoom || 15;
+          window.__fakeMap = this;
+        }
         fitBounds() {}
         getZoom() { return this.zoom; }
         getBounds() { return new FakeLatLngBounds(); }
@@ -168,10 +174,22 @@
       }};
     })();
   </script>
-  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v4.js"></script>
+  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v5.js"></script>
   <!-- Намеренно загружаем второй раз: singleton обязан не дать повесить
        дублирующий обработчик на кнопку группировки. -->
-  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v4.js"></script>
-  <script>window.initMarketMapEditor();</script>
+  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v5.js"></script>
+  <script>
+    window.initMarketMapEditor();
+    document.getElementById('simulate-map-click').addEventListener('click', () => {
+      const polygon = window.__fakePolygons[0];
+      const bounds = new google.maps.LatLngBounds();
+      const paths = polygon.getPaths();
+      for (let i = 0; i < paths.getLength(); i += 1) {
+        const path = paths.getAt(i);
+        for (let j = 0; j < path.getLength(); j += 1) bounds.extend(path.getAt(j));
+      }
+      window.__fakeMap.emit('click', {latLng: bounds.getCenter(), domEvent: new Event('click')});
+    });
+  </script>
 </body>
 </html>
