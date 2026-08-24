@@ -67,7 +67,7 @@ def test_container_size_can_be_reduced_in_both_admin_editors():
         assert 'data-container-size-step="width" data-delta="-0.5"' in template
         assert 'data-container-size-step="height" data-delta="-0.5"' in template
         assert 'min="0.2" max="100" step="0.1"' in template
-        assert "market_map_editor.js' %}?v=20260825-1" in template
+        assert "market_map_editor.js' %}?v=20260825-2" in template
 
     assert "resizeSelectedContainer('width', 0)" in javascript
     assert "resizeSelectedContainer('height', 0)" in javascript
@@ -264,8 +264,10 @@ def test_group_selection_and_move_logic():
 
     # Объект под курсором ищем сами: заливка района не должна перехватывать клик.
     assert "function featureAtLatLng(" in javascript
-    assert "toggleGroupSelection(featureAtLatLng(event?.latLng) || id)" in javascript
-    assert "selectFeature(featureAtLatLng(event?.latLng) || id)" in javascript
+    assert "const target = featureAtLatLng(event?.latLng) || id;" in javascript
+    # Режим выбора: обычный клик набирает группу, Shift держать не нужно.
+    assert "if (state.pickMode || (domEvent && (domEvent.ctrlKey" in javascript
+    assert "function setPickMode(" in javascript
 
     # Перетаскивание одного объекта группы двигает всю группу.
     assert javascript.count("beginGroupDrag(feature.id)") == 3
@@ -287,3 +289,26 @@ def test_editor_picks_up_ids_assigned_by_the_server():
     for view in ("admin_panel/views/map.py", "apps/delivery/map_admin.py"):
         source = (ROOT / view).read_text(encoding="utf-8")
         assert source.count('"geojson":') >= 2
+
+
+def test_group_has_a_main_object_that_drives_the_rest():
+    """Первый выбранный — главный: от него идут свойства и нумерация."""
+    javascript = EDITOR_JS.read_text(encoding="utf-8")
+    panel = (
+        ROOT / "admin_panel/templates/admin_panel/map/editor.html"
+    ).read_text(encoding="utf-8")
+    standard = TEMPLATE.read_text(encoding="utf-8")
+
+    for template in (standard, panel):
+        assert 'id="market-group-pick"' in template
+
+    assert "function isGroupMain(" in javascript
+    assert "function groupMembersOrdered(" in javascript
+    assert "function mainSelectionItem(" in javascript
+    # Свойства расходятся только от главного объекта группы.
+    assert "if (!groupId || !isGroupMain(sourceItem.feature)) return 0;" in javascript
+    # Номера контейнеров идут подряд от номера главного.
+    assert "function renumberGroupMembers(" in javascript
+    assert "group_index: index" in javascript
+    # Разгруппировка снимает только принадлежность, данные остаются.
+    assert "delete properties.group_index;" in javascript

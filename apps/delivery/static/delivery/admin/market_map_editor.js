@@ -17,9 +17,11 @@
     lastContainerRotation: 0,
     groupSelection: new Set(),
     groupDrag: null,
+    pickMode: false,
   };
 
   const GROUP_HIGHLIGHT_COLOR = '#7c3aed';
+  const GROUP_MAIN_COLOR = '#db2777';
 
   const byId = (id) => document.getElementById(id);
   const root = () => byId('market-map-editor');
@@ -1135,6 +1137,36 @@
     return String((feature?.properties || {}).group || '').trim();
   }
 
+  function groupIndex(feature) {
+    const value = Number((feature?.properties || {}).group_index);
+    return Number.isFinite(value) ? value : 999;
+  }
+
+  function isGroupMain(feature) {
+    return Boolean(featureGroupId(feature)) && groupIndex(feature) === 0;
+  }
+
+  // Участники группы по порядку: главный первым, дальше как их выбирали.
+  function groupMembersOrdered(groupId) {
+    return groupMemberIds(groupId)
+      .map((id) => state.items.get(id))
+      .filter(Boolean)
+      .sort((a, b) => groupIndex(a.feature) - groupIndex(b.feature));
+  }
+
+  // Главный объект: у собранной группы — с индексом 0, у набранного
+  // выделения — первый выбранный (Set хранит порядок добавления).
+  function mainSelectionItem() {
+    const first = state.groupSelection.values().next().value;
+    const item = first ? state.items.get(first) : null;
+    const groupId = item ? featureGroupId(item.feature) : '';
+    if (groupId) return groupMembersOrdered(groupId)[0] || item;
+    if (item) return item;
+    const selected = state.selectedId ? state.items.get(state.selectedId) : null;
+    const selectedGroup = selected ? featureGroupId(selected.feature) : '';
+    return selectedGroup ? (groupMembersOrdered(selectedGroup)[0] || selected) : selected;
+  }
+
   function groupMemberIds(groupId) {
     const ids = [];
     if (!groupId) return ids;
@@ -1211,17 +1243,36 @@
     return bestId;
   }
 
-  // Клик выбирает объект, Ctrl/Shift+клик набирает группу из нескольких объектов.
+  // В режиме выбора обычный клик набирает группу — Shift держать не нужно.
+  // Ctrl/Shift+клик оставлен как ускоритель для тех, кто уже привык.
   function handleFeatureClick(id, event) {
     const domEvent = event?.domEvent;
-    if (domEvent && (domEvent.ctrlKey || domEvent.metaKey || domEvent.shiftKey)) {
-      toggleGroupSelection(featureAtLatLng(event?.latLng) || id);
+    const target = featureAtLatLng(event?.latLng) || id;
+    if (state.pickMode || (domEvent && (domEvent.ctrlKey || domEvent.metaKey || domEvent.shiftKey))) {
+      toggleGroupSelection(target);
       return;
     }
-    selectFeature(featureAtLatLng(event?.latLng) || id);
+    selectFeature(target);
   }
 
-  function setOverlayHighlighted(item, highlighted) {
+  function setPickMode(enabled) {
+    state.pickMode = Boolean(enabled);
+    const button = byId('market-group-pick');
+    if (button) {
+      button.classList.toggle('is-active', state.pickMode);
+      button.textContent = state.pickMode ? 'Готово' : 'Выбрать элементы';
+    }
+    document.querySelector('#market-map-editor')?.classList.toggle('is-picking', state.pickMode);
+    updateGroupPanel();
+    setStatus(
+      state.pickMode
+        ? 'Режим выбора: кликайте по объектам. Первый выбранный — главный в группе.'
+        : 'Режим выбора выключен',
+      'success',
+    );
+  }
+
+  function setOverlayHighlighted(item, highlighted, isMain = false) {
     item.overlays.forEach((overlay) => {
       if (overlay instanceof google.maps.Marker) {
         overlay.setIcon(markerIcon(item.feature.properties, highlighted));
@@ -1232,17 +1283,23 @@
         editable: false,
         draggable: false,
         strokeColor: highlighted
-          ? GROUP_HIGHLIGHT_COLOR
+          ? (isMain ? GROUP_MAIN_COLOR : GROUP_HIGHLIGHT_COLOR)
           : (item.feature.properties.stroke_color || overlayStyle(item.feature.properties, false).strokeColor),
-        strokeWeight: Number(item.feature.properties.stroke_width || 2) + (highlighted ? 2 : 0),
+        strokeWeight: Number(item.feature.properties.stroke_width || 2) + (highlighted ? (isMain ? 3 : 2) : 0),
       });
     });
   }
 
   function refreshGroupHighlight() {
+    const main = mainSelectionItem();
+    const mainId = main ? main.feature.id : null;
     state.items.forEach((item) => {
       if (item.feature.id === state.selectedId) return;
-      setOverlayHighlighted(item, state.groupSelection.has(item.feature.id));
+      setOverlayHighlighted(
+        item,
+        state.groupSelection.has(item.feature.id),
+        item.feature.id === mainId,
+      );
     });
     updateGroupPanel();
     refreshList();
@@ -1493,22 +1550,53 @@
     recordHistory();
   }
 
-  // Группа меняется целиком: проход, цвета, размер и поворот раздаются всем
-  // однотипным участникам. Номер и привязка к записи в БД у каждого свои.
+  // Номера контейнеров группы идут подряд от главного: главный 101 — дальше
+  // 102, 103… Занятые чужими контейнерами номера пропускаются.
+  function renumberGroupMembers(members, mainNumber) {
+    const reserved = usedContainerNumbers();
+    members.forEach((member) => {
+      const number = String((member.feature.properties || {}).number || '').trim();
+      if (number) reserved.delete(number);
+    });
+    reserved.add(mainNumber);
+
+    let previous = mainNumber;
+    members.forEach((member) => {
+      const properties = member.feature.properties || {};
+      if (properties.kind !== 'container') return;
+      const number = freeContainerNumber(previous, reserved);
+      if (!number) return;
+      properties.number = number;
+      properties.name = number;
+      reserved.add(number);
+      previous = number;
+    });
+  }
+
+  // Группа меняется от главного объекта: проход, цвета, размер, поворот и
+  // сквозная нумерация расходятся на остальных. Правка обычного участника
+  // остаётся только на нём.
   function applyGroupSharedProperties(sourceItem) {
-    const ids = currentGroupTargets();
-    if (ids.size < 2 || !ids.has(sourceItem.feature.id)) return 0;
+    const groupId = featureGroupId(sourceItem.feature);
+    if (!groupId || !isGroupMain(sourceItem.feature)) return 0;
+
+    const ordered = groupMembersOrdered(groupId).filter((item) => item.feature.id !== sourceItem.feature.id);
+    if (!ordered.length) return 0;
 
     const source = sourceItem.feature.properties || {};
     const sourceRect = source.kind === 'container'
       ? containerRect(serializeItem(sourceItem).geometry.coordinates)
       : null;
 
+    if (source.kind === 'container') {
+      renumberGroupMembers(
+        ordered.filter((member) => (member.feature.properties || {}).kind === 'container'),
+        String(source.number || source.name || '').trim(),
+      );
+    }
+
     let changed = 0;
-    ids.forEach((id) => {
-      if (id === sourceItem.feature.id) return;
-      const member = state.items.get(id);
-      if (!member) return;
+    ordered.forEach((member) => {
       const properties = member.feature.properties || {};
       if (properties.kind !== source.kind) return;
 
@@ -1543,10 +1631,20 @@
 
       applyGeometryToOverlays(member);
       member.overlays.forEach((overlay) => {
-        if (overlay instanceof google.maps.Marker) overlay.setIcon(markerIcon(properties, false));
-        else overlay.setOptions(overlayStyle(properties, false));
+        if (overlay instanceof google.maps.Marker) {
+          overlay.setIcon(markerIcon(properties, false));
+          overlay.setTitle(properties.name || '');
+          overlay.setLabel({
+            text: containerLabelText(properties),
+            color: '#ffffff',
+            fontSize: '10px',
+            fontWeight: '700',
+          });
+        } else {
+          overlay.setOptions(overlayStyle(properties, false));
+        }
       });
-      setOverlayHighlighted(member, state.groupSelection.has(id));
+      setOverlayHighlighted(member, state.groupSelection.has(member.feature.id));
       changed += 1;
     });
     return changed;
@@ -1726,17 +1824,26 @@
     }
     const groupId = makeId('group');
     const groupName = nextGroupName();
-    ids.forEach((id) => {
+    // Порядок выбора и есть порядок группы: первый выбранный становится главным,
+    // от него потом расходятся свойства и нумерация.
+    ids.forEach((id, index) => {
       const item = state.items.get(id);
       if (!item) return;
       item.feature.properties.group = groupId;
       item.feature.properties.group_name = groupName;
+      item.feature.properties.group_index = index;
     });
     state.groupSelection = new Set(ids);
+    if (state.pickMode) setPickMode(false);
     refreshGroupHighlight();
     recordHistory();
     root()?.dispatchEvent(new CustomEvent('market-map:dirty'));
-    setStatus(`«${groupName}»: ${ids.length} объект(ов). Теперь группу можно дублировать целиком.`, 'success');
+    const mainName = state.items.get(ids[0])?.feature.properties.name || '';
+    setStatus(
+      `«${groupName}»: ${ids.length} объект(ов), главный — «${mainName}». `
+      + 'Изменения главного расходятся на всю группу.',
+      'success',
+    );
   }
 
   function ungroupSelectedFeatures() {
@@ -1748,8 +1855,11 @@
     }
     grouped.forEach((id) => {
       const properties = state.items.get(id).feature.properties;
+      // Снимаем только принадлежность к группе: номер, проход, размеры,
+      // цвета и положение у каждого объекта остаются своими.
       delete properties.group;
       delete properties.group_name;
+      delete properties.group_index;
     });
     clearGroupSelection();
     refreshGroupHighlight();
@@ -1799,16 +1909,29 @@
     const groupName = nextGroupName();
     const used = usedContainerNumbers();
     const idMap = new Map();
-    const copies = sources.map((source) => {
+    // Копия повторяет порядок оригинала: главный остаётся главным, номера
+    // контейнеров идут подряд от него.
+    sources.sort((a, b) => groupIndex(a) - groupIndex(b));
+    let previousNumber = null;
+    const copies = sources.map((source, index) => {
       const copy = JSON.parse(JSON.stringify(source));
       copy.id = makeId(copy.properties.kind || 'feature');
       idMap.set(source.id, copy.id);
       copy.geometry.coordinates = shiftCoordinates(copy.geometry.coordinates, deltaLon, deltaLat);
-      copy.properties = { ...copy.properties, group: groupId, group_name: groupName };
+      copy.properties = {
+        ...copy.properties,
+        group: groupId,
+        group_name: groupName,
+        group_index: index,
+      };
 
       if (copy.properties.kind === 'container') {
-        const number = freeContainerNumber(source.properties.number || source.properties.name, used);
-        if (number) used.add(number);
+        const base = previousNumber || source.properties.number || source.properties.name;
+        const number = freeContainerNumber(base, used);
+        if (number) {
+          used.add(number);
+          previousNumber = number;
+        }
         copy.properties.number = number || copy.properties.number;
         copy.properties.name = number || copy.properties.name;
         copy.properties.container_id = null;
@@ -1848,10 +1971,16 @@
   function updateGroupPanel() {
     const counter = byId('market-group-counter');
     const ids = currentGroupTargets();
+    const main = mainSelectionItem();
     if (counter) {
-      counter.textContent = ids.size
-        ? `Выбрано объектов: ${ids.size}`
-        : 'Ctrl+клик по объектам — набрать группу';
+      if (!ids.size) {
+        counter.textContent = state.pickMode
+          ? 'Кликайте по объектам: первый станет главным'
+          : 'Нажмите «Выбрать элементы» и отметьте объекты';
+      } else {
+        const mainName = main ? (main.feature.properties.name || main.feature.id) : '—';
+        counter.textContent = `Выбрано: ${ids.size} · главный «${mainName}»`;
+      }
     }
     const grouped = Array.from(ids).some((id) => featureGroupId(state.items.get(id)?.feature));
     const createButton = byId('market-group-create');
@@ -1969,7 +2098,7 @@
         if (groupName) {
           const badge = document.createElement('small');
           badge.className = 'market-feature-group-badge';
-          badge.textContent = groupName;
+          badge.textContent = isGroupMain(item.feature) ? `${groupName} · главный` : groupName;
           button.append(badge);
         }
         if (state.groupSelection.has(item.feature.id)) button.classList.add('is-group-selected');
@@ -2463,6 +2592,7 @@
     byId('market-map-redo')?.addEventListener('click', redoHistory);
     byId('market-feature-duplicate')?.addEventListener('click', duplicateSelectedFeature);
     byId('market-feature-color-all')?.addEventListener('click', applyContainerColorToAll);
+    byId('market-group-pick')?.addEventListener('click', () => setPickMode(!state.pickMode));
     byId('market-group-create')?.addEventListener('click', groupSelectedFeatures);
     byId('market-group-duplicate')?.addEventListener('click', duplicateGroupSelection);
     byId('market-group-ungroup')?.addEventListener('click', ungroupSelectedFeatures);
@@ -2515,6 +2645,10 @@
     document.addEventListener('keydown', (event) => {
       const editingText = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
       const command = event.ctrlKey || event.metaKey;
+      if (event.key === 'Escape' && state.pickMode) {
+        setPickMode(false);
+        return;
+      }
       if (command && event.key.toLowerCase() === 'd') {
         // Браузер по Ctrl+D открывает добавление в закладки — забираем сочетание себе.
         event.preventDefault();

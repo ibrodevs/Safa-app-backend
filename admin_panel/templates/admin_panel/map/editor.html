@@ -1,5 +1,5 @@
 {% extends "admin_panel/base.html" %}{% load static %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'admin_panel/css/map.css' %}?v=20260825-1">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'admin_panel/css/map.css' %}?v=20260825-2">{% endblock %}
 {% block page_class %}page--map{% endblock %}
 {% block content %}
 <div id="market-map-editor" data-save-url="{{ save_url }}" data-publish-url="{{ publish_url }}" data-bazar-id="{{ bazar.id }}" data-bazar-name="{{ bazar.name }}" data-focus-kind="">
@@ -28,15 +28,16 @@
       <button type="button" class="market-kind-section market-tool-container" data-map-tool="draw" data-map-kind="container"><span class="map-kind-dot map-kind-dot--container"></span><div><strong>Контейнер</strong><small>Поставьте точку на карту</small></div><span>→</span></button>
     </div>
     <div class="market-map-group-card">
-      <div class="map-panel-title"><div><span>Группы</span><small id="market-group-counter">Ctrl+клик по объектам — набрать группу</small></div></div>
+      <div class="map-panel-title"><div><span>Группы</span><small id="market-group-counter">Нажмите «Выбрать элементы» и отметьте объекты</small></div></div>
       <div class="market-map-group-actions">
+        <button type="button" class="button map-group-pick" id="market-group-pick">Выбрать элементы</button>
         <button type="button" class="button" id="market-group-create" disabled>Группировать</button>
         <button type="button" class="button default" id="market-group-duplicate" disabled>Дублировать группу</button>
         <select id="market-group-direction" aria-label="Куда поставить копию группы"><option value="right">Справа</option><option value="left">Слева</option><option value="down">Снизу</option><option value="up">Сверху</option></select>
         <button type="button" class="button" id="market-group-ungroup" disabled>Разгруппировать</button>
         <button type="button" class="button" id="market-group-clear">Снять выделение</button>
       </div>
-      <p class="map-panel-note">Группа копируется целиком и встаёт рядом: контейнеры получают свободные номера, а проход копии — свой.</p>
+      <p class="map-panel-note">Первый выбранный объект — главный: его проход, цвет, размер и номер расходятся на всю группу, номера идут подряд. Группа копируется и двигается целиком.</p>
     </div>
     <div class="map-mode-card"><strong>Текущий режим</strong><p id="market-map-mode-help">Выберите объект прямо на карте или нажмите «Добавить».</p></div>
     <p class="map-panel-note">Границы, районы, проходы и контейнеры больше не дублируются длинным списком слева — нажмите нужный объект на карте.</p>
@@ -78,4 +79,4 @@
 <div id="market-map-error-modal" class="market-map-modal" hidden aria-hidden="true"><div class="market-map-modal-backdrop" data-market-map-error-close></div><div class="market-map-modal-dialog" role="alertdialog" aria-modal="true" aria-labelledby="market-map-error-title"><div class="market-map-modal-icon">!</div><div class="market-map-modal-content"><h2 id="market-map-error-title">Не удалось сохранить</h2><div id="market-map-error-message" class="market-map-modal-message"></div><p class="market-map-modal-hint">Исправьте отмеченную проблему. Объекты останутся на карте.</p></div><div class="market-map-modal-actions"><button type="button" class="button default" id="market-map-error-close">Понятно</button></div></div></div>
 {{ initial_geojson|json_script:"market-map-initial-geojson" }}{{ context_geojson|json_script:"market-map-context-geojson" }}{{ passages|json_script:"market-map-passages" }}{{ containers|json_script:"market-map-containers" }}
 {% endblock %}
-{% block extra_js %}<script src="{% static 'delivery/admin/market_map_editor.js' %}?v=20260825-1"></script><script src="{% static 'delivery/admin/market_map_editor_ui.js' %}?v=20260825-1"></script><script src="{% static 'delivery/admin/market_map_editor_perf.js' %}?v=20260825-1"></script><script src="{% static 'admin_panel/js/map_dirty.js' %}?v=20260825-1"></script>{% if google_maps_api_key %}<script async defer src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key|urlencode }}&callback=initMarketMapEditor&v=weekly"></script>{% endif %}{% endblock %}
+{% block extra_js %}<script src="{% static 'delivery/admin/market_map_editor.js' %}?v=20260825-2"></script><script src="{% static 'delivery/admin/market_map_editor_ui.js' %}?v=20260825-2"></script><script src="{% static 'delivery/admin/market_map_editor_perf.js' %}?v=20260825-2"></script><script src="{% static 'admin_panel/js/map_dirty.js' %}?v=20260825-2"></script>{% if google_maps_api_key %}<script async defer src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key|urlencode }}&callback=initMarketMapEditor&v=weekly"></script>{% endif %}{% endblock %}
