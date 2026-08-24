@@ -517,6 +517,29 @@
   box-shadow: 0 8px 12px -12px rgba(16, 24, 40, .55);
 }
 .market-map-quick-actions[hidden] { display: none !important; }
+.market-map-group-card {
+  margin-top: 12px;
+  padding: 13px 15px;
+  border: 1px solid var(--map-border);
+  border-radius: var(--map-radius);
+  background: var(--body-bg, #fff);
+}
+.market-map-group-title strong { display: block; }
+.market-map-group-title small { display: block; margin-top: 2px; color: var(--map-muted); }
+.market-map-group-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.market-map-group-actions #market-group-duplicate { grid-column: 1 / -1; }
+.market-feature-group-badge {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 1px 7px;
+  color: #5b21b6;
+  background: #ede9fe;
+  border-radius: 999px;
+}
+#market-feature-list button.is-group-selected {
+  border-color: #7c3aed;
+  box-shadow: inset 2px 0 0 #7c3aed;
+}
 .market-map-quick-actions .button {
   min-height: 38px;
   border-radius: 8px;

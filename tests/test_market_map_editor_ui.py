@@ -67,7 +67,7 @@ def test_container_size_can_be_reduced_in_both_admin_editors():
         assert 'data-container-size-step="width" data-delta="-0.5"' in template
         assert 'data-container-size-step="height" data-delta="-0.5"' in template
         assert 'min="0.2" max="100" step="0.1"' in template
-        assert "market_map_editor.js' %}?v=20260824-10" in template
+        assert "market_map_editor.js' %}?v=20260824-11" in template
 
     assert "resizeSelectedContainer('width', 0)" in javascript
     assert "resizeSelectedContainer('height', 0)" in javascript
@@ -217,3 +217,30 @@ def test_duplicate_button_sits_on_top_of_the_inspector():
     assert "focus({ preventScroll: true })" in javascript
     assert "scroller.scrollTop = scrollTop" in javascript
     assert "duplicateSelectedFeature();" in javascript
+
+
+def test_group_and_container_color_controls_exist_in_both_editors():
+    """Группировка и общий цвет контейнеров доступны в обеих админках."""
+    standard = TEMPLATE.read_text(encoding="utf-8")
+    panel = (
+        ROOT / "admin_panel/templates/admin_panel/map/editor.html"
+    ).read_text(encoding="utf-8")
+    javascript = EDITOR_JS.read_text(encoding="utf-8")
+
+    for template in (standard, panel):
+        for element_id in (
+            "market-group-create",
+            "market-group-duplicate",
+            "market-group-ungroup",
+            "market-group-direction",
+            "market-group-counter",
+            "market-feature-color-all",
+        ):
+            assert f'id="{element_id}"' in template
+
+    assert "function groupSelectedFeatures()" in javascript
+    assert "function duplicateGroupSelection()" in javascript
+    assert "function applyContainerColorToAll()" in javascript
+    # Ctrl+клик набирает группу, а копия группы сдвигается на её же габариты.
+    assert "domEvent.ctrlKey || domEvent.metaKey || domEvent.shiftKey" in javascript
+    assert "shiftCoordinates(copy.geometry.coordinates, deltaLon, deltaLat)" in javascript

@@ -15,7 +15,10 @@
     historyIndex: -1,
     restoringHistory: false,
     lastContainerRotation: 0,
+    groupSelection: new Set(),
   };
+
+  const GROUP_HIGHLIGHT_COLOR = '#7c3aed';
 
   const byId = (id) => document.getElementById(id);
   const root = () => byId('market-map-editor');
@@ -354,17 +357,35 @@
     });
   }
 
+  // Цвет контейнеров задаётся сразу для всех, поэтому новый контейнер берёт
+  // цвет уже стоящих на карте, а не заводской красный.
+  function currentContainerColors() {
+    let colors = null;
+    state.items.forEach((item) => {
+      const properties = item.feature.properties || {};
+      if (colors || properties.kind !== 'container') return;
+      if (properties.fill_color || properties.stroke_color) {
+        colors = {
+          fill_color: properties.fill_color || KIND_CONFIG.container.fillColor,
+          stroke_color: properties.stroke_color || KIND_CONFIG.container.strokeColor,
+        };
+      }
+    });
+    return colors;
+  }
+
   function defaultProperties(kind) {
     const config = KIND_CONFIG[kind] || KIND_CONFIG.district;
     const name = typeof config.name === 'function' ? config.name() : config.name;
+    const inherited = kind === 'container' ? currentContainerColors() : null;
     return {
       kind,
       name,
       bazar_id: Number(root()?.dataset.bazarId || 0),
       min_zoom: config.minZoom,
       stroke_width: config.strokeWidth,
-      stroke_color: config.strokeColor,
-      fill_color: config.fillColor,
+      stroke_color: inherited?.stroke_color || config.strokeColor,
+      fill_color: inherited?.fill_color || config.fillColor,
       fill_opacity: config.fillOpacity,
       z_index: config.zIndex,
       line_pattern: config.linePattern || 'solid',
@@ -825,7 +846,7 @@
         mapClick(event);
         return;
       }
-      selectFeature(feature.id);
+      handleFeatureClick(feature.id, event);
     });
     marker.addListener('dragend', () => {
       refreshList();
@@ -847,7 +868,7 @@
         mapClick(event);
         return;
       }
-      selectFeature(feature.id);
+      handleFeatureClick(feature.id, event);
     });
     line.addListener('mouseup', () => {
       const item = state.items.get(feature.id);
@@ -877,7 +898,7 @@
         mapClick(event);
         return;
       }
-      selectFeature(feature.id);
+      handleFeatureClick(feature.id, event);
     });
     polygon.addListener('mouseup', () => {
       const item = state.items.get(feature.id);
@@ -1041,6 +1062,85 @@
     else clearContainerResizeHandles(item);
   }
 
+  function featureGroupId(feature) {
+    return String((feature?.properties || {}).group || '').trim();
+  }
+
+  function groupMemberIds(groupId) {
+    const ids = [];
+    if (!groupId) return ids;
+    state.items.forEach((item) => {
+      if (featureGroupId(item.feature) === groupId) ids.push(item.feature.id);
+    });
+    return ids;
+  }
+
+  // Клик выбирает объект, Ctrl/Shift+клик набирает группу из нескольких объектов.
+  function handleFeatureClick(id, event) {
+    const domEvent = event?.domEvent;
+    if (domEvent && (domEvent.ctrlKey || domEvent.metaKey || domEvent.shiftKey)) {
+      toggleGroupSelection(id);
+      return;
+    }
+    selectFeature(id);
+  }
+
+  function setOverlayHighlighted(item, highlighted) {
+    item.overlays.forEach((overlay) => {
+      if (overlay instanceof google.maps.Marker) {
+        overlay.setIcon(markerIcon(item.feature.properties, highlighted));
+        return;
+      }
+      overlay.setOptions({
+        ...overlayStyle(item.feature.properties, false),
+        editable: false,
+        draggable: false,
+        strokeColor: highlighted
+          ? GROUP_HIGHLIGHT_COLOR
+          : (item.feature.properties.stroke_color || overlayStyle(item.feature.properties, false).strokeColor),
+        strokeWeight: Number(item.feature.properties.stroke_width || 2) + (highlighted ? 2 : 0),
+      });
+    });
+  }
+
+  function refreshGroupHighlight() {
+    state.items.forEach((item) => {
+      if (item.feature.id === state.selectedId) return;
+      setOverlayHighlighted(item, state.groupSelection.has(item.feature.id));
+    });
+    updateGroupPanel();
+    refreshList();
+  }
+
+  function toggleGroupSelection(id) {
+    if (!state.items.has(id)) return;
+    if (state.groupSelection.has(id)) state.groupSelection.delete(id);
+    else state.groupSelection.add(id);
+    refreshGroupHighlight();
+  }
+
+  function clearGroupSelection() {
+    if (!state.groupSelection.size) return;
+    state.groupSelection.clear();
+    refreshGroupHighlight();
+  }
+
+  // Что считается «текущей группой»: набранное Ctrl+кликом выделение, а если
+  // его нет — выбранный объект. Любой участник тянет за собой всю свою группу.
+  function currentGroupTargets() {
+    const seeds = state.groupSelection.size
+      ? Array.from(state.groupSelection)
+      : (state.selectedId ? [state.selectedId] : []);
+    const ids = new Set();
+    seeds.forEach((id) => {
+      const item = state.items.get(id);
+      if (!item) return;
+      ids.add(id);
+      groupMemberIds(featureGroupId(item.feature)).forEach((memberId) => ids.add(memberId));
+    });
+    return ids;
+  }
+
   function selectFeature(id) {
     if (state.selectedId && state.items.has(state.selectedId)) {
       setOverlaySelected(state.items.get(state.selectedId), false);
@@ -1059,6 +1159,13 @@
     const item = state.items.get(state.selectedId);
     setOverlaySelected(item, true);
     populateForm(item.feature);
+    if (state.groupSelection.size && !state.groupSelection.has(state.selectedId)) {
+      state.groupSelection.clear();
+      state.items.forEach((other) => {
+        if (other.feature.id !== state.selectedId) setOverlayHighlighted(other, false);
+      });
+    }
+    updateGroupPanel();
     if ((item.feature.properties || {}).kind === 'container') {
       setStatus('Углы меняют размер, круглый маркер ↻ сверху поворачивает контейнер.', 'success');
     }
@@ -1066,6 +1173,7 @@
   }
 
   function removeFeature(id) {
+    state.groupSelection.delete(id);
     const item = state.items.get(id);
     if (!item) return;
     item.overlays.forEach((overlay) => overlay.setMap(null));
@@ -1293,6 +1401,225 @@
     return numbers.length ? nextContainerNumber(numbers[numbers.length - 1]) : '';
   }
 
+  function nextGroupName() {
+    const used = new Set();
+    state.items.forEach((item) => {
+      const name = String((item.feature.properties || {}).group_name || '').trim();
+      const match = name.match(/^Группа (\d+)$/);
+      if (match) used.add(Number(match[1]));
+    });
+    let index = 1;
+    while (used.has(index)) index += 1;
+    return `Группа ${index}`;
+  }
+
+  function usedContainerNumbers() {
+    const numbers = new Set();
+    state.items.forEach((item) => {
+      const properties = item.feature.properties || {};
+      if (properties.kind !== 'container') return;
+      const number = String(properties.number || properties.name || '').trim();
+      if (number) numbers.add(number);
+    });
+    return numbers;
+  }
+
+  function freeContainerNumber(source, used) {
+    let candidate = nextContainerNumber(source);
+    let guard = 0;
+    while (candidate && used.has(candidate) && guard < 500) {
+      candidate = nextContainerNumber(candidate);
+      guard += 1;
+    }
+    return candidate;
+  }
+
+  function collectionBbox(features) {
+    const points = features.flatMap((feature) => iterCoordinatePoints(feature.geometry.coordinates || []));
+    if (!points.length) return null;
+    const lons = points.map((point) => point[0]);
+    const lats = points.map((point) => point[1]);
+    return [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)];
+  }
+
+  function shiftCoordinates(coordinates, deltaLon, deltaLat) {
+    if (Array.isArray(coordinates) && coordinates.length >= 2
+      && typeof coordinates[0] === 'number' && typeof coordinates[1] === 'number') {
+      return [coordinates[0] + deltaLon, coordinates[1] + deltaLat];
+    }
+    return (coordinates || []).map((item) => shiftCoordinates(item, deltaLon, deltaLat));
+  }
+
+  function groupSelectedFeatures() {
+    const ids = Array.from(currentGroupTargets());
+    if (ids.length < 2) {
+      setStatus('Отметьте Ctrl+кликом хотя бы два объекта — они станут группой', 'error');
+      return;
+    }
+    const groupId = makeId('group');
+    const groupName = nextGroupName();
+    ids.forEach((id) => {
+      const item = state.items.get(id);
+      if (!item) return;
+      item.feature.properties.group = groupId;
+      item.feature.properties.group_name = groupName;
+    });
+    state.groupSelection = new Set(ids);
+    refreshGroupHighlight();
+    recordHistory();
+    root()?.dispatchEvent(new CustomEvent('market-map:dirty'));
+    setStatus(`«${groupName}»: ${ids.length} объект(ов). Теперь группу можно дублировать целиком.`, 'success');
+  }
+
+  function ungroupSelectedFeatures() {
+    const ids = Array.from(currentGroupTargets());
+    const grouped = ids.filter((id) => featureGroupId(state.items.get(id)?.feature));
+    if (!grouped.length) {
+      setStatus('Выберите объект из группы, чтобы её разгруппировать', 'error');
+      return;
+    }
+    grouped.forEach((id) => {
+      const properties = state.items.get(id).feature.properties;
+      delete properties.group;
+      delete properties.group_name;
+    });
+    clearGroupSelection();
+    refreshGroupHighlight();
+    recordHistory();
+    root()?.dispatchEvent(new CustomEvent('market-map:dirty'));
+    setStatus(`Группа снята с ${grouped.length} объект(ов).`, 'success');
+  }
+
+  // Копия группы встаёт вплотную рядом: сдвиг равен габаритам самой группы,
+  // поэтому взаимное расположение объектов внутри копии сохраняется.
+  function duplicateGroupSelection() {
+    const ids = Array.from(currentGroupTargets());
+    if (!ids.length) {
+      setStatus('Сначала выберите объекты или группу для дублирования', 'error');
+      return;
+    }
+
+    const sources = ids
+      .map((id) => state.items.get(id))
+      .filter(Boolean)
+      .map((item) => serializeItem(item))
+      // Граница базара на карте всегда одна, копировать её нельзя.
+      .filter((feature) => (feature.properties || {}).kind !== 'bazar');
+    if (!sources.length) {
+      setStatus('Границу базара дублировать нельзя — выберите районы, проходы или контейнеры', 'error');
+      return;
+    }
+    const bbox = collectionBbox(sources);
+    if (!bbox) {
+      setStatus('У выбранных объектов нет координат', 'error');
+      return;
+    }
+
+    const [minLon, minLat, maxLon, maxLat] = bbox;
+    const gapLon = Math.max((maxLon - minLon) * 0.06, 0.000012);
+    const gapLat = Math.max((maxLat - minLat) * 0.06, 0.000008);
+    const direction = byId('market-group-direction')?.value || 'right';
+    const offsets = {
+      right: [(maxLon - minLon) + gapLon, 0],
+      left: [-((maxLon - minLon) + gapLon), 0],
+      up: [0, (maxLat - minLat) + gapLat],
+      down: [0, -((maxLat - minLat) + gapLat)],
+    };
+    const [deltaLon, deltaLat] = offsets[direction] || offsets.right;
+
+    const groupId = makeId('group');
+    const groupName = nextGroupName();
+    const used = usedContainerNumbers();
+    const idMap = new Map();
+    const copies = sources.map((source) => {
+      const copy = JSON.parse(JSON.stringify(source));
+      copy.id = makeId(copy.properties.kind || 'feature');
+      idMap.set(source.id, copy.id);
+      copy.geometry.coordinates = shiftCoordinates(copy.geometry.coordinates, deltaLon, deltaLat);
+      copy.properties = { ...copy.properties, group: groupId, group_name: groupName };
+
+      if (copy.properties.kind === 'container') {
+        const number = freeContainerNumber(source.properties.number || source.properties.name, used);
+        if (number) used.add(number);
+        copy.properties.number = number || copy.properties.number;
+        copy.properties.name = number || copy.properties.name;
+        copy.properties.container_id = null;
+      }
+      if (copy.properties.kind === 'passage') {
+        // Копия прохода — новый проход: номер и запись в справочнике будут свои.
+        copy.properties.passage_id = null;
+        copy.properties.number = `${copy.properties.number || copy.properties.name} копия`;
+        copy.properties.name = copy.properties.number;
+      }
+      return { copy, source };
+    });
+
+    // Контейнер, чей проход тоже скопирован, должен встать в новый проход.
+    copies.forEach(({ copy, source }) => {
+      if (copy.properties.kind !== 'container') return;
+      const passageSource = sources.find((item) => (item.properties || {}).kind === 'passage'
+        && Number(item.properties.passage_id || 0)
+        && Number(item.properties.passage_id) === Number(source.properties.passage_id || 0));
+      const passageFeatureId = source.properties.passage_feature_id;
+      const mapped = passageSource ? idMap.get(passageSource.id) : idMap.get(passageFeatureId);
+      if (mapped) {
+        copy.properties.passage_id = null;
+        copy.properties.passage_feature_id = mapped;
+      }
+    });
+
+    copies.forEach(({ copy }) => addFeature(copy));
+    state.groupSelection = new Set(copies.map(({ copy }) => copy.id));
+    selectFeature(null);
+    refreshGroupHighlight();
+    recordHistory();
+    root()?.dispatchEvent(new CustomEvent('market-map:dirty'));
+    setStatus(`«${groupName}»: копия из ${copies.length} объект(ов) поставлена рядом.`, 'success');
+  }
+
+  function updateGroupPanel() {
+    const counter = byId('market-group-counter');
+    const ids = currentGroupTargets();
+    if (counter) {
+      counter.textContent = ids.size
+        ? `Выбрано объектов: ${ids.size}`
+        : 'Ctrl+клик по объектам — набрать группу';
+    }
+    const grouped = Array.from(ids).some((id) => featureGroupId(state.items.get(id)?.feature));
+    const createButton = byId('market-group-create');
+    const duplicateButton = byId('market-group-duplicate');
+    const ungroupButton = byId('market-group-ungroup');
+    if (createButton) createButton.disabled = ids.size < 2;
+    if (duplicateButton) duplicateButton.disabled = ids.size < 1;
+    if (ungroupButton) ungroupButton.disabled = !grouped;
+  }
+
+  // Цвет разом для всех контейнеров карты: по одному их перекрашивать долго.
+  function applyContainerColorToAll() {
+    const fill = byId('market-feature-fill')?.value;
+    const stroke = byId('market-feature-stroke')?.value;
+    if (!fill || !stroke) return;
+
+    let changed = 0;
+    state.items.forEach((item) => {
+      const properties = item.feature.properties || {};
+      if (properties.kind !== 'container') return;
+      properties.fill_color = fill;
+      properties.stroke_color = stroke;
+      setOverlaySelected(item, item.feature.id === state.selectedId);
+      changed += 1;
+    });
+
+    if (!changed) {
+      setStatus('На карте пока нет контейнеров', 'error');
+      return;
+    }
+    refreshGroupHighlight();
+    recordHistory();
+    root()?.dispatchEvent(new CustomEvent('market-map:dirty'));
+    setStatus(`Цвет применён ко всем контейнерам: ${changed} шт.`, 'success');
+  }
+
   function duplicateSelectedFeature() {
     const item = state.items.get(state.selectedId);
     if (!item) {
@@ -1370,7 +1697,22 @@
         const type = document.createElement('small');
         type.textContent = item.feature.geometry.type;
         button.append(name, type);
-        button.addEventListener('click', () => selectFeature(item.feature.id));
+        const groupName = String((item.feature.properties || {}).group_name || '').trim();
+        if (groupName) {
+          const badge = document.createElement('small');
+          badge.className = 'market-feature-group-badge';
+          badge.textContent = groupName;
+          button.append(badge);
+        }
+        if (state.groupSelection.has(item.feature.id)) button.classList.add('is-group-selected');
+        button.addEventListener('click', (event) => {
+          if (event.ctrlKey || event.metaKey || event.shiftKey) {
+            event.preventDefault();
+            toggleGroupSelection(item.feature.id);
+            return;
+          }
+          selectFeature(item.feature.id);
+        });
         list.append(button);
       });
     });
@@ -1812,6 +2154,14 @@
     byId('market-map-undo')?.addEventListener('click', undoHistory);
     byId('market-map-redo')?.addEventListener('click', redoHistory);
     byId('market-feature-duplicate')?.addEventListener('click', duplicateSelectedFeature);
+    byId('market-feature-color-all')?.addEventListener('click', applyContainerColorToAll);
+    byId('market-group-create')?.addEventListener('click', groupSelectedFeatures);
+    byId('market-group-duplicate')?.addEventListener('click', duplicateGroupSelection);
+    byId('market-group-ungroup')?.addEventListener('click', ungroupSelectedFeatures);
+    byId('market-group-clear')?.addEventListener('click', () => {
+      clearGroupSelection();
+      setStatus('Выделение группы снято', 'success');
+    });
     document.querySelectorAll('[data-container-size-step]').forEach((button) => {
       button.addEventListener('click', () => resizeSelectedContainer(
         button.dataset.containerSizeStep,

@@ -383,3 +383,71 @@ class MapLayerOrderTests(TestCase):
         self.assertGreater(by_kind["container"], by_kind["passage"])
         self.assertGreater(by_kind["passage"], by_kind["district"])
         self.assertGreater(by_kind["district"], by_kind["bazar"])
+
+
+class MapGroupTests(TestCase):
+    """Группы объектов и общий цвет контейнеров живут в GeoJSON карты."""
+
+    def test_group_properties_survive_validation(self):
+        from apps.delivery.map_validation import validate_feature_collection
+
+        geojson = _map_with_two_districts()
+        for feature in geojson["features"]:
+            if feature["properties"]["kind"] in {"passage", "container"}:
+                feature["properties"]["group"] = "group-1"
+                feature["properties"]["group_name"] = "Группа 1"
+
+        normalized = validate_feature_collection(geojson)
+        grouped = [
+            feature
+            for feature in normalized["features"]
+            if (feature["properties"].get("group") == "group-1")
+        ]
+
+        self.assertEqual(len(grouped), 4)
+        self.assertEqual({feature["properties"]["group_name"] for feature in grouped}, {"Группа 1"})
+
+    def test_container_colors_survive_validation(self):
+        from apps.delivery.map_validation import validate_feature_collection
+
+        geojson = _map_with_two_districts()
+        for feature in geojson["features"]:
+            if feature["properties"]["kind"] == "container":
+                feature["properties"]["fill_color"] = "#0ea5e9"
+                feature["properties"]["stroke_color"] = "#0369a1"
+
+        normalized = validate_feature_collection(geojson)
+        containers = [
+            feature for feature in normalized["features"]
+            if feature["properties"]["kind"] == "container"
+        ]
+
+        self.assertTrue(containers)
+        for feature in containers:
+            self.assertEqual(feature["properties"]["fill_color"], "#0ea5e9")
+            self.assertEqual(feature["properties"]["stroke_color"], "#0369a1")
+
+    def test_duplicated_group_publishes_as_separate_passage_and_containers(self):
+        bazar = Bazar.objects.create(name="Дордой")
+        geojson = _map_with_two_districts()
+        # Копия группы: свой проход и контейнер, привязанный к нему по фигуре.
+        geojson["features"].append(_passage("passage-copy", "1 копия", 74.602, 74.608, 42.884))
+        geojson["features"].append(_container("container-copy", "11", "passage-copy", 74.603, 42.8845))
+        for feature in geojson["features"]:
+            if feature["id"] in {"passage-copy", "container-copy"}:
+                feature["properties"]["group"] = "group-copy"
+                feature["properties"]["group_name"] = "Группа 1"
+
+        revision, _ = MarketMapRevision.get_or_create_draft(bazar=bazar)
+        revision.geojson = geojson
+        revision.full_clean()
+        revision.save(update_fields=("geojson", "updated_at"))
+        revision.publish()
+
+        copied = Passage.objects.get(bazar=bazar, number="1 копия")
+        self.assertEqual(copied.district, "Район А")
+        self.assertEqual(
+            list(copied.containers.values_list("number", flat=True)),
+            ["11"],
+        )
+        self.assertEqual(Passage.objects.filter(bazar=bazar).count(), 3)

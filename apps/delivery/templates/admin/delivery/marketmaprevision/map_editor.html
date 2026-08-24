@@ -3,8 +3,8 @@
 
 {% block extrastyle %}
   {{ block.super }}
-  <link rel="stylesheet" href="{% static 'delivery/admin/market_map_editor.css' %}?v=20260824-10">
-  <link rel="stylesheet" href="{% static 'delivery/admin/market_map_editor_compact.css' %}?v=20260824-10">
+  <link rel="stylesheet" href="{% static 'delivery/admin/market_map_editor.css' %}?v=20260824-11">
+  <link rel="stylesheet" href="{% static 'delivery/admin/market_map_editor_compact.css' %}?v=20260824-11">
 {% endblock %}
 
 {% block breadcrumbs %}
@@ -104,6 +104,26 @@
           <div id="market-map-status" role="status" aria-live="polite">Загрузка карты…</div>
         </div>
       </section>
+
+      <div class="market-map-group-card">
+        <div class="market-map-group-title">
+          <strong>Группы</strong>
+          <small id="market-group-counter">Ctrl+клик по объектам — набрать группу</small>
+        </div>
+        <div class="market-map-group-actions">
+          <button type="button" class="button" id="market-group-create" disabled>Группировать</button>
+          <button type="button" class="button default" id="market-group-duplicate" disabled>Дублировать группу</button>
+          <select id="market-group-direction" aria-label="Куда поставить копию группы">
+            <option value="right">Справа</option>
+            <option value="left">Слева</option>
+            <option value="down">Снизу</option>
+            <option value="up">Сверху</option>
+          </select>
+          <button type="button" class="button" id="market-group-ungroup" disabled>Разгруппировать</button>
+          <button type="button" class="button" id="market-group-clear">Снять выделение</button>
+        </div>
+        <p class="help market-map-inline-help">Группа копируется целиком и встаёт рядом: контейнеры получают свободные номера, а проход копии — свой.</p>
+      </div>
 
       <details class="market-map-objects-panel">
         <summary>
@@ -249,6 +269,11 @@
               <input id="market-feature-fill" type="color" value="#ff8656">
             </div>
           </div>
+
+          <div class="form-row" data-kind-scope="container">
+            <button type="button" class="button" id="market-feature-color-all">Применить цвет ко всем контейнерам</button>
+            <p class="help market-map-inline-help">Перекрашивает все контейнеры этой карты — по одному менять не нужно.</p>
+          </div>
         </details>
 
         <div class="market-map-property-actions">
@@ -284,9 +309,9 @@
 {{ context_geojson|json_script:"market-map-context-geojson" }}
 {{ passages|json_script:"market-map-passages" }}
 {{ containers|json_script:"market-map-containers" }}
-<script src="{% static 'delivery/admin/market_map_editor.js' %}?v=20260824-10"></script>
-<script src="{% static 'delivery/admin/market_map_editor_ui.js' %}?v=20260824-10"></script>
-<script src="{% static 'delivery/admin/market_map_editor_perf.js' %}?v=20260824-10"></script>
+<script src="{% static 'delivery/admin/market_map_editor.js' %}?v=20260824-11"></script>
+<script src="{% static 'delivery/admin/market_map_editor_ui.js' %}?v=20260824-11"></script>
+<script src="{% static 'delivery/admin/market_map_editor_perf.js' %}?v=20260824-11"></script>
 {% if google_maps_api_key %}
 <script async defer src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key|urlencode }}&callback=initMarketMapEditor&v=weekly"></script>
 {% endif %}

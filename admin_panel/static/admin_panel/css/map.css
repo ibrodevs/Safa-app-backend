@@ -97,6 +97,13 @@
 /* Дублирование — самое частое действие, поэтому оно держится наверху инспектора. */
 .market-map-quick-actions { position: sticky; top: -14px; z-index: 6; display: grid; grid-template-columns: 1fr auto; gap: 7px; margin: -4px 0 -2px; padding: 8px 0; background: white; box-shadow: 0 6px 10px -10px rgba(16, 24, 40, .5); }
 .market-map-quick-actions select { min-height: 34px; }
+.market-map-group-card { margin: 12px 0; padding: 11px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface, #fff); }
+.market-map-group-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 9px; }
+.market-map-group-actions .button { min-height: 32px; padding: 6px 8px; font-size: 10px; }
+.market-map-group-actions select { min-height: 32px; font-size: 10px; }
+.market-map-group-actions #market-group-duplicate { grid-column: 1 / -1; }
+.market-feature-group-badge { display: inline-block; margin-top: 3px; padding: 1px 6px; color: #5b21b6; background: #ede9fe; border-radius: 999px; font-size: 9px; }
+#market-feature-list button.is-group-selected { border-color: #7c3aed; box-shadow: inset 2px 0 0 #7c3aed; }
 .market-map-apply-button { grid-column: span 2; }
 .market-map-delete-button { color: var(--red); }
 .market-map-save-help { margin-top: 16px; padding: 11px; color: var(--muted); background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius); font-size: 10px; }
