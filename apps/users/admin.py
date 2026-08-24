@@ -1,9 +1,9 @@
 from django.contrib import admin
 from django import forms
-from django.utils import timezone
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
 from .models import User, CourierKYC, UserProfile
+from .services.kyc import set_kyc_status
 
 
 class UserCreationForm(forms.ModelForm):
@@ -159,29 +159,17 @@ class CourierKYCAdmin(admin.ModelAdmin):
     def specialist_type(self, obj: CourierKYC) -> str:
         return obj.user.get_specialist_type_display() or "—"
 
-    def _sync_user_access(self, kyc: CourierKYC) -> None:
-        user = kyc.user
-        if kyc.status == CourierKYC.Status.APPROVED:
-            user.is_active = True
-            user.is_verify = True
-        elif kyc.status in (CourierKYC.Status.PENDING, CourierKYC.Status.REJECTED):
-            user.is_active = False
-        user.save(update_fields=["is_active", "is_verify"])
-
     def save_model(self, request, obj, form, change):
-        if "status" in form.changed_data:
-            obj.checked_at = timezone.now() if obj.status != CourierKYC.Status.PENDING else None
+        if "status" not in form.changed_data:
+            return super().save_model(request, obj, form, change)
         super().save_model(request, obj, form, change)
-        self._sync_user_access(obj)
+        set_kyc_status(obj, obj.status, comment=obj.comment)
 
     @admin.action(description="Одобрить KYC")
     def mark_approved(self, request, queryset):
         updated = 0
         for kyc in queryset.select_related("user"):
-            kyc.status = CourierKYC.Status.APPROVED
-            kyc.checked_at = timezone.now()
-            kyc.save(update_fields=["status", "checked_at"])
-            self._sync_user_access(kyc)
+            set_kyc_status(kyc, CourierKYC.Status.APPROVED)
             updated += 1
         self.message_user(request, f"Одобрено: {updated}")
 
@@ -189,10 +177,7 @@ class CourierKYCAdmin(admin.ModelAdmin):
     def mark_rejected(self, request, queryset):
         updated = 0
         for kyc in queryset.select_related("user"):
-            kyc.status = CourierKYC.Status.REJECTED
-            kyc.checked_at = timezone.now()
-            kyc.save(update_fields=["status", "checked_at"])
-            self._sync_user_access(kyc)
+            set_kyc_status(kyc, CourierKYC.Status.REJECTED)
             updated += 1
         self.message_user(request, f"Отклонено: {updated}")
 
@@ -200,10 +185,7 @@ class CourierKYCAdmin(admin.ModelAdmin):
     def mark_pending(self, request, queryset):
         updated = 0
         for kyc in queryset.select_related("user"):
-            kyc.status = CourierKYC.Status.PENDING
-            kyc.checked_at = None
-            kyc.save(update_fields=["status", "checked_at"])
-            self._sync_user_access(kyc)
+            set_kyc_status(kyc, CourierKYC.Status.PENDING)
             updated += 1
         self.message_user(request, f"На проверке: {updated}")
 

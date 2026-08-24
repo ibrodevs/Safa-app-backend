@@ -5,6 +5,7 @@ from typing import Optional, List, Tuple
 
 from django.utils import timezone
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 
@@ -386,6 +387,19 @@ class Shipment(models.Model):
 
     def __str__(self) -> str:
         return f"Посылка №{self.id} {self.title}"
+
+    def clean(self):
+        super().clean()
+        if self.status == self.Status.COMPLETED and not self.is_paid:
+            raise ValidationError(
+                {
+                    "status": (
+                        "Нельзя завершить неоплаченный заказ. "
+                        "Отметьте «Оплачено» в разделе оплаты или выберите "
+                        "статус «Ожидает оплаты»."
+                    )
+                }
+            )
 
     @property
     def public_code(self) -> str:

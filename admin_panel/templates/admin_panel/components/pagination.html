@@ -1,0 +1,9 @@
+{% if page.paginator.num_pages > 1 %}
+<nav class="pagination" aria-label="Страницы">
+  <span>Страница {{ page.number }} из {{ page.paginator.num_pages }}</span>
+  <div class="pagination__actions">
+    {% if page.has_previous %}<a class="btn btn-secondary btn-sm" href="?{% if query %}q={{ query|urlencode }}&{% endif %}{% if selected_status %}status={{ selected_status }}&{% endif %}page={{ page.previous_page_number }}">Назад</a>{% endif %}
+    {% if page.has_next %}<a class="btn btn-secondary btn-sm" href="?{% if query %}q={{ query|urlencode }}&{% endif %}{% if selected_status %}status={{ selected_status }}&{% endif %}page={{ page.next_page_number }}">Далее</a>{% endif %}
+  </div>
+</nav>
+{% endif %}

@@ -1,0 +1,178 @@
+import json
+from unittest.mock import patch
+
+from django.test import Client, TestCase
+from django.urls import reverse
+
+from apps.delivery.models import AmanatCampaign, AmanatCategory, Bazar, Shipment
+from apps.payments.models import PaymentAttempt
+from apps.users.models import CourierKYC, User
+
+
+class PanelAccessTests(TestCase):
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            phone_number="996700000001",
+            password="test-password",
+            first_name="Admin",
+            is_staff=True,
+        )
+
+    def test_anonymous_user_is_redirected_to_panel_login(self):
+        response = self.client.get(reverse("admin_panel:dashboard"))
+        self.assertRedirects(
+            response,
+            "/panel/login/?next=%2Fpanel%2F",
+            fetch_redirect_response=False,
+        )
+
+    def test_non_staff_user_gets_forbidden(self):
+        user = User.objects.create_user(
+            phone_number="996700000002",
+            password="test-password",
+            first_name="Client",
+        )
+        self.client.force_login(user)
+        self.assertEqual(self.client.get(reverse("admin_panel:dashboard")).status_code, 403)
+
+    def test_all_primary_pages_render_for_staff(self):
+        self.client.force_login(self.staff)
+        urls = (
+            reverse("admin_panel:dashboard"),
+            reverse("admin_panel:orders"),
+            reverse("admin_panel:users"),
+            reverse("admin_panel:couriers"),
+            reverse("admin_panel:kyc_list"),
+            reverse("admin_panel:map_list"),
+            reverse("admin_panel:tariffs"),
+            reverse("admin_panel:finance"),
+            reverse("admin_panel:amanat"),
+            reverse("admin_panel:amanat_create"),
+            reverse("admin_panel:settings"),
+        )
+        for url in urls:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 200)
+
+
+class PanelWorkflowTests(TestCase):
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            phone_number="996700000010",
+            password="test-password",
+            first_name="Admin",
+            is_staff=True,
+        )
+        self.carrier = User.objects.create_user(
+            phone_number="996700000011",
+            password="test-password",
+            first_name="Courier",
+            role=User.Roles.CARRIER,
+            is_active=False,
+        )
+        self.kyc = CourierKYC.objects.create(user=self.carrier)
+        self.client.force_login(self.staff)
+
+    def _shipment(self):
+        client = User.objects.create_user(
+            phone_number="996700000012",
+            password="test-password",
+            first_name="Customer",
+        )
+        return Shipment.objects.create(client=client, title="Документы")
+
+    def test_kyc_approval_uses_shared_access_rules(self):
+        response = self.client.post(
+            reverse("admin_panel:kyc_approve", args=(self.kyc.pk,)),
+            {"comment": "Документы проверены"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.carrier.refresh_from_db()
+        self.kyc.refresh_from_db()
+        self.assertEqual(self.kyc.status, CourierKYC.Status.APPROVED)
+        self.assertTrue(self.carrier.is_active)
+        self.assertTrue(self.carrier.is_verify)
+
+    def test_mutating_endpoints_reject_get(self):
+        self.assertEqual(
+            self.client.get(reverse("admin_panel:kyc_approve", args=(self.kyc.pk,))).status_code,
+            405,
+        )
+
+    def test_map_save_runs_existing_validation(self):
+        bazar = Bazar.objects.create(name="Test bazar")
+        response = self.client.post(
+            reverse("admin_panel:map_save", args=(bazar.pk,)),
+            data=json.dumps({"geojson": {"type": "FeatureCollection", "features": []}}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["ok"])
+
+    def test_map_editor_and_data_details_render(self):
+        bazar = Bazar.objects.create(name="Dordoi")
+        shipment = self._shipment()
+        payment = PaymentAttempt.objects.create(
+            shipment=shipment,
+            amount=150,
+            finik_request_id="test-panel-payment",
+        )
+        category = AmanatCategory.objects.create(name="Помощь", slug="help")
+        campaign = AmanatCampaign.objects.create(
+            category=category,
+            title="Поможем семье",
+            description="Описание",
+            needed_amount=1000,
+        )
+        urls = (
+            reverse("admin_panel:map_editor", args=(bazar.pk,)),
+            reverse("admin_panel:order_detail", args=(shipment.pk,)),
+            reverse("admin_panel:order_quick", args=(shipment.pk,)),
+            reverse("admin_panel:user_detail", args=(shipment.client_id,)),
+            reverse("admin_panel:kyc_detail", args=(self.kyc.pk,)),
+            reverse("admin_panel:payment_detail", args=(payment.pk,)),
+            reverse("admin_panel:amanat_detail", args=(campaign.pk,)),
+        )
+        for url in urls:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 200)
+
+    @patch("apps.delivery.operations.broadcast_shipment")
+    @patch("apps.delivery.operations.notify_shipment_status")
+    def test_order_cancel_uses_post_action(self, notify, broadcast):
+        shipment = self._shipment()
+        response = self.client.post(
+            reverse("admin_panel:order_cancel", args=(shipment.pk,))
+        )
+        self.assertRedirects(
+            response,
+            reverse("admin_panel:order_detail", args=(shipment.pk,)),
+            fetch_redirect_response=False,
+        )
+        shipment.refresh_from_db()
+        self.assertEqual(shipment.status, Shipment.Status.CANCELED)
+        notify.assert_called_once()
+        broadcast.assert_called_once()
+
+    def test_post_actions_are_csrf_protected(self):
+        shipment = self._shipment()
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.force_login(self.staff)
+        response = csrf_client.post(
+            reverse("admin_panel:order_cancel", args=(shipment.pk,))
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_publish_rejects_map_without_bazar_boundary(self):
+        bazar = Bazar.objects.create(name="Empty map")
+        response = self.client.post(
+            reverse("admin_panel:map_publish", args=(bazar.pk,)),
+            data=json.dumps({"geojson": {"type": "FeatureCollection", "features": []}}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["ok"])
+
+    def test_global_search_requires_two_characters(self):
+        response = self.client.get(reverse("admin_panel:search"), {"q": "1"})
+        self.assertEqual(response.json(), {"groups": []})

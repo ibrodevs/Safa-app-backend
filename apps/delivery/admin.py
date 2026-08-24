@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django import forms
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from .models import (
     AmanatCampaign,
@@ -16,6 +17,7 @@ from .models import (
     Container,
 )
 from .map_models import MarketMapRevision
+from .operations import cancel_shipment, reestimate_shipment
 
 
 def available_district_choices(current: str | None = None) -> list[tuple[str, str]]:
@@ -261,9 +263,10 @@ class ShipmentStopInline(admin.TabularInline):
 @admin.action(description="Пересчитать стоимость")
 def reestimate_action(modeladmin, request, queryset):
     for s in queryset.prefetch_related("stops"):
-        # Если не все точки заполнены координатами, estimate() даст 0км — это ок.
-        s.estimate()
-        s.save(update_fields=["distance_km", "estimated_fare"])
+        try:
+            reestimate_shipment(s, protect_terminal=False, emit_events=False)
+        except ValueError:
+            continue
 
 
 @admin.action(description="Завершить оплаченные заказы")
@@ -282,8 +285,10 @@ def complete_action(modeladmin, request, queryset):
 @admin.action(description="Отменить")
 def cancel_action(modeladmin, request, queryset):
     for s in queryset:
-        s.status = Shipment.Status.CANCELED
-        s.save(update_fields=["status"])
+        try:
+            cancel_shipment(s, protect_terminal=False, emit_events=False)
+        except ValueError:
+            continue
 
 
 @admin.register(Shipment)
@@ -294,6 +299,7 @@ class ShipmentAdmin(admin.ModelAdmin):
         "client",
         "carrier",
         "status",
+        "is_paid",
         "service_type",
         "is_demo",
         "distance_km",
@@ -301,7 +307,7 @@ class ShipmentAdmin(admin.ModelAdmin):
         "final_fare",
         "created_at",
     )
-    list_filter = ("status", "service_type", "is_demo")
+    list_filter = ("status", "is_paid", "service_type", "is_demo")
     search_fields = ("title", "client__first_name", "client__phone_number")
     date_hierarchy = "created_at"
     readonly_fields = (
@@ -310,6 +316,9 @@ class ShipmentAdmin(admin.ModelAdmin):
         "final_fare",
         "current_stop_index",
         "eta_to_next_min",
+        "paid_at",
+        "work_completed_at",
+        "finished_at",
         "created_at",
     )
     autocomplete_fields = ("client", "carrier")
@@ -328,9 +337,24 @@ class ShipmentAdmin(admin.ModelAdmin):
                     "description",
                     "client",
                     "carrier",
-                    "status",
                     "is_demo",
                 )
+            },
+        ),
+        (
+            "Статус и оплата",
+            {
+                "fields": (
+                    "status",
+                    "is_paid",
+                    "paid_at",
+                    "work_completed_at",
+                    "finished_at",
+                ),
+                "description": (
+                    "Администратор может изменить статус вручную. Для статуса "
+                    "«Завершён» обязательно отметьте «Оплачено»."
+                ),
             },
         ),
         (
@@ -347,6 +371,27 @@ class ShipmentAdmin(admin.ModelAdmin):
         ),
         ("Служебное", {"fields": ("created_at",)}),
     )
+
+    def save_model(self, request, obj, form, change):
+        now = timezone.now()
+        if obj.is_paid:
+            obj.paid_at = obj.paid_at or now
+        else:
+            obj.paid_at = None
+
+        if obj.status == Shipment.Status.COMPLETED:
+            obj.work_completed_at = obj.work_completed_at or now
+            obj.finished_at = obj.finished_at or now
+        elif obj.status == Shipment.Status.AWAITING_PAYMENT:
+            obj.work_completed_at = obj.work_completed_at or now
+            obj.finished_at = None
+        elif obj.status == Shipment.Status.CANCELED:
+            obj.finished_at = obj.finished_at or now
+        else:
+            obj.work_completed_at = None
+            obj.finished_at = None
+
+        super().save_model(request, obj, form, change)
 
     def save_related(self, request, form, formsets, change):
         """После сохранения инлайнов пере-нумеровываем остановки: position = 0,1,2,..."""

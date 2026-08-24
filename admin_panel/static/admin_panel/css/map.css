@@ -1,0 +1,9 @@
+.page--map { max-width: none; padding: 22px; }
+.page--map #market-map-editor { color: var(--text); }
+.page--map .market-map-header, .page--map .market-map-create-panel, .page--map .market-map-stage-card, .page--map .market-map-properties-card, .page--map .market-map-save-help, .page--map .market-map-objects-panel { border-color: var(--border); box-shadow: none; }
+.page--map .market-map-header { margin-top: 0; }
+.page--map .button { border-radius: var(--radius); }
+.page--map .button.default { background: var(--primary); border-color: var(--primary); }
+.page--map #market-map-canvas { min-height: 600px; }
+#market-map-dirty-label { margin-left: 8px; color: var(--amber); font-size: 12px; font-weight: 650; }
+@media (max-width: 820px) { .page--map { padding: 16px; } .page--map #market-map-canvas { min-height: 480px; } }

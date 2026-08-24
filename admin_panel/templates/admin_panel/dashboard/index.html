@@ -1,0 +1,22 @@
+{% extends "admin_panel/base.html" %}{% load panel_tags %}
+{% block content %}
+<header class="page-header"><div><p class="eyebrow">Сегодня</p><h1>Что происходит в Safa</h1><p>Ключевые показатели и задачи, которые требуют внимания.</p></div></header>
+<section class="metric-grid" aria-label="Показатели">
+  <article class="metric-card"><span>Заказы сегодня</span><strong>{{ metrics.today }}</strong><a href="{% url 'admin_panel:orders' %}?period=today">Открыть</a></article>
+  <article class="metric-card"><span>Активные заказы</span><strong>{{ metrics.active }}</strong><a href="{% url 'admin_panel:orders' %}?status=in_transit">Открыть</a></article>
+  <article class="metric-card"><span>Завершено сегодня</span><strong>{{ metrics.completed }}</strong><a href="{% url 'admin_panel:orders' %}?status=completed&period=today">Открыть</a></article>
+  <article class="metric-card metric-card--accent"><span>Оплачено сегодня</span><strong>{{ metrics.revenue|money }}</strong><a href="{% url 'admin_panel:finance' %}?status=SUCCEEDED">Финансы</a></article>
+</section>
+<div class="dashboard-grid">
+  <section class="card"><div class="card-header"><div><h2>Требуют внимания</h2><p>Только реальные незавершённые процессы.</p></div></div>
+    <div class="attention-list">
+      <a href="{% url 'admin_panel:kyc_list' %}"><span class="attention-icon attention-icon--violet">✓</span><span><strong>{{ attention.kyc }} заявок KYC</strong><small>ожидают проверки</small></span><span>→</span></a>
+      <a href="{% url 'admin_panel:finance' %}?status=FAILED"><span class="attention-icon attention-icon--danger">!</span><span><strong>{{ attention.failed_payments }} платежей</strong><small>завершились ошибкой</small></span><span>→</span></a>
+      <a href="{% url 'admin_panel:orders' %}?status=awaiting_payment"><span class="attention-icon attention-icon--warning">₽</span><span><strong>{{ attention.awaiting_payment }} заказов</strong><small>ожидают оплаты</small></span><span>→</span></a>
+    </div>
+  </section>
+  <section class="card"><div class="card-header"><div><h2>Последние заказы</h2><p>Недавно созданные заявки.</p></div><a class="btn btn-secondary btn-sm" href="{% url 'admin_panel:orders' %}">Все заказы</a></div>
+    {% if recent_orders %}<div class="compact-list">{% for order in recent_orders %}<a href="{% url 'admin_panel:order_detail' order.pk %}"><span><strong>#{{ order.public_code }} · {{ order.title }}</strong><small>{{ order.client.first_name|default:order.client.phone_number }}</small></span>{% status_badge order.status order.get_status_display %}</a>{% endfor %}</div>{% else %}{% include "admin_panel/components/empty_state.html" with empty_title="Заказов пока нет" empty_text="Новые заказы появятся здесь." %}{% endif %}
+  </section>
+</div>
+{% endblock %}

@@ -480,7 +480,10 @@
       }
       selectFeature(feature.id);
     });
-    marker.addListener('dragend', () => refreshList());
+    marker.addListener('dragend', () => {
+      refreshList();
+      document.getElementById('market-map-editor')?.dispatchEvent(new CustomEvent('market-map:dirty'));
+    });
     return marker;
   }
 
@@ -500,10 +503,12 @@
     line.addListener('mouseup', () => {
       const item = state.items.get(feature.id);
       if (item) updateFeatureLabel(item);
+      document.getElementById('market-map-editor')?.dispatchEvent(new CustomEvent('market-map:dirty'));
     });
     line.addListener('dragend', () => {
       const item = state.items.get(feature.id);
       if (item) updateFeatureLabel(item);
+      document.getElementById('market-map-editor')?.dispatchEvent(new CustomEvent('market-map:dirty'));
     });
     return line;
   }
@@ -528,6 +533,7 @@
         normalizeContainerItem(item);
         updateFeatureLabel(item);
       }
+      document.getElementById('market-map-editor')?.dispatchEvent(new CustomEvent('market-map:dirty'));
     });
     polygon.addListener('dragend', () => {
       const item = state.items.get(feature.id);
@@ -535,6 +541,7 @@
         normalizeContainerItem(item);
         updateFeatureLabel(item);
       }
+      document.getElementById('market-map-editor')?.dispatchEvent(new CustomEvent('market-map:dirty'));
     });
     return polygon;
   }

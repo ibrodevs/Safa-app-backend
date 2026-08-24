@@ -1,0 +1,30 @@
+{% load static %}
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Вход · Safa Admin</title>
+  <link rel="stylesheet" href="{% static 'admin_panel/css/variables.css' %}">
+  <link rel="stylesheet" href="{% static 'admin_panel/css/app.css' %}">
+</head>
+<body class="login-page">
+  <main class="login-shell">
+    <section class="login-card">
+      <div class="brand brand--login"><span class="brand__mark">S</span><span>SAFA</span></div>
+      <div class="login-copy">
+        <p class="eyebrow">Панель управления</p>
+        <h1>Вход для сотрудников</h1>
+        <p>Управление заказами, специалистами, картой и финансами Safa.</p>
+      </div>
+      <form method="post" class="form-stack" novalidate>
+        {% csrf_token %}<input type="hidden" name="next" value="{{ next }}">
+        {% if form.non_field_errors %}<div class="form-alert">{{ form.non_field_errors|striptags }}</div>{% endif %}
+        <div class="field"><label for="{{ form.username.id_for_label }}">{{ form.username.label }}</label>{{ form.username }}{{ form.username.errors }}</div>
+        <div class="field"><label for="{{ form.password.id_for_label }}">{{ form.password.label }}</label>{{ form.password }}{{ form.password.errors }}</div>
+        <button class="btn btn-primary btn-block" type="submit">Войти</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

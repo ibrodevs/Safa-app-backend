@@ -112,6 +112,22 @@ def test_reverse_geocode_prefers_safa_container_over_external_address(
 
 
 @pytest.mark.django_db
+def test_reverse_geocode_falls_back_to_coordinates_without_api_key(client, settings):
+    settings.YANDEX_API_KEY = ""
+
+    response = client.get(
+        "/api/delivery/geo/reverse/",
+        {"lat": "42.8441392", "lon": "74.6001756"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "address": "42.844139, 74.600176",
+        "source": "coordinates",
+    }
+
+
+@pytest.mark.django_db
 def test_coordinate_stop_is_automatically_linked_to_mapped_container(
     mapped_container,
 ):

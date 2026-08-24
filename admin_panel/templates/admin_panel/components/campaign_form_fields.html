@@ -1,0 +1,13 @@
+<fieldset class="form-section"><legend>Основное</legend><div class="form-grid">
+  {% include "admin_panel/components/form_field.html" with field=form.category %}{% include "admin_panel/components/form_field.html" with field=form.cover_image %}
+  {% include "admin_panel/components/form_field.html" with field=form.title %}{% include "admin_panel/components/form_field.html" with field=form.short_title %}
+  {% include "admin_panel/components/form_field.html" with field=form.description wide=True %}{% include "admin_panel/components/form_field.html" with field=form.goal wide=True %}
+</div></fieldset>
+<fieldset class="form-section"><legend>Суммы</legend><div class="form-grid">
+  {% include "admin_panel/components/form_field.html" with field=form.needed_amount %}{% include "admin_panel/components/form_field.html" with field=form.collected_amount_manual %}
+  {% include "admin_panel/components/form_field.html" with field=form.safa_amount %}{% include "admin_panel/components/form_field.html" with field=form.helpers_count_manual %}
+</div></fieldset>
+<fieldset class="form-section"><legend>Публикация</legend><div class="form-grid">
+  {% include "admin_panel/components/form_field.html" with field=form.ends_at %}{% include "admin_panel/components/form_field.html" with field=form.status %}
+  {% include "admin_panel/components/form_field.html" with field=form.is_featured %}{% include "admin_panel/components/form_field.html" with field=form.sort_order %}
+</div></fieldset>

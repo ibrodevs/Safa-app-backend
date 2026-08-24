@@ -67,7 +67,8 @@ INSTALLED_APPS = [
     'apps.users',
     'apps.delivery',
     'apps.notification',
-    'apps.payments'
+    'apps.payments',
+    'admin_panel',
 ]
 
 SECURE_CROSS_ORIGIN_OPENER_POLICY = None

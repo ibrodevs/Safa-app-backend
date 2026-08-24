@@ -1,4 +1,3 @@
-\
 """
 URL configuration for core project.
 
@@ -25,6 +24,7 @@ urlpatterns = [
     path("", lambda request: HttpResponse("DoGO работает 🚀"), name="home"),
     path("health/", health, name="health"),
     path('admin/', admin.site.urls),
+    path('panel/', include('admin_panel.urls')),
     path('api/users/', include('apps.users.urls')),
     path('api/delivery/', include('apps.delivery.urls')),
     path("api/fcm/", include("apps.notification.urls")),

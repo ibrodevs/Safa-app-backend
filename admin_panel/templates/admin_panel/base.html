@@ -1,0 +1,51 @@
+{% load static %}
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ page_title }} · Safa{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'admin_panel/css/variables.css' %}">
+  <link rel="stylesheet" href="{% static 'admin_panel/css/app.css' %}">
+  {% block extra_css %}{% endblock %}
+</head>
+<body data-panel-section="{{ panel_section }}">
+  <a class="skip-link" href="#panel-content">К содержимому</a>
+  <div class="app-shell">
+    {% include "admin_panel/components/sidebar.html" %}
+    <div class="app-main">
+      {% include "admin_panel/components/topbar.html" %}
+      <main id="panel-content" class="page {% block page_class %}{% endblock %}">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+  <div id="drawer" class="drawer" hidden aria-hidden="true">
+    <button class="drawer__backdrop" type="button" data-drawer-close aria-label="Закрыть"></button>
+    <aside class="drawer__panel" role="dialog" aria-modal="true" aria-label="Быстрый просмотр">
+      <button class="icon-button drawer__close" type="button" data-drawer-close aria-label="Закрыть">×</button>
+      <div id="drawer-content"></div>
+    </aside>
+  </div>
+  <div id="confirm-modal" class="modal" hidden aria-hidden="true">
+    <button class="modal__backdrop" type="button" data-modal-close aria-label="Закрыть"></button>
+    <section class="modal__dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
+      <h2 id="confirm-title">Подтвердите действие</h2>
+      <p id="confirm-message" class="muted"></p>
+      <div class="modal__actions">
+        <button class="btn btn-secondary" type="button" data-modal-close>Отмена</button>
+        <button class="btn btn-danger" type="button" id="confirm-submit">Продолжить</button>
+      </div>
+    </section>
+  </div>
+  <div class="toast-stack" id="toast-stack" aria-live="polite">
+    {% for message in messages %}
+      <div class="toast toast--{{ message.tags|default:'info' }}" data-toast>{{ message }}</div>
+    {% endfor %}
+  </div>
+  <script src="{% static 'admin_panel/js/app.js' %}" defer></script>
+  <script src="{% static 'admin_panel/js/api.js' %}" defer></script>
+  <script src="{% static 'admin_panel/js/search.js' %}" defer></script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

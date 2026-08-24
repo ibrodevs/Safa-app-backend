@@ -1,0 +1,20 @@
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar__header"><a class="brand" href="{% url 'admin_panel:dashboard' %}"><span class="brand__mark">S</span><span class="brand__text">SAFA</span></a><button class="icon-button sidebar__close" type="button" data-sidebar-close aria-label="Закрыть меню">×</button></div>
+  <nav class="sidebar__nav" aria-label="Основная навигация">
+    <a class="nav-item {% if panel_section == 'dashboard' %}is-active{% endif %}" href="{% url 'admin_panel:dashboard' %}"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10M9.5 20v-6h5v6"/></svg></span><span>Обзор</span></a>
+    <p class="nav-label">Работа</p>
+    <a class="nav-item {% if panel_section == 'orders' %}is-active{% endif %}" href="{% url 'admin_panel:orders' %}"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M7 4h10M7 8h10M5 3v18h14V3zM8 13h8M8 17h5"/></svg></span><span>Заказы</span></a>
+    <a class="nav-item {% if panel_section == 'users' %}is-active{% endif %}" href="{% url 'admin_panel:users' %}"><span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.5-4 2.3-6 5.5-6s5 2 5.5 6M16 6.5a2.5 2.5 0 0 1 0 5M16 14c2.6.2 4 1.8 4.5 4.5"/></svg></span><span>Пользователи</span></a>
+    <a class="nav-item {% if panel_section == 'couriers' %}is-active{% endif %}" href="{% url 'admin_panel:couriers' %}"><span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="7" r="3"/><path d="M5.5 19c.6-4.3 2.7-6.5 6.5-6.5s5.9 2.2 6.5 6.5"/><path d="m17 4 1 1 2-2"/></svg></span><span>Специалисты</span></a>
+    <a class="nav-item {% if panel_section == 'kyc' %}is-active{% endif %}" href="{% url 'admin_panel:kyc_list' %}"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 2.8 8.1 7 10 4.2-1.9 7-5.5 7-10V6z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></svg></span><span>Проверка KYC</span></a>
+    <p class="nav-label">Доставка</p>
+    <a class="nav-item {% if panel_section == 'map' %}is-active{% endif %}" href="{% url 'admin_panel:map_list' %}"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15M15 6v15"/></svg></span><span>Карта</span></a>
+    <a class="nav-item {% if panel_section == 'tariffs' %}is-active{% endif %}" href="{% url 'admin_panel:tariffs' %}"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 3v18M16 7.5c0-1.7-1.6-3-4-3s-4 1.1-4 3 1.5 2.7 4 3.5 4 1.7 4 3.7-1.6 3.3-4 3.3-4-1.3-4-3"/></svg></span><span>Тарифы</span></a>
+    <p class="nav-label">Финансы</p>
+    <a class="nav-item {% if panel_section == 'finance' %}is-active{% endif %}" href="{% url 'admin_panel:finance' %}"><span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M7 15h3"/></svg></span><span>Платежи</span></a>
+    <a class="nav-item {% if panel_section == 'amanat' %}is-active{% endif %}" href="{% url 'admin_panel:amanat' %}"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M20.5 9.5c0 5-8.5 10-8.5 10s-8.5-5-8.5-10A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8.5 2.5z"/></svg></span><span>Amanat</span></a>
+    <p class="nav-label">Система</p>
+    <a class="nav-item {% if panel_section == 'settings' %}is-active{% endif %}" href="{% url 'admin_panel:settings' %}"><span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.4 1a7 7 0 0 0-1.7-1L14.5 3h-4L10 6a7 7 0 0 0-1.7 1L6 6.1 4 9.5 6 11a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.4 3.1h4l.5-3a7 7 0 0 0 1.7-1l2.3.9 2-3.4-2-1.5a7 7 0 0 0 0-1z"/></svg></span><span>Настройки</span></a>
+  </nav>
+</aside>
+<button class="sidebar-backdrop" type="button" data-sidebar-close aria-label="Закрыть меню"></button>

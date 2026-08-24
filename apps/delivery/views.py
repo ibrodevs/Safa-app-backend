@@ -37,6 +37,7 @@ from .lifecycle import ShipmentFareUnavailable, mark_shipment_awaiting_payment
 from .map_pricing import MapPricingResolver
 from .rating import apply_rating_for_completed_shipment
 from .realtime import broadcast_shipment
+from .operations import cancel_shipment
 from .geo import haversine_m, polyline_len_km, is_in_bishkek
 from .models import AmanatCampaign, AmanatCategory, AmanatDonation, Bazar, Container, CourierPosition, GlobalDeliveryConfig, Passage, Shipment, ShipmentStop
 from .pagination import StandardResultsSetPagination
@@ -467,10 +468,13 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             Shipment.Status.CANCELED,
         ):
             return response.Response({"detail": "terminal_shipment"}, status=status.HTTP_409_CONFLICT)
-        shipment.status = Shipment.Status.CANCELED
-        shipment.save(update_fields=["status"])
-        notify_shipment_status(shipment)
-        broadcast_shipment(shipment)
+        try:
+            cancel_shipment(shipment)
+        except ValueError:
+            return response.Response(
+                {"detail": "terminal_shipment"},
+                status=status.HTTP_409_CONFLICT,
+            )
         return response.Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(
@@ -1080,8 +1084,16 @@ class ReverseGeocodeView(APIView):
 
         api_key = getattr(settings, "YANDEX_API_KEY", None)
         if not api_key:
-            logger.error("reverse_geocode_no_api_key", extra={"request_id": rid})
-            return Response({"error": "yandex_api_key_not_configured"}, status=502)
+            logger.warning(
+                "reverse_geocode_coordinate_fallback_no_api_key",
+                extra={"request_id": rid},
+            )
+            return Response(
+                {
+                    "address": f"{float(lat):.6f}, {float(lon):.6f}",
+                    "source": "coordinates",
+                }
+            )
 
         url = f"https://geocode-maps.yandex.ru/1.x/?apikey={api_key}&geocode={lon},{lat}&format=json"
 
@@ -1097,8 +1109,17 @@ class ReverseGeocodeView(APIView):
             logger.info("reverse_geocode_ok", extra={"request_id": rid})
             return Response({"address": address})
         except Exception:
-            logger.exception("reverse_geocode_failed", extra={"request_id": rid})
-            return Response({"error": "reverse_geocode_failed"}, status=502)
+            logger.warning(
+                "reverse_geocode_coordinate_fallback",
+                extra={"request_id": rid},
+                exc_info=True,
+            )
+            return Response(
+                {
+                    "address": f"{float(lat):.6f}, {float(lon):.6f}",
+                    "source": "coordinates",
+                }
+            )
 
 
 @extend_schema(tags=["Гео"])

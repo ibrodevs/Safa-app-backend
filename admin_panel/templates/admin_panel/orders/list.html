@@ -1,0 +1,16 @@
+{% extends "admin_panel/base.html" %}{% load panel_tags %}
+{% block content %}
+<header class="page-header"><div><p class="eyebrow">Работа</p><h1>Заказы</h1><p>Все доставки и их текущий статус.</p></div></header>
+<form class="filter-bar" method="get">
+  <div class="search-input"><span>⌕</span><input class="input" type="search" name="q" value="{{ query }}" placeholder="ID, имя или телефон…"></div>
+  <select class="select" name="status" aria-label="Статус"><option value="">Все статусы</option>{% for code,label in statuses %}<option value="{{ code }}" {% if selected_status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <select class="select" name="service" aria-label="Тип услуги"><option value="">Все услуги</option>{% for code,label in services %}<option value="{{ code }}" {% if selected_service == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <select class="select" name="period" aria-label="Период"><option value="">За всё время</option><option value="today" {% if selected_period == 'today' %}selected{% endif %}>Сегодня</option><option value="7" {% if selected_period == '7' %}selected{% endif %}>7 дней</option><option value="30" {% if selected_period == '30' %}selected{% endif %}>30 дней</option></select>
+  <button class="btn btn-primary" type="submit">Применить</button>{% if query or selected_status or selected_service or selected_period %}<a class="btn btn-ghost" href="{% url 'admin_panel:orders' %}">Сбросить</a>{% endif %}
+</form>
+<section class="card table-card">
+{% if page.object_list %}<div class="table-scroll"><table><thead><tr><th>Заказ</th><th>Клиент</th><th>Исполнитель</th><th>Тип</th><th>Стоимость</th><th>Статус</th><th>Создан</th><th></th></tr></thead><tbody>
+{% for order in page.object_list %}<tr><td><a class="table-primary" href="{% url 'admin_panel:order_detail' order.pk %}">#{{ order.public_code }}<small>{{ order.title }}</small></a></td><td>{{ order.client.first_name|default:'Без имени' }}<small>{{ order.client.phone_number|phone }}</small></td><td>{% if order.carrier %}{{ order.carrier.first_name|default:'Без имени' }}<small>{{ order.carrier.phone_number|phone }}</small>{% else %}<span class="muted">Не назначен</span>{% endif %}</td><td>{{ order.get_service_type_display }}</td><td>{{ order.final_fare|default:order.estimated_fare|money }}</td><td>{% status_badge order.status order.get_status_display %}</td><td>{{ order.created_at|panel_datetime }}</td><td><button class="icon-button" type="button" data-drawer-url="{% url 'admin_panel:order_quick' order.pk %}" aria-label="Быстрый просмотр">→</button></td></tr>{% endfor %}
+</tbody></table></div>{% include "admin_panel/components/pagination.html" %}{% else %}{% include "admin_panel/components/empty_state.html" with empty_title="Заказы не найдены" empty_text="Измените поиск или фильтры." %}{% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "admin_panel/base.html" %}{% load panel_tags %}
+{% block content %}
+<header class="page-header">
+  <div><p class="eyebrow">Благотворительность</p><h1>Amanat</h1><p>Сборы и подтверждённые пожертвования.</p></div>
+  <a class="btn btn-primary" href="{% url 'admin_panel:amanat_create' %}">Новый сбор</a>
+</header>
+<nav class="tabs">
+  <a class="tab {% if selected_status == 'active' %}is-active{% endif %}" href="?status=active">Активные</a>
+  <a class="tab {% if selected_status == 'draft' %}is-active{% endif %}" href="?status=draft">Черновики</a>
+  <a class="tab {% if selected_status == 'completed' %}is-active{% endif %}" href="?status=completed">Завершённые</a>
+  <a class="tab {% if selected_status == 'canceled' %}is-active{% endif %}" href="?status=canceled">Отменённые</a>
+</nav>
+<section class="card table-card">
+  {% if page.object_list %}
+  <div class="table-scroll"><table><thead><tr><th>Сбор</th><th>Категория</th><th>Прогресс</th><th>Помощников</th><th>Статус</th><th>Главный</th></tr></thead><tbody>
+  {% for campaign in page.object_list %}<tr>
+    <td><a class="table-primary" href="{% url 'admin_panel:amanat_detail' campaign.pk %}">{{ campaign.title }}<small>{{ campaign.short_title }}</small></a></td>
+    <td>{{ campaign.category.name|default:'—' }}</td><td><strong>{{ campaign.collected_amount|money }}</strong><small>из {{ campaign.needed_amount|money }}</small><div class="progress"><span style="width:{% widthratio campaign.collected_amount campaign.needed_amount 100 %}%"></span></div></td><td>{{ campaign.helpers_count }}</td><td>{% status_badge campaign.status campaign.get_status_display %}</td><td>{{ campaign.is_featured|yesno:'Да,—' }}</td>
+  </tr>{% endfor %}
+  </tbody></table></div>{% include "admin_panel/components/pagination.html" %}
+  {% else %}{% include "admin_panel/components/empty_state.html" with empty_title="Сборов в этом статусе нет" empty_text="Создайте новый сбор или выберите другую вкладку." %}{% endif %}
+</section>
+{% endblock %}
