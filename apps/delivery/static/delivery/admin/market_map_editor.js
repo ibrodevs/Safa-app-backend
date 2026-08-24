@@ -1016,7 +1016,9 @@
     const widthInput = byId('market-feature-width-m');
     const heightInput = byId('market-feature-height-m');
     const input = dimension === 'height' ? heightInput : widthInput;
-    input.value = Math.max(0.2, Math.min(100, Number(input.value || 0) + Number(delta))).toFixed(1);
+    const currentValue = Number(input.value);
+    const safeValue = Number.isFinite(currentValue) ? currentValue : 0.2;
+    input.value = Math.max(0.2, Math.min(100, safeValue + Number(delta || 0))).toFixed(1);
     const serialized = serializeItem(item);
     serialized.geometry.coordinates = resizeContainerCoordinates(
       serialized.geometry.coordinates,
@@ -1352,6 +1354,8 @@
         Number(button.dataset.delta || 0),
       ));
     });
+    byId('market-feature-width-m')?.addEventListener('change', () => resizeSelectedContainer('width', 0));
+    byId('market-feature-height-m')?.addEventListener('change', () => resizeSelectedContainer('height', 0));
     byId('market-feature-container')?.addEventListener('change', (event) => {
       const option = event.target.selectedOptions[0];
       if (!option?.value) return;

@@ -6,6 +6,7 @@ TEMPLATE = ROOT / "apps/delivery/templates/admin/delivery/marketmaprevision/map_
 CSS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor.css"
 COMPACT_CSS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor_compact.css"
 UI_JS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor_ui.js"
+EDITOR_JS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor.js"
 
 
 def test_map_editor_uses_compact_creation_controls():
@@ -53,6 +54,24 @@ def test_map_editor_keeps_existing_javascript_contract_ids():
 
     for element_id in required_ids:
         assert f'id="{element_id}"' in content
+
+
+def test_container_size_can_be_reduced_in_both_admin_editors():
+    standard = TEMPLATE.read_text(encoding="utf-8")
+    panel = (
+        ROOT / "admin_panel/templates/admin_panel/map/editor.html"
+    ).read_text(encoding="utf-8")
+    javascript = EDITOR_JS.read_text(encoding="utf-8")
+
+    for template in (standard, panel):
+        assert 'data-container-size-step="width" data-delta="-0.5"' in template
+        assert 'data-container-size-step="height" data-delta="-0.5"' in template
+        assert 'min="0.2" max="100" step="0.1"' in template
+        assert "market_map_editor.js' %}?v=20260824-5" in template
+
+    assert "resizeSelectedContainer('width', 0)" in javascript
+    assert "resizeSelectedContainer('height', 0)" in javascript
+    assert "Math.max(0.2, Math.min(100" in javascript
 
 
 def test_map_editor_prioritizes_map_area_over_properties():

@@ -1,12 +1,16 @@
 import hashlib
+from decimal import Decimal
+from importlib import import_module
 
 import pytest
+
+from django.apps import apps as django_apps
 from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.delivery.models import AmanatCampaign, AmanatCategory, AmanatDonation, Shipment
-from apps.payments.models import AmanatPaymentAttempt, PaymentAttempt
+from apps.payments.models import AmanatPaymentAttempt, CarrierSettlement, PaymentAttempt
 from apps.users.models import User
 
 
@@ -260,6 +264,33 @@ def test_reconcile_repairs_paid_order_when_attempt_already_succeeded():
     assert shipment.paid_at is not None
     assert shipment.status == Shipment.Status.COMPLETED
     assert shipment.carrier_settlement.payment_attempt_id == attempt.id
+
+
+@pytest.mark.django_db
+@override_settings(PLATFORM_COMMISSION_PCT=Decimal("0.10"))
+def test_payment_repair_migration_completes_existing_successful_order():
+    shipment = _shipment()
+    attempt = _attempt(shipment)
+    attempt.status = PaymentAttempt.Status.SUCCEEDED
+    attempt.save(update_fields=["status", "updated_at"])
+
+    migration = import_module(
+        "apps.payments.migrations.0008_complete_succeeded_attempt_shipments"
+    )
+    migration.complete_succeeded_attempt_shipments(django_apps, None)
+    migration.complete_succeeded_attempt_shipments(django_apps, None)
+
+    shipment.refresh_from_db()
+    attempt.refresh_from_db()
+    assert shipment.is_paid is True
+    assert shipment.paid_at is not None
+    assert shipment.status == Shipment.Status.COMPLETED
+    assert shipment.finished_at is not None
+    assert shipment.carrier_settlement.payment_attempt_id == attempt.id
+    assert shipment.carrier_settlement.gross_amount == attempt.amount
+    assert shipment.carrier_settlement.commission_amount == 45
+    assert shipment.carrier_settlement.net_amount == 405
+    assert CarrierSettlement.objects.filter(shipment=shipment).count() == 1
 
 
 @pytest.mark.django_db
