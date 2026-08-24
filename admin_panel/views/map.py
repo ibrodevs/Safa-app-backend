@@ -8,6 +8,11 @@ from django.shortcuts import get_object_or_404, redirect
 from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.delivery.map_admin import other_bazar_boundaries
+from apps.delivery.map_cleanup import (
+    delete_bazar_with_map,
+    describe_map_purge,
+    purge_bazar_map,
+)
 from apps.delivery.map_models import MarketMapRevision
 from apps.delivery.map_tariff_sync import attach_district_tariff_ids
 from apps.delivery.map_validation import validate_feature_collection
@@ -65,13 +70,15 @@ def _editor_context(request, bazar):
         user=request.user,
     )
     passages = list(
-        Passage.objects.filter(bazar=bazar).order_by("number").values("id", "number")
+        Passage.objects.filter(bazar=bazar)
+        .order_by("district", "number")
+        .values("id", "number", "district")
     )
     containers = list(
         Container.objects.filter(passage__bazar=bazar)
         .select_related("passage")
-        .order_by("passage__number", "number")
-        .values("id", "number", "title", "passage_id", "lat", "lon")
+        .order_by("passage__district", "passage__number", "number")
+        .values("id", "number", "title", "passage_id", "passage__number", "passage__district", "lat", "lon")
     )
     for item in containers:
         item["lat"] = float(item["lat"])
@@ -156,3 +163,30 @@ def map_publish(request, pk):
             "published_at": published.published_at.isoformat(),
         }
     )
+
+
+@staff_required
+@require_POST
+def map_delete(request, pk):
+    """Удаляет карту базара вместе с районами, проходами и контейнерами."""
+    bazar = get_object_or_404(Bazar, pk=pk)
+    stats = purge_bazar_map(bazar)
+    messages.success(
+        request,
+        f"Карта базара «{bazar.name}» удалена: {describe_map_purge(stats)}.",
+    )
+    return redirect("admin_panel:map_list")
+
+
+@staff_required
+@require_POST
+def bazar_delete(request, pk):
+    """Удаляет базар целиком — вместе с картой и всеми её объектами."""
+    bazar = get_object_or_404(Bazar, pk=pk)
+    name = bazar.name
+    stats = delete_bazar_with_map(bazar)
+    messages.success(
+        request,
+        f"Базар «{name}» удалён вместе с картой: {describe_map_purge(stats)}.",
+    )
+    return redirect("admin_panel:map_list")

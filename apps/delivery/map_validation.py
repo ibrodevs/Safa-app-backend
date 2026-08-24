@@ -319,6 +319,52 @@ def representative_point(geometry: dict[str, Any]) -> list[float]:
     return [(min(lons) + max(lons)) / 2, (min(lats) + max(lats)) / 2]
 
 
+def iter_district_features(collection: dict[str, Any]) -> list[dict[str, Any]]:
+    """Возвращает фигуры районов карты — они существуют только в GeoJSON."""
+    features = (collection or {}).get("features") or []
+    return [
+        feature
+        for feature in features
+        if isinstance(feature, dict) and ((feature.get("properties") or {}).get("kind") == "district")
+    ]
+
+
+def district_name_for_geometry(
+    geometry: dict[str, Any],
+    district_features: list[dict[str, Any]],
+) -> str:
+    """Район, внутри которого лежит объект карты.
+
+    Проход — ломаная, и часть её точек может выходить за границу района,
+    поэтому побеждает район, накрывающий больше точек. Если объект не попал
+    ни в один район, возвращается пустая строка.
+    """
+    try:
+        points = list(_iter_points((geometry or {}).get("coordinates") or []))
+    except (TypeError, ValueError):
+        return ""
+    if not points:
+        return ""
+
+    best_name = ""
+    best_score = 0
+    for feature in district_features:
+        name = str((feature.get("properties") or {}).get("name") or "").strip()
+        if not name:
+            continue
+        district_geometry = feature.get("geometry") or {}
+        score = sum(1 for point in points if point_in_geometry(point, district_geometry))
+        if score > best_score:
+            best_name = name
+            best_score = score
+    return best_name
+
+
+def duplicate_passage_message(number: str, district: str) -> str:
+    where = f"в районе «{district}»" if district else "в этом базаре вне районов"
+    return f"Проход «{number}» уже существует {where}"
+
+
 def validate_feature_collection(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict) or value.get("type") != "FeatureCollection":
         raise ValidationError("Карта должна быть GeoJSON FeatureCollection")

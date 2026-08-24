@@ -11,8 +11,11 @@ from django.utils import timezone
 
 from .map_validation import (
     STYLE_DEFAULTS,
+    district_name_for_geometry,
+    duplicate_passage_message,
     empty_feature_collection,
     geometries_intersect,
+    iter_district_features,
     representative_point,
     validate_feature_collection,
 )
@@ -170,6 +173,7 @@ class MarketMapRevision(models.Model):
 
     def _sync_passages(self) -> dict[str, Passage]:
         passages_by_feature: dict[str, Passage] = {}
+        districts = iter_district_features(self.geojson)
         for feature in self.geojson.get("features", []):
             properties = feature.get("properties") or {}
             if properties.get("kind") != "passage":
@@ -179,21 +183,35 @@ class MarketMapRevision(models.Model):
             if not number:
                 raise ValidationError("У каждого прохода должно быть название или номер")
 
+            # Номер прохода уникален внутри района, а не всего базара: «1 проход»
+            # может быть в каждом районе базара.
+            district = district_name_for_geometry(feature.get("geometry") or {}, districts)
+
             passage = None
             passage_id = properties.get("passage_id")
             if passage_id:
                 passage = Passage.objects.filter(pk=passage_id, bazar=self.bazar).first()
             if passage is None:
-                passage, _ = Passage.objects.get_or_create(bazar=self.bazar, number=number)
-            elif passage.number != number:
-                if Passage.objects.filter(bazar=self.bazar, number=number).exclude(pk=passage.pk).exists():
-                    raise ValidationError(f"Проход «{number}» уже существует в этом базаре")
+                passage, _ = Passage.objects.get_or_create(
+                    bazar=self.bazar,
+                    district=district,
+                    number=number,
+                )
+            elif (passage.number, passage.district) != (number, district):
+                if (
+                    Passage.objects.filter(bazar=self.bazar, district=district, number=number)
+                    .exclude(pk=passage.pk)
+                    .exists()
+                ):
+                    raise ValidationError(duplicate_passage_message(number, district))
                 passage.number = number
-                passage.save(update_fields=("number",))
+                passage.district = district
+                passage.save(update_fields=("number", "district"))
 
             properties["passage_id"] = passage.id
             properties["number"] = passage.number
             properties["name"] = passage.number
+            properties["district"] = passage.district
             passages_by_feature[str(feature.get("id") or "")] = passage
 
         return passages_by_feature

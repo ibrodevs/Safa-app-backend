@@ -197,6 +197,7 @@ class Command(BaseCommand):
             for passage_number, container_items in bazar_item["passages"].items():
                 passage, _ = Passage.objects.get_or_create(
                     bazar=bazar,
+                    district="",
                     number=passage_number,
                 )
                 for number, title, lat, lon in container_items:

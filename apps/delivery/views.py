@@ -152,7 +152,7 @@ class BazarViewSet(viewsets.ReadOnlyModelViewSet):
     ),
 )
 class PassageViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Passage.objects.select_related("bazar").all().order_by("bazar__name", "number")
+    queryset = Passage.objects.select_related("bazar").all().order_by("bazar__name", "district", "number")
     serializer_class = PassageSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardResultsSetPagination
@@ -164,7 +164,11 @@ class PassageViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(bazar_id=bazar_id)
         q = (self.request.query_params.get("q") or "").strip()
         if q:
-            qs = qs.filter(Q(number__icontains=q) | Q(bazar__name__icontains=q))
+            qs = qs.filter(
+                Q(number__icontains=q)
+                | Q(district__icontains=q)
+                | Q(bazar__name__icontains=q)
+            )
         return qs
 
 

@@ -97,18 +97,32 @@ class Bazar(models.Model):
 
 class Passage(models.Model):
     bazar = models.ForeignKey(Bazar, on_delete=models.PROTECT, related_name="passages", verbose_name="Базар")
+
+    # Район, внутри которого лежит проход на карте (пусто — проход вне районов).
+    # Номера проходов уникальны в пределах района, а не всего базара: в разных
+    # районах одного базара спокойно бывают «1 проход», «2 проход» и т.д.
+    district = models.CharField(max_length=155, blank=True, verbose_name="Район")
     number = models.CharField(max_length=50, verbose_name="Проход")
 
     class Meta:
-        ordering = ["bazar__name", "number"]
+        ordering = ["bazar__name", "district", "number"]
         verbose_name = "Проход"
         verbose_name_plural = "Проходы"
         constraints = [
-            models.UniqueConstraint(fields=["bazar", "number"], name="uniq_passage_bazar_number"),
+            models.UniqueConstraint(
+                fields=["bazar", "district", "number"],
+                name="uniq_passage_bazar_district_number",
+            ),
         ]
 
+    @property
+    def ui_label(self) -> str:
+        if self.district:
+            return f"{self.number} проход · {self.district}"
+        return f"{self.number} проход"
+
     def __str__(self) -> str:
-        return f"{self.number} проход — {self.bazar.name}"
+        return f"{self.ui_label} — {self.bazar.name}"
 
 
 class Container(models.Model):
@@ -141,7 +155,9 @@ class Container(models.Model):
 
     @property
     def ui_label(self) -> str:
-        return f"Контейнер {self.number}, {self.passage.number} проход"
+        # Проход подписывается вместе со своим районом: в разных районах базара
+        # номера проходов повторяются, и без района адрес неоднозначен.
+        return f"Контейнер {self.number}, {self.passage.ui_label}"
 
     @property
     def display_title(self) -> str:

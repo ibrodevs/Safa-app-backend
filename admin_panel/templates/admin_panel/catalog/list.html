@@ -21,7 +21,7 @@
     <thead><tr>
       {% if kind == "bazar" %}<th>Базар</th><th>Район / тариф</th><th>Цена</th>
       {% elif kind == "district" %}<th>Район</th><th>Тариф</th><th>Статус</th>
-      {% elif kind == "passage" %}<th>Проход</th><th>Базар</th><th>Контейнеров</th>
+      {% elif kind == "passage" %}<th>Проход</th><th>Район</th><th>Базар</th><th>Контейнеров</th>
       {% else %}<th>Контейнер</th><th>Проход и базар</th><th>Координаты</th><th>Статус</th>{% endif %}
       <th>Действия</th>
     </tr></thead>
@@ -33,10 +33,10 @@
         <td><strong>{{ item.name }}</strong></td><td>{% if item.fixed_price != None %}{{ item.fixed_price }} сом фикс.{% elif item.per_km_price != None %}{{ item.per_km_price }} сом/км{% else %}<span class="muted">Не задан</span>{% endif %}</td><td>{% if item.is_active %}<span class="badge badge--success">Активен</span>{% else %}<span class="badge">Отключён</span>{% endif %}</td>
         <td><div class="action-row"><a class="btn btn-secondary btn-sm" href="{% url 'admin_panel:district_edit' item.pk %}">Изменить</a><form method="post" action="{% url 'admin_panel:district_delete' item.pk %}" data-confirm="Удалить район?">{% csrf_token %}<button class="btn btn-danger btn-sm" type="submit">Удалить</button></form></div></td>
       {% elif kind == "passage" %}
-        <td><strong>{{ item.number }}</strong></td><td>{{ item.bazar.name }}</td><td>{{ item.containers.all|length }}</td>
+        <td><strong>{{ item.number }}</strong></td><td>{{ item.district|default:"—" }}</td><td>{{ item.bazar.name }}</td><td>{{ item.containers.all|length }}</td>
         <td><div class="action-row"><a class="btn btn-secondary btn-sm" href="{% url 'admin_panel:passage_edit' item.pk %}">Изменить</a><form method="post" action="{% url 'admin_panel:passage_delete' item.pk %}" data-confirm="Удалить проход?">{% csrf_token %}<button class="btn btn-danger btn-sm" type="submit">Удалить</button></form></div></td>
       {% else %}
-        <td><strong>{{ item.number }}</strong><small>{{ item.title|default:"Без примечания" }}</small></td><td>{{ item.passage.number }} · {{ item.passage.bazar.name }}</td><td>{{ item.lat }}, {{ item.lon }}</td><td>{% if item.is_active %}<span class="badge badge--success">Активен</span>{% else %}<span class="badge">Отключён</span>{% endif %}</td>
+        <td><strong>{{ item.number }}</strong><small>{{ item.title|default:"Без примечания" }}</small></td><td>{{ item.passage.number }}{% if item.passage.district %} · {{ item.passage.district }}{% endif %} · {{ item.passage.bazar.name }}</td><td>{{ item.lat }}, {{ item.lon }}</td><td>{% if item.is_active %}<span class="badge badge--success">Активен</span>{% else %}<span class="badge">Отключён</span>{% endif %}</td>
         <td><div class="action-row"><a class="btn btn-secondary btn-sm" href="{% url 'admin_panel:container_edit' item.pk %}">Изменить</a><form method="post" action="{% url 'admin_panel:container_delete' item.pk %}" data-confirm="Удалить контейнер?">{% csrf_token %}<button class="btn btn-danger btn-sm" type="submit">Удалить</button></form></div></td>
       {% endif %}
     </tr>{% endfor %}</tbody>

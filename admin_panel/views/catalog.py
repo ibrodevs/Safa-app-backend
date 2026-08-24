@@ -4,6 +4,11 @@ from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404, redirect
 from django.views.decorators.http import require_http_methods, require_POST
 
+from apps.delivery.map_cleanup import (
+    delete_bazar_with_map,
+    delete_passage_with_containers,
+    describe_map_purge,
+)
 from apps.delivery.models import Bazar, Container, DeliveryDistrict, Passage
 
 from admin_panel.access import staff_required
@@ -55,10 +60,14 @@ def district_list(request):
 def passage_list(request):
     query = _query(request)
     items = Passage.objects.select_related("bazar").prefetch_related("containers").order_by(
-        "bazar__name", "number"
+        "bazar__name", "district", "number"
     )
     if query:
-        items = items.filter(Q(number__icontains=query) | Q(bazar__name__icontains=query))
+        items = items.filter(
+            Q(number__icontains=query)
+            | Q(district__icontains=query)
+            | Q(bazar__name__icontains=query)
+        )
     return panel_render(
         request,
         "admin_panel/catalog/list.html",
@@ -72,13 +81,14 @@ def passage_list(request):
 def container_list(request):
     query = _query(request)
     items = Container.objects.select_related("passage", "passage__bazar").order_by(
-        "passage__bazar__name", "passage__number", "number"
+        "passage__bazar__name", "passage__district", "passage__number", "number"
     )
     if query:
         items = items.filter(
             Q(number__icontains=query)
             | Q(title__icontains=query)
             | Q(passage__number__icontains=query)
+            | Q(passage__district__icontains=query)
             | Q(passage__bazar__name__icontains=query)
         )
     return panel_render(
@@ -179,7 +189,12 @@ def _delete(request, *, model, pk, success_url, label):
 @staff_required
 @require_POST
 def bazar_delete(request, pk):
-    return _delete(request, model=Bazar, pk=pk, success_url="admin_panel:bazars", label="базар")
+    """Базар удаляется вместе с картой, районами, проходами и контейнерами."""
+    bazar = get_object_or_404(Bazar, pk=pk)
+    name = bazar.name
+    stats = delete_bazar_with_map(bazar)
+    messages.success(request, f"Базар «{name}» удалён вместе с картой: {describe_map_purge(stats)}.")
+    return redirect("admin_panel:bazars")
 
 
 @staff_required
@@ -191,7 +206,15 @@ def district_delete(request, pk):
 @staff_required
 @require_POST
 def passage_delete(request, pk):
-    return _delete(request, model=Passage, pk=pk, success_url="admin_panel:passages", label="проход")
+    """Проход удаляется вместе со своими контейнерами."""
+    passage = get_object_or_404(Passage, pk=pk)
+    name = str(passage)
+    stats = delete_passage_with_containers(passage)
+    messages.success(
+        request,
+        f"Проход «{name}» удалён, контейнеров удалено — {stats['containers']}.",
+    )
+    return redirect("admin_panel:passages")
 
 
 @staff_required

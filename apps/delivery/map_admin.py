@@ -12,6 +12,7 @@ from django.urls import path, reverse
 from django.utils.html import format_html
 from django.views.decorators.http import require_POST
 
+from .map_cleanup import describe_map_purge, purge_bazar_map
 from .map_models import (
     MarketBoundaryMapSection,
     MarketContainerMapSection,
@@ -85,11 +86,24 @@ class MarketMapRevisionAdmin(admin.ModelAdmin):
     )
     ordering = ("bazar__name", "-version")
 
+    actions = ("delete_bazar_map",)
+
     def has_add_permission(self, request):
         return False
 
     def has_delete_permission(self, request, obj=None):
         return bool(obj and obj.status == MarketMapRevision.Status.DRAFT and super().has_delete_permission(request, obj))
+
+    @admin.action(description="Удалить карту базара вместе с районами, проходами и контейнерами")
+    def delete_bazar_map(self, request, queryset):
+        bazars = list(Bazar.objects.filter(pk__in=list(queryset.values_list("bazar_id", flat=True))))
+        for bazar in bazars:
+            stats = purge_bazar_map(bazar)
+            self.message_user(
+                request,
+                f"Карта базара «{bazar.name}» удалена: {describe_map_purge(stats)}.",
+                messages.SUCCESS,
+            )
 
     @admin.display(description="Редактор")
     def open_editor(self, obj: MarketMapRevision):
@@ -134,14 +148,14 @@ class MarketMapRevisionAdmin(admin.ModelAdmin):
         revision, _ = MarketMapRevision.get_or_create_draft(bazar=bazar, user=request.user)
         passages = list(
             Passage.objects.filter(bazar=bazar)
-            .order_by("number")
-            .values("id", "number")
+            .order_by("district", "number")
+            .values("id", "number", "district")
         )
         containers = list(
             Container.objects.filter(passage__bazar=bazar)
             .select_related("passage")
-            .order_by("passage__number", "number")
-            .values("id", "number", "title", "passage_id", "lat", "lon")
+            .order_by("passage__district", "passage__number", "number")
+            .values("id", "number", "title", "passage_id", "passage__number", "passage__district", "lat", "lon")
         )
         for item in containers:
             item["lat"] = float(item["lat"])

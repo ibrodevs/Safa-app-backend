@@ -51,6 +51,10 @@
     var message = status.textContent || '';
     if (message.indexOf('сохранён') !== -1 || message.indexOf('опубликована') !== -1) setDirty(false);
   }).observe(status, { childList: true, subtree: true, characterData: true });
+  // Удаление карты уносит и несохранённый черновик — предупреждать не о чем.
+  document.addEventListener('submit', function (event) {
+    if (event.target.closest('[data-map-discard]')) setDirty(false);
+  }, true);
   window.addEventListener('beforeunload', function (event) {
     if (!dirty) return;
     event.preventDefault();

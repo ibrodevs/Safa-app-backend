@@ -13,6 +13,8 @@
 .button { min-height: 34px; padding: 7px 11px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: white; color: var(--text); cursor: pointer; font: inherit; font-weight: 620; }
 .button:hover { background: #f7f7f7; }
 .button.default { border-color: var(--primary); background: var(--primary); color: white; }
+.button.danger { border-color: #fecaca; background: var(--red-soft); color: var(--red); }
+.button.danger:hover { background: #fde8e8; }
 .market-map-key-warning { position: fixed; z-index: 20; left: calc(var(--sidebar) + 290px); right: 350px; top: calc(var(--topbar) + 87px); padding: 10px 13px; color: var(--red); background: var(--red-soft); border: 1px solid #fecaca; border-radius: var(--radius); }
 .market-map-create-panel { grid-column: 1; grid-row: 2; min-height: 0; overflow-y: auto; padding: 14px; background: white; border-right: 1px solid var(--border); }
 .map-panel-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }

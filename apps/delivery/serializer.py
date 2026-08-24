@@ -89,11 +89,17 @@ def get_or_create_container_ui(
                 if not bazar_obj:
                     raise
 
-        try:
-            passage_obj, passage_created = Passage.objects.get_or_create(bazar=bazar_obj, number=passage)
-        except IntegrityError:
-            passage_obj = Passage.objects.get(bazar=bazar_obj, number=passage)
-            passage_created = False
+        # Номер прохода уникален внутри района, поэтому в базаре может быть
+        # несколько проходов с одним номером. Старый API района не передаёт —
+        # берём уже существующий проход, а новый создаём вне районов.
+        passage_obj = Passage.objects.filter(bazar=bazar_obj, number=passage).order_by("district", "id").first()
+        passage_created = False
+        if passage_obj is None:
+            try:
+                passage_obj = Passage.objects.create(bazar=bazar_obj, district="", number=passage)
+                passage_created = True
+            except IntegrityError:
+                passage_obj = Passage.objects.get(bazar=bazar_obj, district="", number=passage)
 
         if passage_created:
             logger.info(
@@ -199,7 +205,7 @@ class PassageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Passage
-        fields = ["id", "bazar_id", "bazar_name", "number"]
+        fields = ["id", "bazar_id", "bazar_name", "district", "number"]
 
 
 class ContainerSerializer(serializers.ModelSerializer):
@@ -421,7 +427,10 @@ class ShipmentStopReadSerializer(serializers.ModelSerializer):
 
     def get_district(self, obj: ShipmentStop):
         match = self._resolved_market_point(obj)
-        return match.district_name if match is not None and match.district_name else None
+        if match is not None and match.district_name:
+            return match.district_name
+        # Точку не удалось разложить по опубликованной карте — район знает проход.
+        return (obj.container.passage.district or None) if obj.container_id else None
 
     def get_passage(self, obj: ShipmentStop):
         match = self._resolved_market_point(obj)

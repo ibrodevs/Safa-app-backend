@@ -6,6 +6,11 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from .map_models import MarketMapRevision
+from .map_validation import (
+    district_name_for_geometry,
+    duplicate_passage_message,
+    iter_district_features,
+)
 from .models import Passage
 
 
@@ -15,6 +20,7 @@ DEFAULT_PASSAGE_NAMES = {"", "Новый проход", "New passage"}
 def sync_passages(revision: MarketMapRevision) -> None:
     """Create or update Passage records from passage features in map GeoJSON."""
     changed = False
+    districts = iter_district_features(revision.geojson)
 
     for feature in revision.geojson.get("features", []):
         properties = feature.get("properties") or {}
@@ -25,6 +31,10 @@ def sync_passages(revision: MarketMapRevision) -> None:
         if number in DEFAULT_PASSAGE_NAMES:
             raise ValidationError("Укажите название или номер каждого прохода перед сохранением")
 
+        # Одинаковые номера проходов в разных районах одного базара — норма,
+        # поэтому проход ищется и создаётся с учётом своего района.
+        district = district_name_for_geometry(feature.get("geometry") or {}, districts)
+
         passage = None
         passage_id = properties.get("passage_id")
         if passage_id:
@@ -33,22 +43,30 @@ def sync_passages(revision: MarketMapRevision) -> None:
         if passage is None:
             passage, _ = Passage.objects.get_or_create(
                 bazar=revision.bazar,
+                district=district,
                 number=number,
             )
-        elif passage.number != number:
+        elif (passage.number, passage.district) != (number, district):
             duplicate = Passage.objects.filter(
                 bazar=revision.bazar,
+                district=district,
                 number=number,
             ).exclude(pk=passage.pk).exists()
             if duplicate:
-                raise ValidationError(f"Проход с названием '{number}' уже существует")
+                raise ValidationError(duplicate_passage_message(number, district))
             passage.number = number
-            passage.save(update_fields=("number",))
+            passage.district = district
+            passage.save(update_fields=("number", "district"))
 
-        if properties.get("passage_id") != passage.id or properties.get("number") != passage.number:
+        if (
+            properties.get("passage_id") != passage.id
+            or properties.get("number") != passage.number
+            or properties.get("district") != passage.district
+        ):
             properties["passage_id"] = passage.id
             properties["number"] = passage.number
             properties["name"] = passage.number
+            properties["district"] = passage.district
             feature["properties"] = properties
             changed = True
 

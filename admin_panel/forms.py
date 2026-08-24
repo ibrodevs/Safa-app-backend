@@ -136,8 +136,19 @@ class DistrictPanelForm(StyledModelForm):
 class PassagePanelForm(StyledModelForm):
     class Meta:
         model = Passage
-        fields = ("bazar", "number")
-        labels = {"bazar": "Базар", "number": "Название или номер прохода"}
+        fields = ("bazar", "district", "number")
+        labels = {
+            "bazar": "Базар",
+            "district": "Район",
+            "number": "Название или номер прохода",
+        }
+        help_texts = {
+            "district": (
+                "Название района с карты базара. Номера проходов уникальны внутри "
+                "района, поэтому «1 проход» может быть в каждом районе. "
+                "Оставьте пустым, если проход не входит ни в один район."
+            ),
+        }
 
 
 class ContainerPanelForm(StyledModelForm):

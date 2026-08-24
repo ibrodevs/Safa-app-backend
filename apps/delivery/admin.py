@@ -15,6 +15,7 @@ from .models import (
     Passage,
     Container,
 )
+from .map_cleanup import delete_bazar_with_map, delete_passage_with_containers
 from .map_models import MarketMapRevision
 from .operations import (
     cancel_shipment,
@@ -88,6 +89,8 @@ class DeliveryDistrictAdmin(admin.ModelAdmin):
 
 @admin.register(Bazar)
 class BazarAdmin(admin.ModelAdmin):
+    """Базар удаляется вместе со своей картой, проходами и контейнерами."""
+
     list_display = ("id", "name", "district", "district_tariff", "fixed_price", "price_from", "price_to")
     search_fields = ("name", "district", "district_tariff__name")
     list_filter = ("district", "district_tariff")
@@ -106,14 +109,44 @@ class BazarAdmin(admin.ModelAdmin):
         "bottom_right_lon",
     )
 
+    def get_deleted_objects(self, objs, request):
+        deleted_objects, model_count, perms_needed, protected = super().get_deleted_objects(
+            objs,
+            request,
+        )
+        # Карта, проходы и контейнеры — части базара, они удаляются вместе с ним.
+        # Остановки посылок не удаляются: у них останутся координаты и подпись.
+        return deleted_objects, model_count, set(), []
+
+    def delete_model(self, request, obj):
+        delete_bazar_with_map(obj)
+
+    def delete_queryset(self, request, queryset):
+        for bazar in queryset:
+            delete_bazar_with_map(bazar)
+
 
 @admin.register(Passage)
 class PassageAdmin(admin.ModelAdmin):
-    list_display = ("id", "number", "bazar")
-    search_fields = ("number", "bazar__name")
-    list_filter = ("bazar",)
+    """Проход удаляется вместе со своими контейнерами."""
+
+    list_display = ("id", "number", "district", "bazar")
+    search_fields = ("number", "district", "bazar__name")
+    list_filter = ("bazar", "district")
     autocomplete_fields = ("bazar",)
-    ordering = ("bazar__name", "number")
+    fields = ("bazar", "district", "number")
+    ordering = ("bazar__name", "district", "number")
+
+    def get_deleted_objects(self, objs, request):
+        deleted_objects, model_count, perms_needed, protected = super().get_deleted_objects(objs, request)
+        return deleted_objects, model_count, set(), []
+
+    def delete_model(self, request, obj):
+        delete_passage_with_containers(obj)
+
+    def delete_queryset(self, request, queryset):
+        for passage in queryset:
+            delete_passage_with_containers(passage)
 
 
 @admin.register(Container)

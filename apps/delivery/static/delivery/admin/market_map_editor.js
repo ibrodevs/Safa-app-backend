@@ -108,6 +108,31 @@
     }
   }
 
+  // Номера проходов уникальны внутри района: «1 проход» может быть в каждом
+  // районе базара, поэтому проход всегда подписывается вместе со своим районом.
+  function districtNameForFeature(feature) {
+    const points = iterCoordinatePoints(feature?.geometry?.coordinates || []);
+    if (!points.length) return '';
+    let bestName = '';
+    let bestScore = 0;
+    state.items.forEach((item) => {
+      const properties = item.feature.properties || {};
+      if (properties.kind !== 'district') return;
+      const name = String(properties.name || '').trim();
+      if (!name) return;
+      const score = points.filter((point) => pointInGeometry(point, item.feature.geometry)).length;
+      if (score > bestScore) {
+        bestScore = score;
+        bestName = name;
+      }
+    });
+    return bestName;
+  }
+
+  function passageOptionLabel(number, district) {
+    return district ? `${number} · ${district}` : String(number);
+  }
+
   function syncPassageOptions(preferredValue = null) {
     const select = byId('market-feature-passage');
     if (!select) return;
@@ -115,19 +140,23 @@
     const databasePassages = readJsonScript('market-map-passages', []);
     const options = new Map();
     databasePassages.forEach((passage) => {
-      options.set(String(passage.id), String(passage.number));
+      options.set(String(passage.id), passageOptionLabel(passage.number, passage.district));
     });
     state.items.forEach((item) => {
       const properties = item.feature.properties || {};
       if (properties.kind !== 'passage') return;
       const name = String(properties.number || properties.name || 'Новый проход').trim();
-      const matchingDatabasePassage = databasePassages.find((passage) => String(passage.number) === name);
+      const district = districtNameForFeature(item.feature);
+      const matchingDatabasePassage = databasePassages.find(
+        (passage) => String(passage.number) === name && String(passage.district || '') === district,
+      );
       const value = properties.passage_id
         ? String(properties.passage_id)
         : matchingDatabasePassage
           ? String(matchingDatabasePassage.id)
           : `feature:${item.feature.id}`;
-      options.set(value, properties.passage_id || matchingDatabasePassage ? name : `${name} · черновик`);
+      const label = passageOptionLabel(name, district);
+      options.set(value, properties.passage_id || matchingDatabasePassage ? label : `${label} · черновик`);
     });
     select.replaceChildren(new Option('Выберите проход', ''));
     options.forEach((label, value) => select.add(new Option(label, value)));
@@ -1045,6 +1074,7 @@
     byId('market-feature-stroke-width').value = Number(properties.stroke_width ?? 2);
     byId('market-feature-stroke').value = String(properties.stroke_color || '#e47f26').slice(0, 7);
     byId('market-feature-fill').value = String(properties.fill_color || '#ff8656').slice(0, 7);
+    updateDistrictNote(properties.kind, serialized);
     if (rect) {
       byId('market-feature-width-m').value = Math.max(0.2, Math.round(rect.width * 10) / 10);
       byId('market-feature-height-m').value = Math.max(0.2, Math.round(rect.height * 10) / 10);
@@ -1054,8 +1084,24 @@
     updatePropertyVisibility(properties.kind || 'district');
   }
 
+  function updateDistrictNote(kind, feature) {
+    const note = byId('market-feature-district-note');
+    if (!note) return;
+    if (kind !== 'passage') {
+      note.textContent = '';
+      return;
+    }
+    const district = districtNameForFeature(feature);
+    note.textContent = district
+      ? `Район: ${district}. Номер прохода уникален внутри района — в других районах этот же номер можно использовать снова.`
+      : 'Проход не попал ни в один район базара. Номер должен быть уникален среди проходов вне районов.';
+  }
+
   function updatePropertyVisibility(kind) {
     const isContainer = kind === 'container';
+    document.querySelectorAll('[data-kind-scope="passage"]').forEach((row) => {
+      row.hidden = kind !== 'passage';
+    });
     document.querySelectorAll('[data-kind-scope="container"]').forEach((row) => {
       row.hidden = !isContainer;
     });

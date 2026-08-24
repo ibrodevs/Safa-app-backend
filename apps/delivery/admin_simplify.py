@@ -137,6 +137,16 @@ class SimplePassageAdminForm(forms.ModelForm):
         )
         _configure_field(
             self,
+            "district",
+            label="Район",
+            help_text=(
+                "Район с карты базара, если проход находится внутри района. "
+                "Номера проходов уникальны внутри района, поэтому «1 проход» "
+                "может быть в каждом районе базара."
+            ),
+        )
+        _configure_field(
+            self,
             "number",
             label="Название или номер прохода",
             help_text="Например: 1, 7А или Центральный проход.",
@@ -250,8 +260,8 @@ def _passage_fieldsets(self, request, obj=None):
         (
             "Проход",
             {
-                "fields": ("bazar", "number"),
-                "description": "Выберите базар и укажите понятное название или номер прохода. Если проход рисуется на карте, он также синхронизируется с этим списком.",
+                "fields": ("bazar", "district", "number"),
+                "description": "Выберите базар, район внутри него и укажите понятное название или номер прохода. Если проход рисуется на карте, район и номер синхронизируются с этим списком автоматически.",
             },
         ),
     )
@@ -330,7 +340,7 @@ def simplify_delivery_admin() -> None:
         cls = passage_admin.__class__
         cls.form = SimplePassageAdminForm
         cls.get_fieldsets = _passage_fieldsets
-        cls.list_display = ("number", "bazar")
+        cls.list_display = ("number", "district", "bazar")
         cls.list_per_page = 40
 
     container_admin = admin.site._registry.get(Container)
