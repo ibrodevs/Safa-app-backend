@@ -544,8 +544,10 @@
 }
 #market-feature-list button.is-group-selected {
   border-color: #7c3aed;
+  background: #f5f3ff;
   box-shadow: inset 2px 0 0 #7c3aed;
 }
+#market-map-editor.is-picking #market-map-canvas { cursor: crosshair; }
 .market-map-quick-actions .button {
   min-height: 38px;
   border-radius: 8px;

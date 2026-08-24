@@ -558,9 +558,9 @@
     };
   }
 
-  function markerIcon(properties, selected = false) {
-    const fill = properties.fill_color || KIND_CONFIG.container.fillColor;
-    const stroke = properties.stroke_color || KIND_CONFIG.container.strokeColor;
+  function markerIcon(properties, selected = false, highlightColor = '') {
+    const fill = highlightColor || properties.fill_color || KIND_CONFIG.container.fillColor;
+    const stroke = highlightColor || properties.stroke_color || KIND_CONFIG.container.strokeColor;
     return {
       path: google.maps.SymbolPath.CIRCLE,
       fillColor: fill,
@@ -1214,24 +1214,35 @@
     return Math.hypot(a[0] + dx * t, a[1] + dy * t);
   }
 
-  function geometryHitsPoint(geometry, point, tolerance) {
+  function geometryDistanceToPointMeters(geometry, point) {
     const type = geometry?.type;
-    if (!type) return false;
+    if (!type) return Number.POSITIVE_INFINITY;
     if (type === 'Polygon' || type === 'MultiPolygon') {
-      if (pointInGeometry(point, geometry)) return true;
-      // Контейнеры крошечные: даём небольшой допуск вокруг фигуры, иначе на
-      // мелком масштабе клик всё время промахивается мимо них.
-      const points = iterCoordinatePoints(geometry.coordinates || []);
-      return points.some((item) => pointSegmentDistanceMeters(point, item, item) <= tolerance);
+      if (pointInGeometry(point, geometry)) return 0;
     }
     if (type === 'Point') {
-      return pointSegmentDistanceMeters(point, geometry.coordinates, geometry.coordinates) <= tolerance;
+      return pointSegmentDistanceMeters(point, geometry.coordinates, geometry.coordinates);
     }
-    const points = iterCoordinatePoints(geometry.coordinates || []);
-    for (let index = 0; index < points.length - 1; index += 1) {
-      if (pointSegmentDistanceMeters(point, points[index], points[index + 1]) <= tolerance) return true;
-    }
-    return points.length === 1 && pointSegmentDistanceMeters(point, points[0], points[0]) <= tolerance;
+
+    let lines = [];
+    if (type === 'LineString') lines = [geometry.coordinates || []];
+    else if (type === 'MultiLineString' || type === 'Polygon') lines = geometry.coordinates || [];
+    else if (type === 'MultiPolygon') lines = (geometry.coordinates || []).flat();
+
+    let nearest = Number.POSITIVE_INFINITY;
+    lines.forEach((line) => {
+      if (line.length === 1) {
+        nearest = Math.min(nearest, pointSegmentDistanceMeters(point, line[0], line[0]));
+        return;
+      }
+      for (let index = 0; index < line.length - 1; index += 1) {
+        nearest = Math.min(
+          nearest,
+          pointSegmentDistanceMeters(point, line[index], line[index + 1]),
+        );
+      }
+    });
+    return nearest;
   }
 
   // Клик по большой заливке района или базара перехватывает контейнер, который
@@ -1250,6 +1261,7 @@
       : -1;
     let bestId = preferredRank >= 0 ? preferredId : null;
     let bestRank = preferredRank >= 0 ? preferredRank : Number.MAX_SAFE_INTEGER;
+    let bestDistance = preferredRank >= 0 ? 0 : Number.POSITIVE_INFINITY;
     // Сначала дешёвая отсечка по рамке сохранённой геометрии, и только для
     // кандидатов берём актуальные координаты с карты.
     const marginLat = 25 / METERS_PER_LAT_DEGREE;
@@ -1258,16 +1270,19 @@
       const properties = item.feature.properties || {};
       if (properties.readonly) return;
       const rank = KIND_ORDER.indexOf(properties.kind);
-      if (rank === -1 || rank >= bestRank) return;
+      if (rank === -1 || rank > bestRank) return;
 
       const box = coordinateBbox(item.feature.geometry || {});
       if (!box) return;
       if (point[0] < box[0] - marginLon || point[0] > box[2] + marginLon) return;
       if (point[1] < box[1] - marginLat || point[1] > box[3] + marginLat) return;
 
-      if (geometryHitsPoint(serializeItem(item).geometry, point, CLICK_TOLERANCE_METERS)) {
+      const distance = geometryDistanceToPointMeters(serializeItem(item).geometry, point);
+      if (distance > CLICK_TOLERANCE_METERS) return;
+      if (rank < bestRank || (rank === bestRank && distance < bestDistance)) {
         bestId = item.feature.id;
         bestRank = rank;
+        bestDistance = distance;
       }
     });
     return bestId;
@@ -1286,14 +1301,24 @@
   }
 
   function setPickMode(enabled) {
-    state.pickMode = Boolean(enabled);
+    const entering = Boolean(enabled);
+    // Редактирование одного объекта и набор группы — разные режимы. Убираем
+    // старое одиночное выделение и его resize-маркеры, чтобы первый же клик
+    // получил групповую окраску и ничто не перехватывало соседний контейнер.
+    if (entering && state.selectedId) {
+      const selected = state.items.get(state.selectedId);
+      if (selected) setOverlaySelected(selected, false);
+      state.selectedId = null;
+      updatePropertyVisibility(null);
+    }
+    state.pickMode = entering;
     const button = byId('market-group-pick');
     if (button) {
       button.classList.toggle('is-active', state.pickMode);
       button.textContent = state.pickMode ? 'Готово' : 'Выбрать элементы';
     }
     document.querySelector('#market-map-editor')?.classList.toggle('is-picking', state.pickMode);
-    updateGroupPanel();
+    refreshGroupHighlight();
     setStatus(
       state.pickMode
         ? 'Режим выбора: кликайте по объектам. Первый выбранный — главный в группе.'
@@ -1303,18 +1328,24 @@
   }
 
   function setOverlayHighlighted(item, highlighted, isMain = false) {
+    const color = highlighted ? (isMain ? GROUP_MAIN_COLOR : GROUP_HIGHLIGHT_COLOR) : '';
     item.overlays.forEach((overlay) => {
       if (overlay instanceof google.maps.Marker) {
-        overlay.setIcon(markerIcon(item.feature.properties, highlighted));
+        overlay.setIcon(markerIcon(item.feature.properties, highlighted, color));
         return;
       }
+      const style = overlayStyle(item.feature.properties, false);
       overlay.setOptions({
-        ...overlayStyle(item.feature.properties, false),
+        ...style,
         editable: false,
         draggable: false,
         strokeColor: highlighted
-          ? (isMain ? GROUP_MAIN_COLOR : GROUP_HIGHLIGHT_COLOR)
-          : (item.feature.properties.stroke_color || overlayStyle(item.feature.properties, false).strokeColor),
+          ? color
+          : (item.feature.properties.stroke_color || style.strokeColor),
+        fillColor: highlighted ? color : style.fillColor,
+        fillOpacity: highlighted
+          ? Math.max(Number(style.fillOpacity || 0), 0.35)
+          : style.fillOpacity,
         strokeWeight: Number(item.feature.properties.stroke_width || 2) + (highlighted ? (isMain ? 3 : 2) : 0),
       });
     });
