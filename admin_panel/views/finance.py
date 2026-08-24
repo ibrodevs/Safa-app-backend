@@ -132,19 +132,29 @@ def payment_reconcile(request, pk):
                 else None
             )
     except FinikVerificationUnavailable as exc:
-        error_code = str(exc) or "finik_verification_unavailable"
+        error_code = exc.code or "finik_verification_unavailable"
+        provider_message = exc.provider_message
         logger.exception(
             "admin_finik_reconcile_unavailable",
-            extra={"attempt_id": str(payment.id), "finik_error_code": error_code},
+            extra={
+                "attempt_id": str(payment.id),
+                "finik_error_code": error_code,
+                "finik_provider_message": provider_message,
+            },
         )
         if wants_json:
             return JsonResponse(
-                {"paid": False, "detail": error_code},
+                {
+                    "paid": False,
+                    "detail": error_code,
+                    "providerMessage": provider_message,
+                },
                 status=503,
             )
         messages.error(
             request,
-            f"Finik не выполнил проверку ({error_code}). Повторите позже.",
+            f"Finik не выполнил проверку ({error_code}). "
+            f"{provider_message or 'Повторите позже.'}",
         )
         return redirect("admin_panel:payment_detail", pk=payment.pk)
 

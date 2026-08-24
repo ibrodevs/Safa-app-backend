@@ -6,6 +6,7 @@ from django.test import override_settings
 from apps.delivery.models import AmanatCampaign, AmanatCategory, AmanatDonation, Shipment
 from apps.payments.finik import (
     find_finik_item_by_request_id,
+    recover_finik_item_idempotently,
     verify_finik_transaction,
 )
 from apps.payments.models import AmanatPaymentAttempt, PaymentAttempt
@@ -136,6 +137,51 @@ def test_item_can_be_recovered_by_exact_request_id(mock_post):
     assert kwargs["json"]["variables"]["input"]["filter"] == {
         "accountId": "account-123",
     }
+
+
+@pytest.mark.django_db
+@override_settings(
+    FINIK_API_KEY="api-key",
+    FINIK_ACCOUNT_ID="account-123",
+    FINIK_CALLBACK_URL="https://api.example.com/api/payments/finik/callback/",
+)
+@patch("apps.payments.finik.requests.post")
+def test_item_is_safely_recovered_with_idempotent_create(mock_post):
+    user = User.objects.create_user(
+        phone_number="996700555230",
+        password="secret123",
+        first_name="Client",
+    )
+    shipment = Shipment.objects.create(client=user, title="Delivery")
+    attempt = PaymentAttempt.objects.create(
+        shipment=shipment,
+        amount=10,
+        finik_request_id="idempotent-request-123",
+    )
+    item = {
+        "id": "existing-item-123",
+        "requestId": attempt.finik_request_id,
+        "fixedAmount": 10,
+        "paymentCount": 1,
+        "transactionId": "transaction-123",
+        "account": {"id": "account-123"},
+        "requiredFields": [
+            {"fieldId": "paymentId", "value": str(attempt.id)},
+            {"fieldId": "finikRequestId", "value": attempt.finik_request_id},
+            {"fieldId": "shipmentId", "value": str(shipment.id)},
+        ],
+    }
+    response = Mock()
+    response.raise_for_status.return_value = None
+    response.json.return_value = {"data": {"createItem": item}}
+    mock_post.return_value = response
+
+    assert recover_finik_item_idempotently(attempt) == item
+    input_data = mock_post.call_args.kwargs["json"]["variables"]["input"]
+    assert input_data["requestId"] == attempt.finik_request_id
+    assert input_data["fixedAmount"] == 10
+    assert input_data["account"] == {"id": "account-123"}
+    assert input_data["maxAvailableQuantity"] == 1
 
 
 @pytest.mark.django_db

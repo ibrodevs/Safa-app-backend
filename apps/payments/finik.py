@@ -10,6 +10,11 @@ from apps.payments.models import AmanatPaymentAttempt, PaymentAttempt
 class FinikVerificationUnavailable(Exception):
     """Finik could not be reached or returned an unusable response."""
 
+    def __init__(self, code: str, provider_message: str = ""):
+        super().__init__(code)
+        self.code = code
+        self.provider_message = provider_message[:240]
+
 
 _GET_ITEM_QUERY = """
 query VerifyFinikTransaction($input: ServiceInput!) {
@@ -40,6 +45,20 @@ query FindFinikItem($input: ListServicesInput!) {
         requiredFields { fieldId value }
       }
     }
+  }
+}
+"""
+
+_CREATE_ITEM_QUERY = """
+mutation RecoverFinikItem($input: CreateItemInput!) {
+  createItem(input: $input) {
+    id
+    requestId
+    fixedAmount
+    paymentCount
+    transactionId
+    account { id }
+    requiredFields { fieldId value }
   }
 }
 """
@@ -149,14 +168,97 @@ def _finik_graphql(query: str, variables: dict[str, Any]) -> dict[str, Any]:
             code = "finik_graphql_schema_mismatch"
         else:
             code = "finik_graphql_error"
-        raise FinikVerificationUnavailable(code)
+        provider_message = " ".join(str(error.get("message") or "").split())
+        raise FinikVerificationUnavailable(code, provider_message)
     return payload
+
+
+def _required_fields_for_attempt(
+    attempt: PaymentAttempt | AmanatPaymentAttempt,
+) -> list[dict[str, Any]]:
+    values = {
+        "paymentId": str(attempt.id),
+        "finikRequestId": attempt.finik_request_id,
+    }
+    if isinstance(attempt, AmanatPaymentAttempt):
+        values.update(
+            {
+                "paymentKind": "amanat",
+                "donationId": str(attempt.donation_id),
+                "campaignId": str(attempt.donation.campaign_id),
+            }
+        )
+    else:
+        values["shipmentId"] = str(attempt.shipment_id)
+    return [
+        {
+            "fieldId": key,
+            "isHidden": True,
+            "value": value,
+            "label_ru": key,
+            "label_en": key,
+            "label_ky": key,
+        }
+        for key, value in values.items()
+    ]
+
+
+def recover_finik_item_idempotently(
+    attempt: PaymentAttempt | AmanatPaymentAttempt,
+) -> dict[str, Any] | None:
+    """Repeat the idempotent create request to recover its existing item ID."""
+
+    account_id = str(getattr(settings, "FINIK_ACCOUNT_ID", "") or "").strip()
+    callback_url = str(
+        getattr(settings, "FINIK_CALLBACK_URL", "") or ""
+    ).strip()
+    item_name = str(
+        getattr(settings, "FINIK_ITEM_NAME_EN", "Safa delivery payment")
+        or "Safa delivery payment"
+    ).strip()
+    if isinstance(attempt, AmanatPaymentAttempt):
+        description = f"Пожертвование Safa Amanat ({attempt.currency})"
+    else:
+        description = f"Заказ #{attempt.shipment_id} ({attempt.currency})"
+    payload = _finik_graphql(
+        _CREATE_ITEM_QUERY,
+        {
+            "input": {
+                "account": {"id": account_id},
+                "name_en": item_name,
+                "requestId": attempt.finik_request_id,
+                "fixedAmount": int(attempt.amount),
+                "description": description,
+                "callbackUrl": callback_url,
+                "maxAvailableQuantity": 1,
+                "visibilityType": "PRIVATE",
+                "status": "ENABLED",
+                "requiredFields": _required_fields_for_attempt(attempt),
+            }
+        },
+    )
+    item = (payload.get("data") or {}).get("createItem")
+    if not isinstance(item, dict):
+        return None
+    return (
+        item
+        if finik_item_matches_attempt(item, attempt, require_payment=False)
+        else None
+    )
 
 
 def find_finik_item_by_request_id(
     attempt: PaymentAttempt | AmanatPaymentAttempt,
 ) -> dict[str, Any] | None:
     """Recover an item when a callback and mobile item ID were lost."""
+
+    first_error = None
+    try:
+        recovered = recover_finik_item_idempotently(attempt)
+        if recovered:
+            return recovered
+    except FinikVerificationUnavailable as exc:
+        first_error = exc
 
     account_id = str(getattr(settings, "FINIK_ACCOUNT_ID", "") or "").strip()
     search_inputs = [
@@ -181,7 +283,7 @@ def find_finik_item_by_request_id(
             "filter": {"accountId": account_id},
         },
     ]
-    last_error = None
+    last_error = first_error
     had_successful_response = False
     for search_input in search_inputs:
         try:

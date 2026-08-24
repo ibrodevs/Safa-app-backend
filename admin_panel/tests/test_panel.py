@@ -227,7 +227,7 @@ class PanelWorkflowTests(TestCase):
             reverse("admin_panel:payment_detail", args=(payment.pk,))
         )
         self.assertContains(detail, "Проверить в Finik")
-        self.assertContains(detail, "window.setTimeout(check, 400)")
+        self.assertNotContains(detail, "window.setTimeout(check")
 
         response = self.client.post(
             reverse("admin_panel:payment_reconcile", args=(payment.pk,)),
