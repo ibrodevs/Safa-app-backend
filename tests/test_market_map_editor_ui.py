@@ -67,7 +67,7 @@ def test_container_size_can_be_reduced_in_both_admin_editors():
         assert 'data-container-size-step="width" data-delta="-0.5"' in template
         assert 'data-container-size-step="height" data-delta="-0.5"' in template
         assert 'min="0.2" max="100" step="0.1"' in template
-        assert "market_map_editor.js' %}?v=20260825-9" in template
+        assert "market_map_editor.js' %}?v=20260825-10" in template
 
     assert "resizeSelectedContainer('width', 0)" in javascript
     assert "resizeSelectedContainer('height', 0)" in javascript
@@ -273,8 +273,8 @@ def test_group_selection_and_move_logic():
     assert "rank === bestRank && distance < bestDistance" in javascript
     # Режим выбора: обычный клик набирает группу, Shift держать не нужно.
     assert "if (state.pickMode)" in javascript
-    assert "addGroupSelection(target);" in javascript
     assert "function addGroupSelection(id)" in javascript
+    assert "addGroupSelection(directContainer ? id" in javascript
     assert "function setPickMode(" in javascript
     assert "if (entering && state.selectedId)" in javascript
     assert "const selectedId = state.selectedId;" in javascript
@@ -286,6 +286,8 @@ def test_group_selection_and_move_logic():
     assert "addGroupSelection(item.feature.id);" in javascript
     assert "function moveEditingSelectionToGroup(id)" in javascript
     assert "if (item.feature.id === state.selectedId && !highlighted) return;" in javascript
+    assert "setOverlayHighlighted(item, true, main?.feature.id === id);" in javascript
+    assert "if (state.controlsBound) return;" in javascript
     # Выделение видно сразу и для старых контейнеров-точек, и в списке.
     assert "markerIcon(item.feature.properties, highlighted, fillColor, strokeColor)" in javascript
     assert "fillColor: highlighted ? fillColor : style.fillColor" in javascript

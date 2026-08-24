@@ -18,6 +18,7 @@
     groupSelection: new Set(),
     groupDrag: null,
     pickMode: false,
+    controlsBound: false,
   };
 
   // Выбранный контейнер должен резко отличаться от обычного красного. Раньше
@@ -1295,11 +1296,17 @@
   // Ctrl/Shift+клик оставлен как ускоритель для тех, кто уже привык.
   function handleFeatureClick(id, event) {
     const domEvent = event?.domEvent;
-    const target = featureAtLatLng(event?.latLng, id) || id;
     if (state.pickMode) {
-      addGroupSelection(target);
+      // Если событие пришло от самого контейнера, доверяем его точному ID и не
+      // запускаем повторный геометрический поиск. Так соседний полигон не может
+      // подменить первый клик. Поиск нужен только когда клик перехватил внешний
+      // слой — проход или район.
+      const clicked = state.items.get(id);
+      const directContainer = (clicked?.feature.properties || {}).kind === 'container';
+      addGroupSelection(directContainer ? id : (featureAtLatLng(event?.latLng, id) || id));
       return;
     }
+    const target = featureAtLatLng(event?.latLng, id) || id;
     if (domEvent && (domEvent.ctrlKey || domEvent.metaKey || domEvent.shiftKey)) {
       toggleGroupSelection(target);
       return;
@@ -1416,6 +1423,11 @@
     state.groupSelection.add(id);
     refreshGroupHighlight();
     const item = state.items.get(id);
+    // Последней операцией клика принудительно ставим групповой стиль именно на
+    // нажатый overlay. Даже если параллельная перерисовка списка/формы обновила
+    // общие стили, первый контейнер остаётся окрашенным уже в этом же событии.
+    const main = mainSelectionItem();
+    setOverlayHighlighted(item, true, main?.feature.id === id);
     const name = String((item.feature.properties || {}).name || id);
     setStatus(`Выбран «${name}» · всего: ${state.groupSelection.size}`, 'success');
   }
@@ -2694,6 +2706,11 @@
   }
 
   function bindControls() {
+    // Google Maps callback может быть вызван повторно при повторной загрузке
+    // API. Два набора обработчиков переключали pickMode дважды одним нажатием:
+    // визуально первый клик тогда становился обычным выбором без окраски.
+    if (state.controlsBound) return;
+    state.controlsBound = true;
     document.querySelectorAll('[data-map-tool]').forEach((button) => {
       button.addEventListener('click', () => setTool(button.dataset.mapTool, button.dataset.mapKind || null));
     });
@@ -2816,7 +2833,7 @@
 
   window.initMarketMapEditor = function initMarketMapEditor() {
     const canvas = byId('market-map-canvas');
-    if (!canvas || !window.google?.maps) return;
+    if (!canvas || !window.google?.maps || state.map) return;
     const initial = readJsonScript('market-map-initial-geojson', { type: 'FeatureCollection', features: [] });
     const context = readJsonScript('market-map-context-geojson', { type: 'FeatureCollection', features: [] });
     state.map = new google.maps.Map(canvas, {
