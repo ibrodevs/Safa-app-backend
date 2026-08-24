@@ -324,6 +324,13 @@
     });
     syncContainerSizeFields(item.feature.geometry.coordinates);
     updateFeatureLabel(item);
+    syncContainerResizeHandles(item);
+  }
+
+  function featureZIndex(properties, selected = false) {
+    const kind = properties.kind || 'district';
+    const config = KIND_CONFIG[kind] || KIND_CONFIG.district;
+    return Number(properties.z_index || config.zIndex || 1) + (selected ? 1 : 0);
   }
 
   function overlayStyle(properties, selected) {
@@ -359,9 +366,13 @@
         : Number(properties.fill_opacity ?? config.fillOpacity),
       icons,
       clickable: !properties.readonly,
-      editable: selected,
+      // Containers use four larger resize handles below. Native polygon
+      // vertices are too small and unreliable to drag on touch screens.
+      editable: selected && kind !== 'container',
       draggable: selected,
-      zIndex: selected ? 1000 : Number(properties.z_index || config.zIndex || 1),
+      // Keep the semantic layer order while selected. Raising a district to
+      // 1000 made its fill intercept clicks intended for nested objects.
+      zIndex: featureZIndex(properties, selected),
     };
   }
 
@@ -376,6 +387,10 @@
       strokeWeight: selected ? 3 : 2,
       scale: selected ? 9 : 7,
     };
+  }
+
+  function stopMapClickPropagation(event) {
+    if (event?.domEvent?.stopPropagation) event.domEvent.stopPropagation();
   }
 
   function containerLabelText(properties) {
@@ -476,12 +491,103 @@
       item.label = createFeatureLabel(item.feature);
     }
     item.label.setPosition(position);
-    item.label.setZIndex(Number(item.feature.properties.z_index || KIND_CONFIG.container.zIndex) + 1);
+    const selected = state.selectedId === item.feature.id;
+    item.label.setZIndex(featureZIndex(item.feature.properties, selected) + 1);
     item.label.setLabel({
       text,
       color: kind === 'container' ? '#111827' : (item.feature.properties.stroke_color || '#111827'),
       fontSize: kind === 'container' ? '12px' : '13px',
       fontWeight: '800',
+    });
+  }
+
+  function clearContainerResizeHandles(item) {
+    (item.resizeHandles || []).forEach((handle) => handle.setMap(null));
+    item.resizeHandles = [];
+  }
+
+  function containerCoordinatesFromCorner(item, cornerIndex, position) {
+    const ring = rectangleFromRing((item.feature.geometry.coordinates || [[]])[0]);
+    const opposite = ring[(cornerIndex + 2) % 4];
+    const original = ring[cornerIndex];
+    let lng = position.lng();
+    let lat = position.lat();
+    const centerLat = (lat + opposite[1]) / 2;
+    const minLng = metersToLng(0.2, centerLat);
+    const maxLng = metersToLng(100, centerLat);
+    const minLat = metersToLat(0.2);
+    const maxLat = metersToLat(100);
+    const lngDirection = original[0] >= opposite[0] ? 1 : -1;
+    const latDirection = original[1] >= opposite[1] ? 1 : -1;
+    const lngDistance = Math.max(minLng, Math.min(maxLng, Math.abs(lng - opposite[0])));
+    const latDistance = Math.max(minLat, Math.min(maxLat, Math.abs(lat - opposite[1])));
+    lng = opposite[0] + lngDirection * lngDistance;
+    lat = opposite[1] + latDirection * latDistance;
+    return [rectangleFromBounds({
+      left: Math.min(lng, opposite[0]),
+      right: Math.max(lng, opposite[0]),
+      bottom: Math.min(lat, opposite[1]),
+      top: Math.max(lat, opposite[1]),
+    })];
+  }
+
+  function syncContainerResizeHandles(item, activeIndex = -1) {
+    if (!item?.resizeHandles?.length) return;
+    const ring = rectangleFromRing((item.feature.geometry.coordinates || [[]])[0]);
+    item.resizeHandles.forEach((handle, index) => {
+      if (index === activeIndex) return;
+      handle.setPosition({ lat: ring[index][1], lng: ring[index][0] });
+    });
+  }
+
+  function showContainerResizeHandles(item) {
+    clearContainerResizeHandles(item);
+    if (
+      (item.feature.properties || {}).kind !== 'container'
+      || item.feature.geometry.type !== 'Polygon'
+    ) return;
+    const ring = rectangleFromRing((item.feature.geometry.coordinates || [[]])[0]);
+    item.resizeHandles = ring.slice(0, 4).map((point, cornerIndex) => {
+      const handle = new google.maps.Marker({
+        map: state.map,
+        position: { lat: point[1], lng: point[0] },
+        draggable: true,
+        clickable: true,
+        cursor: 'nwse-resize',
+        title: 'Потяните, чтобы изменить размер контейнера',
+        zIndex: featureZIndex(item.feature.properties, true) + 2,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: '#ffffff',
+          fillOpacity: 1,
+          strokeColor: item.feature.properties.stroke_color || '#dc2626',
+          strokeWeight: 3,
+          scale: 7,
+        },
+      });
+      handle.addListener('click', stopMapClickPropagation);
+      handle.addListener('drag', () => {
+        item.feature.geometry.coordinates = containerCoordinatesFromCorner(
+          item,
+          cornerIndex,
+          handle.getPosition(),
+        );
+        item.overlays.forEach((overlay) => {
+          if (!(overlay instanceof google.maps.Marker)) {
+            setPolygonCoordinates(overlay, item.feature.geometry.coordinates);
+          }
+        });
+        syncContainerSizeFields(item.feature.geometry.coordinates);
+        syncContainerResizeHandles(item, cornerIndex);
+        updateFeatureLabel(item);
+      });
+      handle.addListener('dragend', () => {
+        syncContainerResizeHandles(item);
+        root()?.dispatchEvent(new CustomEvent('market-map:dirty'));
+        setStatus('Размер контейнера изменён. Сохраните карту.', 'success');
+        recordHistory();
+      });
+      return handle;
     });
   }
 
@@ -503,6 +609,7 @@
       zIndex: Number(feature.properties.z_index || KIND_CONFIG.container.zIndex),
     });
     marker.addListener('click', (event) => {
+      stopMapClickPropagation(event);
       if (state.tool === 'draw') {
         mapClick(event);
         return;
@@ -524,6 +631,7 @@
       ...overlayStyle(feature.properties, false),
     });
     line.addListener('click', (event) => {
+      stopMapClickPropagation(event);
       if (state.tool === 'draw') {
         mapClick(event);
         return;
@@ -552,6 +660,7 @@
       ...overlayStyle(feature.properties, false),
     });
     polygon.addListener('click', (event) => {
+      stopMapClickPropagation(event);
       if ((feature.properties || {}).readonly) return;
       if (state.tool === 'draw') {
         mapClick(event);
@@ -594,7 +703,7 @@
   function addFeature(rawFeature, { select = false } = {}) {
     const feature = normalizeFeature(rawFeature);
     if (state.items.has(feature.id)) removeFeature(feature.id);
-    const item = { feature, overlays: buildOverlays(feature), label: null };
+    const item = { feature, overlays: buildOverlays(feature), label: null, resizeHandles: [] };
     state.items.set(feature.id, item);
     updateFeatureLabel(item);
     if (select) selectFeature(feature.id);
@@ -656,6 +765,7 @@
     state.items.forEach((item) => {
       item.overlays.forEach((overlay) => overlay.setMap(null));
       if (item.label) item.label.setMap(null);
+      clearContainerResizeHandles(item);
     });
     state.items.clear();
     (entry.snapshot.features || []).forEach((feature) => addFeature(feature));
@@ -696,7 +806,7 @@
       if (overlay instanceof google.maps.Marker) {
         overlay.setDraggable(selected);
         overlay.setIcon(markerIcon(item.feature.properties, selected));
-        overlay.setZIndex(selected ? 1000 : Number(item.feature.properties.z_index || KIND_CONFIG.container.zIndex));
+        overlay.setZIndex(featureZIndex(item.feature.properties, selected));
         overlay.setAnimation(selected ? google.maps.Animation.BOUNCE : null);
         if (selected) window.setTimeout(() => overlay.setAnimation(null), 500);
       } else {
@@ -704,8 +814,10 @@
       }
     });
     if (item.label) {
-      item.label.setZIndex(selected ? 1001 : Number(item.feature.properties.z_index || KIND_CONFIG.container.zIndex) + 1);
+      item.label.setZIndex(featureZIndex(item.feature.properties, selected) + 1);
     }
+    if (selected) showContainerResizeHandles(item);
+    else clearContainerResizeHandles(item);
   }
 
   function selectFeature(id) {
@@ -726,6 +838,9 @@
     const item = state.items.get(state.selectedId);
     setOverlaySelected(item, true);
     populateForm(item.feature);
+    if ((item.feature.properties || {}).kind === 'container') {
+      setStatus('Тяните белые точки по углам, чтобы визуально изменить размер контейнера.', 'success');
+    }
     refreshList();
   }
 
@@ -734,6 +849,7 @@
     if (!item) return;
     item.overlays.forEach((overlay) => overlay.setMap(null));
     if (item.label) item.label.setMap(null);
+    clearContainerResizeHandles(item);
     state.items.delete(id);
     if (state.selectedId === id) state.selectedId = null;
     refreshList();
@@ -861,6 +977,7 @@
         overlay.setOptions(overlayStyle(properties, true));
       }
     });
+    syncContainerResizeHandles(item);
     updateFeatureLabel(item);
     refreshList();
     setStatus('Свойства объекта применены', 'success');
@@ -1029,6 +1146,7 @@
     item.overlays.forEach((overlay) => {
       if (!(overlay instanceof google.maps.Marker)) setPolygonCoordinates(overlay, serialized.geometry.coordinates);
     });
+    syncContainerResizeHandles(item);
     updateFeatureLabel(item);
     root()?.dispatchEvent(new CustomEvent('market-map:dirty'));
     setStatus('Размер контейнера изменён', 'success');
