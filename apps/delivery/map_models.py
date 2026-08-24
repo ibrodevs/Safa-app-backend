@@ -153,7 +153,8 @@ class MarketMapRevision(models.Model):
         if len(boundaries) != 1:
             raise ValidationError("Перед публикацией нарисуйте одну границу базара")
 
-        locked._sync_containers()
+        passages_by_feature = locked._sync_passages()
+        locked._sync_containers(passages_by_feature=passages_by_feature)
         MarketMapRevision.objects.filter(
             bazar=locked.bazar,
             status=self.Status.PUBLISHED,
@@ -167,7 +168,38 @@ class MarketMapRevision(models.Model):
         )
         return locked
 
-    def _sync_containers(self) -> None:
+    def _sync_passages(self) -> dict[str, Passage]:
+        passages_by_feature: dict[str, Passage] = {}
+        for feature in self.geojson.get("features", []):
+            properties = feature.get("properties") or {}
+            if properties.get("kind") != "passage":
+                continue
+
+            number = str(properties.get("number") or properties.get("name") or "").strip()
+            if not number:
+                raise ValidationError("У каждого прохода должно быть название или номер")
+
+            passage = None
+            passage_id = properties.get("passage_id")
+            if passage_id:
+                passage = Passage.objects.filter(pk=passage_id, bazar=self.bazar).first()
+            if passage is None:
+                passage, _ = Passage.objects.get_or_create(bazar=self.bazar, number=number)
+            elif passage.number != number:
+                if Passage.objects.filter(bazar=self.bazar, number=number).exclude(pk=passage.pk).exists():
+                    raise ValidationError(f"Проход «{number}» уже существует в этом базаре")
+                passage.number = number
+                passage.save(update_fields=("number",))
+
+            properties["passage_id"] = passage.id
+            properties["number"] = passage.number
+            properties["name"] = passage.number
+            passages_by_feature[str(feature.get("id") or "")] = passage
+
+        return passages_by_feature
+
+    def _sync_containers(self, *, passages_by_feature: dict[str, Passage] | None = None) -> None:
+        passages_by_feature = passages_by_feature or {}
         for feature in self.geojson.get("features", []):
             properties = feature.get("properties") or {}
             if properties.get("kind") != "container":
@@ -189,6 +221,8 @@ class MarketMapRevision(models.Model):
                 passage_id = properties.get("passage_id")
                 number = str(properties.get("number") or properties.get("name") or "").strip()
                 passage = Passage.objects.filter(pk=passage_id, bazar=self.bazar).first() if passage_id else None
+                if passage is None and properties.get("passage_feature_id"):
+                    passage = passages_by_feature.get(str(properties["passage_feature_id"]))
                 if passage is None or not number:
                     raise ValidationError(
                         f"Для нового контейнера '{properties.get('name', '')}' выберите проход и номер"
@@ -214,6 +248,8 @@ class MarketMapRevision(models.Model):
 
             properties["container_id"] = container.id
             properties["passage_id"] = container.passage_id
+            properties.pop("passage_feature_id", None)
+            properties.pop("passage_name", None)
             properties["number"] = container.number
             properties["name"] = properties.get("name") or container.display_title
 

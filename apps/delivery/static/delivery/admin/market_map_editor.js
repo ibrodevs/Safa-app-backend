@@ -107,6 +107,32 @@
     }
   }
 
+  function syncPassageOptions(preferredValue = null) {
+    const select = byId('market-feature-passage');
+    if (!select) return;
+    const selected = preferredValue === null ? select.value : String(preferredValue || '');
+    const databasePassages = readJsonScript('market-map-passages', []);
+    const options = new Map();
+    databasePassages.forEach((passage) => {
+      options.set(String(passage.id), String(passage.number));
+    });
+    state.items.forEach((item) => {
+      const properties = item.feature.properties || {};
+      if (properties.kind !== 'passage') return;
+      const name = String(properties.number || properties.name || 'Новый проход').trim();
+      const matchingDatabasePassage = databasePassages.find((passage) => String(passage.number) === name);
+      const value = properties.passage_id
+        ? String(properties.passage_id)
+        : matchingDatabasePassage
+          ? String(matchingDatabasePassage.id)
+          : `feature:${item.feature.id}`;
+      options.set(value, properties.passage_id || matchingDatabasePassage ? name : `${name} · черновик`);
+    });
+    select.replaceChildren(new Option('Выберите проход', ''));
+    options.forEach((label, value) => select.add(new Option(label, value)));
+    select.value = options.has(selected) ? selected : '';
+  }
+
   function setStatus(message, type = '') {
     const node = byId('market-map-status');
     if (!node) return;
@@ -281,8 +307,8 @@
   function syncContainerSizeFields(coordinates) {
     const bounds = rectangleBounds(rectangleFromRing((coordinates || [[]])[0]));
     const centerLat = (bounds.top + bounds.bottom) / 2;
-    byId('market-feature-width-m').value = Math.max(0.5, Math.round((bounds.right - bounds.left) * 111320 * Math.cos(centerLat * Math.PI / 180) * 10) / 10);
-    byId('market-feature-height-m').value = Math.max(0.5, Math.round((bounds.top - bounds.bottom) * 111320 * 10) / 10);
+    byId('market-feature-width-m').value = Math.max(0.2, Math.round((bounds.right - bounds.left) * 111320 * Math.cos(centerLat * Math.PI / 180) * 10) / 10);
+    byId('market-feature-height-m').value = Math.max(0.2, Math.round((bounds.top - bounds.bottom) * 111320 * 10) / 10);
   }
 
   function normalizeContainerItem(item) {
@@ -723,7 +749,10 @@
     byId('market-feature-kind').value = properties.kind || 'district';
     byId('market-feature-name').value = properties.name || '';
     byId('market-feature-number').value = properties.number || '';
-    byId('market-feature-passage').value = properties.passage_id ? String(properties.passage_id) : '';
+    const passageValue = properties.passage_feature_id
+      ? `feature:${properties.passage_feature_id}`
+      : properties.passage_id ? String(properties.passage_id) : '';
+    syncPassageOptions(passageValue);
     byId('market-feature-container').value = properties.container_id ? String(properties.container_id) : '';
     byId('market-feature-title').value = properties.title || '';
     byId('market-feature-min-zoom').value = Number(properties.min_zoom ?? 14);
@@ -731,8 +760,8 @@
     byId('market-feature-stroke').value = String(properties.stroke_color || '#e47f26').slice(0, 7);
     byId('market-feature-fill').value = String(properties.fill_color || '#ff8656').slice(0, 7);
     if (containerBounds) {
-      byId('market-feature-width-m').value = Math.max(0.5, Math.round((containerBounds.right - containerBounds.left) * 111320 * Math.cos(centerLat * Math.PI / 180) * 10) / 10);
-      byId('market-feature-height-m').value = Math.max(0.5, Math.round((containerBounds.top - containerBounds.bottom) * 111320 * 10) / 10);
+      byId('market-feature-width-m').value = Math.max(0.2, Math.round((containerBounds.right - containerBounds.left) * 111320 * Math.cos(centerLat * Math.PI / 180) * 10) / 10);
+      byId('market-feature-height-m').value = Math.max(0.2, Math.round((containerBounds.top - containerBounds.bottom) * 111320 * 10) / 10);
     }
     updatePropertyVisibility(properties.kind || 'district');
   }
@@ -784,11 +813,20 @@
     properties.line_pattern = KIND_CONFIG[kind]?.linePattern || properties.line_pattern || 'solid';
     if (kind === 'container') {
       const serialized = serializeItem(item);
-      const widthM = Math.max(0.5, Number(byId('market-feature-width-m').value || 4));
-      const heightM = Math.max(0.5, Number(byId('market-feature-height-m').value || 2.5));
+      const widthM = Math.max(0.2, Number(byId('market-feature-width-m').value || 4));
+      const heightM = Math.max(0.2, Number(byId('market-feature-height-m').value || 2.5));
       serialized.geometry.coordinates = resizeContainerCoordinates(serialized.geometry.coordinates, widthM, heightM);
       item.feature.geometry.coordinates = serialized.geometry.coordinates;
-      properties.passage_id = Number(byId('market-feature-passage').value || 0) || null;
+      const passageValue = byId('market-feature-passage').value;
+      if (passageValue.startsWith('feature:')) {
+        properties.passage_id = null;
+        properties.passage_feature_id = passageValue.slice('feature:'.length);
+        properties.passage_name = state.items.get(properties.passage_feature_id)?.feature.properties.name || '';
+      } else {
+        properties.passage_id = Number(passageValue || 0) || null;
+        delete properties.passage_feature_id;
+        delete properties.passage_name;
+      }
       properties.container_id = Number(byId('market-feature-container').value || 0) || null;
       properties.title = byId('market-feature-title').value.trim();
       const selectedOption = byId('market-feature-container').selectedOptions[0];
@@ -800,10 +838,11 @@
         byId('market-feature-passage').value = String(properties.passage_id);
       }
     } else {
-      delete properties.passage_id;
+      if (kind !== 'passage') delete properties.passage_id;
+      if (kind === 'passage') properties.number = name;
       delete properties.container_id;
       delete properties.title;
-      delete properties.number;
+      if (kind !== 'passage') delete properties.number;
     }
     item.overlays.forEach((overlay) => {
       if (overlay instanceof google.maps.Marker) {
@@ -922,6 +961,7 @@
   }
 
   function refreshList() {
+    syncPassageOptions();
     const list = byId('market-feature-list');
     if (!list) return;
     list.innerHTML = '';
@@ -965,6 +1005,32 @@
       empty.textContent = focus ? `В разделе «${featureKindLabel(focus)}» объектов пока нет.` : 'Объектов пока нет.';
       list.append(empty);
     }
+  }
+
+  function resizeSelectedContainer(dimension, delta) {
+    const item = state.items.get(state.selectedId);
+    if (!item || (item.feature.properties || {}).kind !== 'container') {
+      setStatus('Сначала выберите контейнер', 'error');
+      return;
+    }
+    const widthInput = byId('market-feature-width-m');
+    const heightInput = byId('market-feature-height-m');
+    const input = dimension === 'height' ? heightInput : widthInput;
+    input.value = Math.max(0.2, Math.min(100, Number(input.value || 0) + Number(delta))).toFixed(1);
+    const serialized = serializeItem(item);
+    serialized.geometry.coordinates = resizeContainerCoordinates(
+      serialized.geometry.coordinates,
+      Math.max(0.2, Number(widthInput.value || 4)),
+      Math.max(0.2, Number(heightInput.value || 2.5)),
+    );
+    item.feature.geometry.coordinates = serialized.geometry.coordinates;
+    item.overlays.forEach((overlay) => {
+      if (!(overlay instanceof google.maps.Marker)) setPolygonCoordinates(overlay, serialized.geometry.coordinates);
+    });
+    updateFeatureLabel(item);
+    root()?.dispatchEvent(new CustomEvent('market-map:dirty'));
+    setStatus('Размер контейнера изменён', 'success');
+    recordHistory();
   }
 
   function clearPreview() {
@@ -1280,6 +1346,12 @@
     byId('market-map-undo')?.addEventListener('click', undoHistory);
     byId('market-map-redo')?.addEventListener('click', redoHistory);
     byId('market-feature-duplicate')?.addEventListener('click', duplicateSelectedFeature);
+    document.querySelectorAll('[data-container-size-step]').forEach((button) => {
+      button.addEventListener('click', () => resizeSelectedContainer(
+        button.dataset.containerSizeStep,
+        Number(button.dataset.delta || 0),
+      ));
+    });
     byId('market-feature-container')?.addEventListener('change', (event) => {
       const option = event.target.selectedOptions[0];
       if (!option?.value) return;

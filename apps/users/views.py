@@ -59,16 +59,12 @@ class DebugRequestCodeView(generics.GenericAPIView):
         if is_static_otp_phone(phone):
             code = static_otp_for(phone)
             detail = "sent_debug_static"
-            # Для статик-номеров всегда гарантируем верификацию
+            # Статический OTP подтверждает только телефон. Решение по KYC
+            # специалиста всегда принимает администратор.
             user.is_verify = True
             if not user.first_name:
                 user.first_name = "Тестовый Юзер"
             user.save()
-            
-            CourierKYC.objects.update_or_create(
-                user=user, 
-                defaults={"status": CourierKYC.Status.APPROVED}
-            )
             UserProfile.objects.get_or_create(user=user)
         else:
             code = generate_otp()

@@ -8,5 +8,10 @@ router.register("notifications", NotificationViewSet, basename="notifications")
 urlpatterns = [
     path("", include(router.urls)),
     path("register/", FCMRegisterView.as_view(), name="fcm-register"),
+    path(
+        "register-kyc/",
+        PendingKYCFCMRegisterView.as_view(),
+        name="fcm-register-kyc",
+    ),
     path("unregister/", FCMUnregisterView.as_view(), name="fcm-unregister"),
 ]

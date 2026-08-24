@@ -299,6 +299,43 @@ def test_new_container_can_be_created_from_published_feature():
 
 
 @pytest.mark.django_db
+def test_new_container_can_reference_a_new_passage_from_same_draft():
+    user = User.objects.create_user(
+        phone_number="996700777099",
+        password="pass12345",
+        first_name="Admin",
+        is_verify=True,
+        is_staff=True,
+    )
+    bazar = Bazar.objects.create(name="Орто-Сай")
+    passage = line_feature("passage", "Новый проход 12")
+    passage["id"] = "passage-draft-12"
+    container = container_feature(bazar.id, 0, 999999)
+    container["id"] = "container-draft-12"
+    container["properties"].pop("container_id")
+    container["properties"].pop("passage_id")
+    container["properties"]["passage_feature_id"] = passage["id"]
+    container["properties"]["number"] = "12-A"
+
+    revision = MarketMapRevision.objects.create(
+        bazar=bazar,
+        version=1,
+        geojson={
+            "type": "FeatureCollection",
+            "features": [polygon_feature(bazar.id), passage, container],
+        },
+        created_by=user,
+    )
+    published = revision.publish(user=user)
+
+    created_passage = Passage.objects.get(bazar=bazar, number="Новый проход 12")
+    created_container = Container.objects.get(passage=created_passage, number="12-A")
+    assert created_container.is_active
+    assert published.geojson["features"][2]["properties"]["passage_id"] == created_passage.id
+    assert "passage_feature_id" not in published.geojson["features"][2]["properties"]
+
+
+@pytest.mark.django_db
 def test_rectangular_container_syncs_center_coordinates():
     user = User.objects.create_user(
         phone_number="996700777003",

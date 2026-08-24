@@ -34,4 +34,8 @@ def set_kyc_status(
     else:
         user.is_active = False
     user.save(update_fields=["is_active", "is_verify"])
+    if status != CourierKYC.Status.PENDING:
+        from apps.notification.events import notify_kyc_status
+
+        transaction.on_commit(lambda: notify_kyc_status(locked))
     return locked

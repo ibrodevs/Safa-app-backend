@@ -64,13 +64,6 @@ class RegisterSerializer(serializers.ModelSerializer):
         role = attrs.get("role", User.Roles.CLIENT)
         if role == User.Roles.CARRIER:
             attrs["specialist_type"] = attrs.get("specialist_type") or User.SpecialistType.DELIVERY
-            from apps.users.utlis import is_static_otp_phone
-            phone = attrs.get("phone_number")
-            
-            # Если это тестовый номер, разрешаем регистрацию без фото паспорта
-            if is_static_otp_phone(phone):
-                return attrs
-
             if not attrs.get("id_front") or not attrs.get("id_back"):
                 raise serializers.ValidationError(
                     {"non_field_errors": ["Для перевозчика загрузите лицевую и обратную сторону документа."]}
@@ -89,11 +82,11 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         user = User(**validated_data)
         user.set_password(password)
-            
+
         from apps.users.utlis import is_static_otp_phone
         if is_static_otp_phone(user.phone_number):
             user.is_verify = True
-        elif user.role == User.Roles.CARRIER:
+        if user.role == User.Roles.CARRIER:
             user.is_active = False
         
         try:
@@ -115,15 +108,12 @@ class RegisterSerializer(serializers.ModelSerializer):
                 kyc.id_back = id_back
                 changed.append("id_back")
 
-            from apps.users.utlis import is_static_otp_phone
-            if is_static_otp_phone(user.phone_number):
-                kyc.status = CourierKYC.Status.APPROVED
-                user.is_active = True
-                user.save(update_fields=["is_active"])
-                changed.append("status")
-            elif changed or kyc.status != CourierKYC.Status.PENDING:
+            if kyc.status != CourierKYC.Status.PENDING:
                 kyc.status = CourierKYC.Status.PENDING
                 changed.append("status")
+            if kyc.checked_at is not None:
+                kyc.checked_at = None
+                changed.append("checked_at")
 
             if changed:
                 kyc.save(update_fields=changed)

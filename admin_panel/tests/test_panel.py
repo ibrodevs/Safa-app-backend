@@ -4,8 +4,9 @@ from unittest.mock import patch
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from apps.delivery.models import AmanatCampaign, AmanatCategory, Bazar, Shipment
+from apps.delivery.models import AmanatCampaign, AmanatCategory, Bazar, Container, DeliveryDistrict, Passage, Shipment
 from apps.payments.models import PaymentAttempt
+from apps.notification.models import Notification
 from apps.users.models import CourierKYC, User
 
 
@@ -44,6 +45,10 @@ class PanelAccessTests(TestCase):
             reverse("admin_panel:couriers"),
             reverse("admin_panel:kyc_list"),
             reverse("admin_panel:map_list"),
+            reverse("admin_panel:bazars"),
+            reverse("admin_panel:districts"),
+            reverse("admin_panel:passages"),
+            reverse("admin_panel:containers"),
             reverse("admin_panel:tariffs"),
             reverse("admin_panel:finance"),
             reverse("admin_panel:amanat"),
@@ -82,16 +87,22 @@ class PanelWorkflowTests(TestCase):
         return Shipment.objects.create(client=client, title="Документы")
 
     def test_kyc_approval_uses_shared_access_rules(self):
-        response = self.client.post(
-            reverse("admin_panel:kyc_approve", args=(self.kyc.pk,)),
-            {"comment": "Документы проверены"},
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                reverse("admin_panel:kyc_approve", args=(self.kyc.pk,)),
+                {"comment": "Документы проверены"},
+            )
         self.assertEqual(response.status_code, 302)
         self.carrier.refresh_from_db()
         self.kyc.refresh_from_db()
         self.assertEqual(self.kyc.status, CourierKYC.Status.APPROVED)
         self.assertTrue(self.carrier.is_active)
         self.assertTrue(self.carrier.is_verify)
+        notification = Notification.objects.get(
+            user=self.carrier,
+            type="kyc_status",
+        )
+        self.assertEqual(notification.data["status"], CourierKYC.Status.APPROVED)
 
     def test_mutating_endpoints_reject_get(self):
         self.assertEqual(
@@ -143,6 +154,44 @@ class PanelWorkflowTests(TestCase):
         self.assertContains(map_response, 'id="market-map-undo"')
         self.assertContains(map_response, "Ctrl+Z")
         self.assertContains(map_response, "Что нужно создать?")
+        self.assertNotContains(map_response, 'id="market-feature-list"')
+        self.assertContains(map_response, 'data-container-size-step="width"')
+
+    def test_staff_can_manage_delivery_catalogs(self):
+        district_response = self.client.post(
+            reverse("admin_panel:district_create"),
+            {"name": "Ленинский", "per_km_price": "15.00", "is_active": "on"},
+        )
+        self.assertEqual(district_response.status_code, 302)
+        district = DeliveryDistrict.objects.get(name="Ленинский")
+
+        bazar_response = self.client.post(
+            reverse("admin_panel:catalog_bazar_create"),
+            {"name": "Ошский", "district_tariff": district.pk, "fixed_price": "100"},
+        )
+        self.assertEqual(bazar_response.status_code, 302)
+        bazar = Bazar.objects.get(name="Ошский")
+
+        passage_response = self.client.post(
+            reverse("admin_panel:passage_create"),
+            {"bazar": bazar.pk, "number": "7"},
+        )
+        self.assertEqual(passage_response.status_code, 302)
+        passage = Passage.objects.get(bazar=bazar, number="7")
+
+        container_response = self.client.post(
+            reverse("admin_panel:container_create"),
+            {
+                "passage": passage.pk,
+                "number": "701",
+                "title": "Тест",
+                "lat": "42.870000",
+                "lon": "74.610000",
+                "is_active": "on",
+            },
+        )
+        self.assertEqual(container_response.status_code, 302)
+        self.assertTrue(Container.objects.filter(passage=passage, number="701").exists())
 
     def test_awaiting_payment_order_detail_auto_refreshes_until_paid(self):
         shipment = self._shipment()

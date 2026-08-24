@@ -7,6 +7,7 @@ from rest_framework.test import APIClient
 
 from apps.users.enrollment import make_kyc_enrollment_token
 from apps.users.models import CourierKYC, User
+from apps.notification.models import FCMToken
 
 
 @pytest.mark.django_db
@@ -60,6 +61,36 @@ def test_carrier_wait_requires_signed_enrollment_token():
     assert valid.status_code == 200
     assert valid.data["access"]
     assert valid.data["refresh"]
+
+
+@pytest.mark.django_db
+def test_pending_carrier_can_register_device_for_approval_notification():
+    carrier = User.objects.create_user(
+        phone_number="996700930004",
+        password="secret123",
+        first_name="Pending Carrier",
+        role=User.Roles.CARRIER,
+        is_verify=True,
+        is_active=False,
+    )
+    CourierKYC.objects.get_or_create(user=carrier)
+
+    response = APIClient().post(
+        "/api/fcm/register-kyc/",
+        {
+            "token": "pending-carrier-device-token",
+            "platform": "android",
+            "kyc_token": make_kyc_enrollment_token(carrier),
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert FCMToken.objects.filter(
+        user=carrier,
+        token="pending-carrier-device-token",
+        is_active=True,
+    ).exists()
 
 
 @pytest.mark.django_db

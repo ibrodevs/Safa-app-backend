@@ -12,7 +12,11 @@ from drf_spectacular.utils import (
 )
 
 from .models import FCMToken, Notification
-from .serializers import FCMTokenSerializer, NotificationSerializer
+from .serializers import (
+    FCMTokenSerializer,
+    NotificationSerializer,
+    PendingKYCFCMTokenSerializer,
+)
 
 
 @extend_schema(
@@ -28,6 +32,14 @@ from .serializers import FCMTokenSerializer, NotificationSerializer
 class FCMRegisterView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = FCMTokenSerializer
+
+
+class PendingKYCFCMRegisterView(generics.CreateAPIView):
+    """Register a device while a specialist is waiting for admin approval."""
+
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+    serializer_class = PendingKYCFCMTokenSerializer
 
 
 @extend_schema(

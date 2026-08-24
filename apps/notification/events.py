@@ -7,7 +7,7 @@ from typing import Any, Iterable
 from django.utils import timezone
 
 from apps.delivery.specialists import shipment_matches_specialist
-from apps.users.models import User
+from apps.users.models import CourierKYC, User
 from .fcm_client import send_data_message
 from .models import FCMToken, Notification
 
@@ -88,6 +88,34 @@ def _send_to_user(
                 is_active=False,
             )
     return delivered
+
+
+def notify_kyc_status(kyc: CourierKYC) -> None:
+    approved = kyc.status == CourierKYC.Status.APPROVED
+    title = "Профиль специалиста одобрен" if approved else "Заявка отклонена"
+    body = (
+        "Администратор подтвердил профиль. Нажмите, чтобы войти в приложение."
+        if approved
+        else (kyc.comment or "Администратор отклонил заявку специалиста.")
+    )
+    data = {
+        **_base_data(
+            app="carrier",
+            type_="kyc_status",
+            title=title,
+            body=body,
+            channel="system",
+            deep_link="app://carrier/kyc",
+        ),
+        "status": kyc.status,
+        "comment": kyc.comment or "",
+    }
+    _send_to_user(
+        kyc.user_id,
+        data,
+        ttl="86400s",
+        collapse_key=f"kyc_status_{kyc.user_id}",
+    )
 
 
 def notify_shipment_offer_for_carrier(shipment) -> None:

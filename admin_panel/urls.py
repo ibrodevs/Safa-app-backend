@@ -1,6 +1,6 @@
 from django.urls import path
 
-from admin_panel.views import amanat, auth, dashboard, finance, kyc, map, orders, search, settings, tariffs, users
+from admin_panel.views import amanat, auth, catalog, dashboard, finance, kyc, map, orders, search, settings, tariffs, users
 
 app_name = "admin_panel"
 
@@ -33,6 +33,22 @@ urlpatterns = [
     path("map/<int:pk>/settings/", map.bazar_form, name="bazar_edit"),
     path("map/<int:pk>/save/", map.map_save, name="map_save"),
     path("map/<int:pk>/publish/", map.map_publish, name="map_publish"),
+    path("bazars/", catalog.bazar_list, name="bazars"),
+    path("bazars/new/", catalog.bazar_form, name="catalog_bazar_create"),
+    path("bazars/<int:pk>/edit/", catalog.bazar_form, name="catalog_bazar_edit"),
+    path("bazars/<int:pk>/delete/", catalog.bazar_delete, name="catalog_bazar_delete"),
+    path("districts/", catalog.district_list, name="districts"),
+    path("districts/new/", catalog.district_form, name="district_create"),
+    path("districts/<int:pk>/edit/", catalog.district_form, name="district_edit"),
+    path("districts/<int:pk>/delete/", catalog.district_delete, name="district_delete"),
+    path("passages/", catalog.passage_list, name="passages"),
+    path("passages/new/", catalog.passage_form, name="passage_create"),
+    path("passages/<int:pk>/edit/", catalog.passage_form, name="passage_edit"),
+    path("passages/<int:pk>/delete/", catalog.passage_delete, name="passage_delete"),
+    path("containers/", catalog.container_list, name="containers"),
+    path("containers/new/", catalog.container_form, name="container_create"),
+    path("containers/<int:pk>/edit/", catalog.container_form, name="container_edit"),
+    path("containers/<int:pk>/delete/", catalog.container_delete, name="container_delete"),
     path("tariffs/", tariffs.tariff_list, name="tariffs"),
     path("tariffs/global/save/", tariffs.global_tariff_save, name="global_tariff_save"),
     path("tariffs/district/new/", tariffs.district_tariff_save, name="district_tariff_create"),
