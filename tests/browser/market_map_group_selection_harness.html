@@ -168,7 +168,10 @@
       }};
     })();
   </script>
-  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v2.js"></script>
+  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v3.js"></script>
+  <!-- Намеренно загружаем второй раз: singleton обязан не дать повесить
+       дублирующий обработчик на кнопку группировки. -->
+  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v3.js"></script>
   <script>window.initMarketMapEditor();</script>
 </body>
 </html>

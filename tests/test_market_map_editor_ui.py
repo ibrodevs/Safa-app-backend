@@ -6,7 +6,7 @@ TEMPLATE = ROOT / "apps/delivery/templates/admin/delivery/marketmaprevision/map_
 CSS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor.css"
 COMPACT_CSS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor_compact.css"
 UI_JS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor_ui.js"
-EDITOR_JS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor_selection_v2.js"
+EDITOR_JS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor_selection_v3.js"
 
 
 def test_map_editor_uses_compact_creation_controls():
@@ -67,7 +67,7 @@ def test_container_size_can_be_reduced_in_both_admin_editors():
         assert 'data-container-size-step="width" data-delta="-0.5"' in template
         assert 'data-container-size-step="height" data-delta="-0.5"' in template
         assert 'min="0.2" max="100" step="0.1"' in template
-        assert "market_map_editor_selection_v2.js' %}" in template
+        assert "market_map_editor_selection_v3.js' %}" in template
 
     assert "resizeSelectedContainer('width', 0)" in javascript
     assert "resizeSelectedContainer('height', 0)" in javascript
@@ -288,6 +288,8 @@ def test_group_selection_and_move_logic():
     assert "if (item.feature.id === state.selectedId && !highlighted) return;" in javascript
     assert "setOverlayHighlighted(item, true, main?.feature.id === id);" in javascript
     assert "if (state.controlsBound) return;" in javascript
+    assert "if (window.__safaMarketMapEditorLoaded) return;" in javascript
+    assert "button.dataset.groupPickHandledAt = String(now);" in javascript
     # Выделение видно сразу и для старых контейнеров-точек, и в списке.
     assert "markerIcon(item.feature.properties, highlighted, fillColor, strokeColor)" in javascript
     assert "fillColor: highlighted ? fillColor : style.fillColor" in javascript

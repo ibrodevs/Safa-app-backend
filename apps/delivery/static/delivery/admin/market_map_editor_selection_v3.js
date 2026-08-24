@@ -1,6 +1,12 @@
 (() => {
   'use strict';
 
+  // Жёсткий singleton на уровне страницы. Если скрипт или Google callback
+  // подключится повторно, второй экземпляр не зарегистрирует ещё один набор
+  // обработчиков и один клик не сможет дважды переключить режим группировки.
+  if (window.__safaMarketMapEditorLoaded) return;
+  window.__safaMarketMapEditorLoaded = true;
+
   const state = {
     map: null,
     tool: 'select',
@@ -2731,7 +2737,17 @@
     byId('market-map-redo')?.addEventListener('click', redoHistory);
     byId('market-feature-duplicate')?.addEventListener('click', duplicateSelectedFeature);
     byId('market-feature-color-all')?.addEventListener('click', applyContainerColorToAll);
-    byId('market-group-pick')?.addEventListener('click', () => setPickMode(!state.pickMode));
+    byId('market-group-pick')?.addEventListener('click', (event) => {
+      const button = event.currentTarget;
+      const now = Date.now();
+      const lastHandledAt = Number(button.dataset.groupPickHandledAt || 0);
+      // Один физический клик может прийти повторно от Google Maps/Jazzmin.
+      // Первый обработчик ставит отметку прямо на DOM-кнопку, общую даже для
+      // случайно продублированных экземпляров скрипта.
+      if (now - lastHandledAt < 300) return;
+      button.dataset.groupPickHandledAt = String(now);
+      setPickMode(!state.pickMode);
+    });
     byId('market-group-create')?.addEventListener('click', groupSelectedFeatures);
     byId('market-group-duplicate')?.addEventListener('click', duplicateGroupSelection);
     byId('market-group-ungroup')?.addEventListener('click', ungroupSelectedFeatures);
