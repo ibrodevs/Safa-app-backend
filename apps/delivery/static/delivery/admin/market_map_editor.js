@@ -1310,9 +1310,15 @@
     // старое одиночное выделение и его resize-маркеры, чтобы первый же клик
     // получил групповую окраску и ничто не перехватывало соседний контейнер.
     if (entering && state.selectedId) {
-      const selected = state.items.get(state.selectedId);
+      const selectedId = state.selectedId;
+      const selected = state.items.get(selectedId);
       if (selected) setOverlaySelected(selected, false);
       state.selectedId = null;
+      // Объект, выбранный перед нажатием «Выбрать элементы», и есть первый
+      // участник будущей группы. Раньше мы только снимали его resize-маркеры,
+      // но забывали перенести в groupSelection — поэтому первый контейнер не
+      // окрашивался, а видимое выделение начиналось лишь со второго.
+      if (selected) state.groupSelection.add(selectedId);
       updatePropertyVisibility(null);
     }
     state.pickMode = entering;

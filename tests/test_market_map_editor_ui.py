@@ -67,7 +67,7 @@ def test_container_size_can_be_reduced_in_both_admin_editors():
         assert 'data-container-size-step="width" data-delta="-0.5"' in template
         assert 'data-container-size-step="height" data-delta="-0.5"' in template
         assert 'min="0.2" max="100" step="0.1"' in template
-        assert "market_map_editor.js' %}?v=20260825-6" in template
+        assert "market_map_editor.js' %}?v=20260825-7" in template
 
     assert "resizeSelectedContainer('width', 0)" in javascript
     assert "resizeSelectedContainer('height', 0)" in javascript
@@ -277,7 +277,9 @@ def test_group_selection_and_move_logic():
     assert "function addGroupSelection(id)" in javascript
     assert "function setPickMode(" in javascript
     assert "if (entering && state.selectedId)" in javascript
+    assert "const selectedId = state.selectedId;" in javascript
     assert "state.selectedId = null;" in javascript
+    assert "state.groupSelection.add(selectedId);" in javascript
     assert "refreshGroupHighlight();" in javascript
     # То же поведение работает в боковом списке без обязательного Ctrl/Shift.
     assert "addGroupSelection(item.feature.id);" in javascript
