@@ -1,3 +1,4 @@
+import json
 from importlib import import_module
 
 from django.apps import apps as django_apps
@@ -451,3 +452,81 @@ class MapGroupTests(TestCase):
             ["11"],
         )
         self.assertEqual(Passage.objects.filter(bazar=bazar).count(), 3)
+
+
+class PassageRenameFlowTests(TestCase):
+    """Переименование прохода не должно отрывать от него контейнеры."""
+
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            phone_number="996700000042",
+            password="test-password",
+            first_name="Admin",
+            is_staff=True,
+        )
+        self.client.force_login(self.staff)
+        self.bazar = Bazar.objects.create(name="Дордой")
+
+    def _post(self, url_name, geojson):
+        return self.client.post(
+            reverse(url_name, args=(self.bazar.pk,)),
+            data=json.dumps({"geojson": geojson}),
+            content_type="application/json",
+        )
+
+    def test_save_returns_map_with_assigned_ids(self):
+        response = self._post("admin_panel:map_save", _map_with_two_districts())
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+
+        passages = {
+            feature["id"]: feature["properties"]
+            for feature in payload["geojson"]["features"]
+            if feature["properties"]["kind"] == "passage"
+        }
+        self.assertTrue(all(item["passage_id"] for item in passages.values()))
+        self.assertEqual(passages["passage-a"]["district"], "Район А")
+
+    def test_renaming_a_saved_passage_keeps_its_containers(self):
+        saved = self._post("admin_panel:map_save", _map_with_two_districts()).json()["geojson"]
+        self.assertEqual(self._post("admin_panel:map_publish", saved).status_code, 200)
+
+        passage = Passage.objects.get(district="Район А", number="1")
+        container = Container.objects.get(passage=passage, number="10")
+
+        # Редактор работает с картой, которую вернул сервер, поэтому у фигуры
+        # есть passage_id — переименование меняет ту же запись.
+        published = MarketMapRevision.latest_published(self.bazar).geojson
+        for feature in published["features"]:
+            properties = feature["properties"]
+            if properties["kind"] == "passage" and properties.get("passage_id") == passage.pk:
+                properties["number"] = "1А"
+                properties["name"] = "1А"
+
+        self.assertEqual(self._post("admin_panel:map_save", published).status_code, 200)
+        self.assertEqual(self._post("admin_panel:map_publish", published).status_code, 200)
+
+        passage.refresh_from_db()
+        container.refresh_from_db()
+        self.assertEqual(passage.number, "1А")
+        self.assertEqual(container.passage_id, passage.pk)
+        self.assertEqual(Passage.objects.filter(bazar=self.bazar).count(), 2)
+        self.assertEqual(Container.objects.filter(passage__bazar=self.bazar).count(), 2)
+
+    def test_passage_without_id_is_not_duplicated_on_rename(self):
+        """Старый баг: клиент не знал id прохода и заводил второй при переименовании."""
+        first = self._post("admin_panel:map_save", _map_with_two_districts()).json()["geojson"]
+        self.assertEqual(Passage.objects.filter(bazar=self.bazar).count(), 2)
+
+        for feature in first["features"]:
+            properties = feature["properties"]
+            if properties["kind"] == "passage" and properties.get("district") == "Район А":
+                properties["number"] = "1Б"
+                properties["name"] = "1Б"
+
+        self._post("admin_panel:map_save", first)
+
+        self.assertEqual(Passage.objects.filter(bazar=self.bazar).count(), 2)
+        self.assertTrue(Passage.objects.filter(district="Район А", number="1Б").exists())

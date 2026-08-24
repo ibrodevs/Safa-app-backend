@@ -229,6 +229,8 @@ class MarketMapRevisionAdmin(admin.ModelAdmin):
                 "version": revision.version,
                 "status": revision.status,
                 "updated_at": revision.updated_at.isoformat(),
+                # Редактор подхватывает проставленные синхронизацией id фигур.
+                "geojson": revision.geojson,
             }
         )
 
@@ -250,6 +252,7 @@ class MarketMapRevisionAdmin(admin.ModelAdmin):
                 "version": revision.version,
                 "status": revision.status,
                 "published_at": revision.published_at.isoformat() if revision.published_at else None,
+                "geojson": revision.geojson,
             }
         )
 

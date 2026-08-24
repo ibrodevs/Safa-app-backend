@@ -67,7 +67,7 @@ def test_container_size_can_be_reduced_in_both_admin_editors():
         assert 'data-container-size-step="width" data-delta="-0.5"' in template
         assert 'data-container-size-step="height" data-delta="-0.5"' in template
         assert 'min="0.2" max="100" step="0.1"' in template
-        assert "market_map_editor.js' %}?v=20260824-12" in template
+        assert "market_map_editor.js' %}?v=20260825-1" in template
 
     assert "resizeSelectedContainer('width', 0)" in javascript
     assert "resizeSelectedContainer('height', 0)" in javascript
@@ -256,3 +256,34 @@ def test_passage_label_follows_the_line_angle():
     assert "passageLabelIcon(text, passageAngleDegrees(item.feature) ?? 0, color)" in javascript
     # Наклон больше 90° разворачивается, чтобы текст не читался вверх ногами.
     assert "const textAngle = angle > 90 ? angle - 180 : angle;" in javascript
+
+
+def test_group_selection_and_move_logic():
+    """Клик по контейнеру не должен теряться, а группа — двигаться целиком."""
+    javascript = EDITOR_JS.read_text(encoding="utf-8")
+
+    # Объект под курсором ищем сами: заливка района не должна перехватывать клик.
+    assert "function featureAtLatLng(" in javascript
+    assert "toggleGroupSelection(featureAtLatLng(event?.latLng) || id)" in javascript
+    assert "selectFeature(featureAtLatLng(event?.latLng) || id)" in javascript
+
+    # Перетаскивание одного объекта группы двигает всю группу.
+    assert javascript.count("beginGroupDrag(feature.id)") == 3
+    assert javascript.count("finishGroupDrag(feature.id)") == 3
+
+    # Свойства применяются ко всем участникам группы.
+    assert "function applyGroupSharedProperties(" in javascript
+    assert "const shared = applyGroupSharedProperties(item);" in javascript
+
+
+def test_editor_picks_up_ids_assigned_by_the_server():
+    """Иначе переименование прохода заводило бы второй проход вместо правки."""
+    javascript = EDITOR_JS.read_text(encoding="utf-8")
+
+    assert "function mergeServerIdentity(" in javascript
+    assert "mergeServerIdentity(data.geojson);" in javascript
+    assert "'passage_id', 'container_id'" in javascript
+
+    for view in ("admin_panel/views/map.py", "apps/delivery/map_admin.py"):
+        source = (ROOT / view).read_text(encoding="utf-8")
+        assert source.count('"geojson":') >= 2

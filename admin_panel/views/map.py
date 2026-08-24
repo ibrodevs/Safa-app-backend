@@ -138,6 +138,10 @@ def map_save(request, pk):
             "version": revision.version,
             "status": revision.status,
             "updated_at": revision.updated_at.isoformat(),
+            # Синхронизация проставила фигурам passage_id/container_id. Без этого
+            # ответа редактор не знает о созданных записях, и следующее
+            # переименование прохода завело бы новый проход вместо переименования.
+            "geojson": revision.geojson,
         }
     )
 
@@ -161,6 +165,7 @@ def map_publish(request, pk):
             "version": published.version,
             "status": published.status,
             "published_at": published.published_at.isoformat(),
+            "geojson": published.geojson,
         }
     )
 

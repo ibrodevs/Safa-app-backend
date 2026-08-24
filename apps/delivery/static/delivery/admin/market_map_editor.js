@@ -16,6 +16,7 @@
     restoringHistory: false,
     lastContainerRotation: 0,
     groupSelection: new Set(),
+    groupDrag: null,
   };
 
   const GROUP_HIGHLIGHT_COLOR = '#7c3aed';
@@ -902,7 +903,14 @@
       }
       handleFeatureClick(feature.id, event);
     });
+    marker.addListener('dragstart', () => beginGroupDrag(feature.id));
     marker.addListener('dragend', () => {
+      const item = state.items.get(feature.id);
+      if (item) {
+        const position = item.overlays[0].getPosition();
+        item.feature.geometry.coordinates = [position.lng(), position.lat()];
+      }
+      finishGroupDrag(feature.id);
       refreshList();
       document.getElementById('market-map-editor')?.dispatchEvent(new CustomEvent('market-map:dirty'));
       recordHistory();
@@ -930,9 +938,14 @@
       document.getElementById('market-map-editor')?.dispatchEvent(new CustomEvent('market-map:dirty'));
       recordHistory();
     });
+    line.addListener('dragstart', () => beginGroupDrag(feature.id));
     line.addListener('dragend', () => {
       const item = state.items.get(feature.id);
-      if (item) updateFeatureLabel(item);
+      if (item) {
+        item.feature.geometry.coordinates = pathToCoordinates(item.overlays[0].getPath());
+        updateFeatureLabel(item);
+      }
+      finishGroupDrag(feature.id);
       document.getElementById('market-map-editor')?.dispatchEvent(new CustomEvent('market-map:dirty'));
       recordHistory();
     });
@@ -963,12 +976,14 @@
       document.getElementById('market-map-editor')?.dispatchEvent(new CustomEvent('market-map:dirty'));
       recordHistory();
     });
+    polygon.addListener('dragstart', () => beginGroupDrag(feature.id));
     polygon.addListener('dragend', () => {
       const item = state.items.get(feature.id);
       if (item) {
         normalizeContainerItem(item);
         updateFeatureLabel(item);
       }
+      finishGroupDrag(feature.id);
       document.getElementById('market-map-editor')?.dispatchEvent(new CustomEvent('market-map:dirty'));
       recordHistory();
     });
@@ -1129,14 +1144,81 @@
     return ids;
   }
 
+  const CLICK_TOLERANCE_METERS = 3;
+
+  function pointSegmentDistanceMeters(point, start, end) {
+    const scale = lngMetersPerDegree(point[1]);
+    const toLocal = (item) => [(item[0] - point[0]) * scale, (item[1] - point[1]) * METERS_PER_LAT_DEGREE];
+    const a = toLocal(start);
+    const b = toLocal(end);
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const lengthSquared = dx * dx + dy * dy;
+    if (lengthSquared < 1e-9) return Math.hypot(a[0], a[1]);
+    let t = -(a[0] * dx + a[1] * dy) / lengthSquared;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(a[0] + dx * t, a[1] + dy * t);
+  }
+
+  function geometryHitsPoint(geometry, point, tolerance) {
+    const type = geometry?.type;
+    if (!type) return false;
+    if (type === 'Polygon' || type === 'MultiPolygon') {
+      if (pointInGeometry(point, geometry)) return true;
+      // Контейнеры крошечные: даём небольшой допуск вокруг фигуры, иначе на
+      // мелком масштабе клик всё время промахивается мимо них.
+      const points = iterCoordinatePoints(geometry.coordinates || []);
+      return points.some((item) => pointSegmentDistanceMeters(point, item, item) <= tolerance);
+    }
+    if (type === 'Point') {
+      return pointSegmentDistanceMeters(point, geometry.coordinates, geometry.coordinates) <= tolerance;
+    }
+    const points = iterCoordinatePoints(geometry.coordinates || []);
+    for (let index = 0; index < points.length - 1; index += 1) {
+      if (pointSegmentDistanceMeters(point, points[index], points[index + 1]) <= tolerance) return true;
+    }
+    return points.length === 1 && pointSegmentDistanceMeters(point, points[0], points[0]) <= tolerance;
+  }
+
+  // Клик по большой заливке района или базара перехватывает контейнер, который
+  // лежит под курсором, поэтому объект под точкой ищем сами и берём верхний
+  // слой: контейнер важнее прохода, проход важнее района.
+  function featureAtLatLng(latLng) {
+    if (!latLng) return null;
+    const point = [latLng.lng(), latLng.lat()];
+    let bestId = null;
+    let bestRank = Number.MAX_SAFE_INTEGER;
+    // Сначала дешёвая отсечка по рамке сохранённой геометрии, и только для
+    // кандидатов берём актуальные координаты с карты.
+    const marginLat = 25 / METERS_PER_LAT_DEGREE;
+    const marginLon = 25 / lngMetersPerDegree(point[1]);
+    state.items.forEach((item) => {
+      const properties = item.feature.properties || {};
+      if (properties.readonly) return;
+      const rank = KIND_ORDER.indexOf(properties.kind);
+      if (rank === -1 || rank >= bestRank) return;
+
+      const box = coordinateBbox(item.feature.geometry || {});
+      if (!box) return;
+      if (point[0] < box[0] - marginLon || point[0] > box[2] + marginLon) return;
+      if (point[1] < box[1] - marginLat || point[1] > box[3] + marginLat) return;
+
+      if (geometryHitsPoint(serializeItem(item).geometry, point, CLICK_TOLERANCE_METERS)) {
+        bestId = item.feature.id;
+        bestRank = rank;
+      }
+    });
+    return bestId;
+  }
+
   // Клик выбирает объект, Ctrl/Shift+клик набирает группу из нескольких объектов.
   function handleFeatureClick(id, event) {
     const domEvent = event?.domEvent;
     if (domEvent && (domEvent.ctrlKey || domEvent.metaKey || domEvent.shiftKey)) {
-      toggleGroupSelection(id);
+      toggleGroupSelection(featureAtLatLng(event?.latLng) || id);
       return;
     }
-    selectFeature(id);
+    selectFeature(featureAtLatLng(event?.latLng) || id);
   }
 
   function setOverlayHighlighted(item, highlighted) {
@@ -1400,9 +1482,74 @@
     if (kind === 'container') syncContainerSizeFields(item.feature.geometry.coordinates);
     syncContainerResizeHandles(item);
     updateFeatureLabel(item);
+    const shared = applyGroupSharedProperties(item);
     refreshList();
-    setStatus('Свойства объекта применены', 'success');
+    setStatus(
+      shared
+        ? `Свойства применены ко всей группе: ${shared + 1} объект(ов)`
+        : 'Свойства объекта применены',
+      'success',
+    );
     recordHistory();
+  }
+
+  // Группа меняется целиком: проход, цвета, размер и поворот раздаются всем
+  // однотипным участникам. Номер и привязка к записи в БД у каждого свои.
+  function applyGroupSharedProperties(sourceItem) {
+    const ids = currentGroupTargets();
+    if (ids.size < 2 || !ids.has(sourceItem.feature.id)) return 0;
+
+    const source = sourceItem.feature.properties || {};
+    const sourceRect = source.kind === 'container'
+      ? containerRect(serializeItem(sourceItem).geometry.coordinates)
+      : null;
+
+    let changed = 0;
+    ids.forEach((id) => {
+      if (id === sourceItem.feature.id) return;
+      const member = state.items.get(id);
+      if (!member) return;
+      const properties = member.feature.properties || {};
+      if (properties.kind !== source.kind) return;
+
+      properties.stroke_color = source.stroke_color;
+      properties.fill_color = source.fill_color;
+      properties.stroke_width = source.stroke_width;
+      properties.min_zoom = source.min_zoom;
+
+      if (source.kind === 'container') {
+        properties.title = source.title;
+        if (source.passage_id) {
+          properties.passage_id = source.passage_id;
+          delete properties.passage_feature_id;
+          delete properties.passage_name;
+        } else if (source.passage_feature_id) {
+          properties.passage_id = null;
+          properties.passage_feature_id = source.passage_feature_id;
+          properties.passage_name = source.passage_name || '';
+        }
+        if (sourceRect) {
+          const serialized = serializeItem(member);
+          serialized.geometry.coordinates = resizeContainerCoordinates(
+            serialized.geometry.coordinates,
+            sourceRect.width,
+            sourceRect.height,
+            sourceRect.rotation,
+          );
+          member.feature.geometry.coordinates = serialized.geometry.coordinates;
+          properties.rotation = Math.round(normalizeRotation(sourceRect.rotation) * 100) / 100;
+        }
+      }
+
+      applyGeometryToOverlays(member);
+      member.overlays.forEach((overlay) => {
+        if (overlay instanceof google.maps.Marker) overlay.setIcon(markerIcon(properties, false));
+        else overlay.setOptions(overlayStyle(properties, false));
+      });
+      setOverlayHighlighted(member, state.groupSelection.has(id));
+      changed += 1;
+    });
+    return changed;
   }
 
   function cloneCoordinatesWithOffset(coordinates, deltaLng, deltaLat) {
@@ -1453,6 +1600,73 @@
       .map((item) => item.feature.properties.number || item.feature.properties.name)
       .filter(Boolean);
     return numbers.length ? nextContainerNumber(numbers[numbers.length - 1]) : '';
+  }
+
+  function applyGeometryToOverlays(item) {
+    const geometry = item.feature.geometry || {};
+    const coordinates = geometry.coordinates || [];
+    if (geometry.type === 'Point') {
+      item.overlays[0]?.setPosition({ lat: Number(coordinates[1]), lng: Number(coordinates[0]) });
+    } else if (geometry.type === 'LineString') {
+      item.overlays[0]?.setPath(coordinates.map((point) => ({ lat: Number(point[1]), lng: Number(point[0]) })));
+    } else if (geometry.type === 'Polygon') {
+      if (item.overlays[0]) setPolygonCoordinates(item.overlays[0], coordinates);
+    } else if (geometry.type === 'MultiPolygon') {
+      coordinates.forEach((polygon, index) => {
+        if (item.overlays[index]) setPolygonCoordinates(item.overlays[index], polygon);
+      });
+    }
+    updateFeatureLabel(item);
+    syncContainerResizeHandles(item);
+  }
+
+  function geometryBboxCenter(geometry) {
+    const points = iterCoordinatePoints(geometry?.coordinates || []);
+    if (!points.length) return null;
+    const lons = points.map((point) => point[0]);
+    const lats = points.map((point) => point[1]);
+    return [(Math.min(...lons) + Math.max(...lons)) / 2, (Math.min(...lats) + Math.max(...lats)) / 2];
+  }
+
+  // Тянем один объект группы — вместе с ним едет вся группа.
+  function beginGroupDrag(id) {
+    state.groupDrag = null;
+    const item = state.items.get(id);
+    if (!item) return;
+    const ids = currentGroupTargets();
+    if (ids.size < 2 || !ids.has(id)) return;
+    const origin = geometryBboxCenter(serializeItem(item).geometry);
+    if (!origin) return;
+    state.groupDrag = { id, ids: Array.from(ids), origin };
+  }
+
+  function finishGroupDrag(id) {
+    const drag = state.groupDrag;
+    state.groupDrag = null;
+    if (!drag || drag.id !== id) return 0;
+    const item = state.items.get(id);
+    if (!item) return 0;
+    const moved = geometryBboxCenter(serializeItem(item).geometry);
+    if (!moved) return 0;
+    const deltaLon = moved[0] - drag.origin[0];
+    const deltaLat = moved[1] - drag.origin[1];
+    if (Math.abs(deltaLon) < 1e-9 && Math.abs(deltaLat) < 1e-9) return 0;
+
+    let count = 0;
+    drag.ids.forEach((memberId) => {
+      if (memberId === id) return;
+      const member = state.items.get(memberId);
+      if (!member) return;
+      const serialized = serializeItem(member);
+      member.feature.geometry = {
+        ...serialized.geometry,
+        coordinates: shiftCoordinates(serialized.geometry.coordinates, deltaLon, deltaLat),
+      };
+      applyGeometryToOverlays(member);
+      count += 1;
+    });
+    if (count) setStatus(`Группа перемещена: ${count + 1} объект(ов)`, 'success');
+    return count;
   }
 
   function nextGroupName() {
@@ -2148,6 +2362,45 @@
     state.contextItems.push(item);
   }
 
+  // Сервер при сохранении заводит проходы и контейнеры и возвращает карту с
+  // проставленными id. Без этого редактор продолжал бы считать проход новым, и
+  // переименование заводило бы вторую запись, отвязывая от неё контейнеры.
+  const IDENTITY_KEYS = ['passage_id', 'container_id', 'district', 'angle', 'number', 'name'];
+
+  function mergeServerIdentity(geojson) {
+    const features = geojson?.features;
+    if (!Array.isArray(features)) return;
+
+    let touched = false;
+    features.forEach((feature) => {
+      const item = state.items.get(String(feature?.id || ''));
+      if (!item) return;
+      const source = feature.properties || {};
+      const target = item.feature.properties || {};
+      IDENTITY_KEYS.forEach((key) => {
+        if (source[key] !== undefined && source[key] !== target[key]) {
+          target[key] = source[key];
+          touched = true;
+        }
+      });
+      // Контейнер, привязанный к черновой фигуре прохода, после сохранения
+      // держится уже за реальную запись прохода.
+      if (source.passage_feature_id === undefined && target.passage_feature_id !== undefined) {
+        delete target.passage_feature_id;
+        delete target.passage_name;
+        touched = true;
+      }
+      updateFeatureLabel(item);
+    });
+
+    if (touched) {
+      refreshList();
+      if (state.selectedId && state.items.has(state.selectedId)) {
+        populateForm(state.items.get(state.selectedId).feature);
+      }
+    }
+  }
+
   async function persist(url, publish = false) {
     const button = publish ? byId('market-map-publish') : byId('market-map-save');
     if (!url || !button) return;
@@ -2174,6 +2427,7 @@
         const errors = Array.isArray(data.errors) ? data.errors.join(' ') : 'Не удалось сохранить карту';
         throw new Error(errors);
       }
+      mergeServerIdentity(data.geojson);
       setStatus(
         publish
           ? `Карта опубликована: версия ${data.version}`
