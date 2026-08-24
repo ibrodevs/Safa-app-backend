@@ -135,15 +135,19 @@ class RequestCodeWhatsAppView(generics.GenericAPIView):
         if demo_code:
             return Response({"detail": "sent_demo", "phone": phone}, status=200)
 
-        if not is_static_otp_phone(phone):
+        static_otp = is_static_otp_phone(phone)
+        if not static_otp:
             try:
-                chatflow_send_text(phone, _otp_text(code)) 
+                chatflow_send_text(phone, _otp_text(code))
             except ChatFlowError as e:
                 cache.delete(f"otp:{phone}")
                 cache.delete(send_lock_key)
-                return Response({"detail": f"WhatsApp send failed: {e}"}, status=502)
+                return Response(
+                    {"detail": f"WhatsApp send failed: {e}"}, status=502
+                )
 
-        return Response({"detail": "sent_whatsapp", "phone": phone}, status=200)
+        detail = "sent_static" if static_otp else "sent_whatsapp"
+        return Response({"detail": detail, "phone": phone}, status=200)
 
 
 @extend_schema(tags=["Аутентификация"])

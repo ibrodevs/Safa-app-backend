@@ -26,9 +26,12 @@ OTP_RESEND_COOLDOWN_SECONDS=60
 `CHATFLOW_TOKEN` должен находиться только на backend. После изменения `.env`
 перезапустите WSGI/ASGI-процесс.
 
-В production оставьте `DEMO_OTP_CODE` и `STATIC_OTP` пустыми. Сервер
-автоматически игнорирует глобальный demo-код при `DJANGO_DEBUG=0`, а повторную
-отправку на один номер ограничивает `OTP_RESEND_COOLDOWN_SECONDS`.
+По умолчанию в production оставьте `DEMO_OTP_CODE` и `STATIC_OTP` пустыми.
+Если для всех корректных номеров намеренно нужен единый код без отправки в
+WhatsApp, задайте одновременно `STATIC_OTP=1111` и
+`ALLOW_STATIC_OTP_IN_PRODUCTION=1`. Без явного opt-in production игнорирует
+статический код. Повторный запрос на один номер ограничивает
+`OTP_RESEND_COOLDOWN_SECONDS`.
 
 Для старого кабинета `lk.chatflow.kz` поддерживается legacy-конфигурация:
 

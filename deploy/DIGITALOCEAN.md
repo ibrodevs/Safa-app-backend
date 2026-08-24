@@ -114,6 +114,7 @@ Production safety values must remain:
 ```dotenv
 DEMO_OTP_CODE=
 STATIC_OTP=
+ALLOW_STATIC_OTP_IN_PRODUCTION=0
 FINIK_TEST_AMOUNT=false
 FINIK_CALLBACK_URL=https://api.example.com/api/payments/finik/callback/
 ```

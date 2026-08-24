@@ -313,8 +313,19 @@ else:
 # the incoming request (including SECURE_PROXY_SSL_HEADER behind a proxy).
 FINIK_CALLBACK_URL = os.getenv("FINIK_CALLBACK_URL", "").strip()
 
+_STATIC_OTP_RAW = os.getenv("STATIC_OTP", "").strip()
 STATIC_OTP = dict(
-    item.split(":", 1)
-    for item in os.getenv("STATIC_OTP", "").split(",")
+    (phone.strip(), code.strip())
+    for item in _STATIC_OTP_RAW.split(",")
     if ":" in item
+    for phone, code in [item.split(":", 1)]
+    if phone.strip() and code.strip()
 )
+# A value without a phone (for example STATIC_OTP=1111) is a global code.
+# It is accepted in production only behind the explicit opt-in below.
+STATIC_OTP_CODE = (
+    _STATIC_OTP_RAW if _STATIC_OTP_RAW and ":" not in _STATIC_OTP_RAW else ""
+)
+ALLOW_STATIC_OTP_IN_PRODUCTION = os.getenv(
+    "ALLOW_STATIC_OTP_IN_PRODUCTION", "0"
+).strip().lower() in {"1", "true", "yes", "on"}
