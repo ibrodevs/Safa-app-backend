@@ -1237,11 +1237,19 @@
   // Клик по большой заливке района или базара перехватывает контейнер, который
   // лежит под курсором, поэтому объект под точкой ищем сами и берём верхний
   // слой: контейнер важнее прохода, проход важнее района.
-  function featureAtLatLng(latLng) {
+  function featureAtLatLng(latLng, preferredId = null) {
     if (!latLng) return null;
     const point = [latLng.lng(), latLng.lat()];
-    let bestId = null;
-    let bestRank = Number.MAX_SAFE_INTEGER;
+    // Google Maps already tells us which overlay received the click. Keep that
+    // exact object as the winner among features of the same kind. Previously
+    // the first nearby container in state.items won instead, so tightly packed
+    // containers could make their neighbours impossible to select.
+    const preferred = state.items.get(preferredId);
+    const preferredRank = preferred
+      ? KIND_ORDER.indexOf((preferred.feature.properties || {}).kind)
+      : -1;
+    let bestId = preferredRank >= 0 ? preferredId : null;
+    let bestRank = preferredRank >= 0 ? preferredRank : Number.MAX_SAFE_INTEGER;
     // Сначала дешёвая отсечка по рамке сохранённой геометрии, и только для
     // кандидатов берём актуальные координаты с карты.
     const marginLat = 25 / METERS_PER_LAT_DEGREE;
@@ -1269,7 +1277,7 @@
   // Ctrl/Shift+клик оставлен как ускоритель для тех, кто уже привык.
   function handleFeatureClick(id, event) {
     const domEvent = event?.domEvent;
-    const target = featureAtLatLng(event?.latLng) || id;
+    const target = featureAtLatLng(event?.latLng, id) || id;
     if (state.pickMode || (domEvent && (domEvent.ctrlKey || domEvent.metaKey || domEvent.shiftKey))) {
       toggleGroupSelection(target);
       return;
@@ -2132,7 +2140,9 @@
         }
         if (state.groupSelection.has(item.feature.id)) button.classList.add('is-group-selected');
         button.addEventListener('click', (event) => {
-          if (event.ctrlKey || event.metaKey || event.shiftKey) {
+          // The explicit pick mode must behave identically on the map and in
+          // the object list: every ordinary click toggles one group member.
+          if (state.pickMode || event.ctrlKey || event.metaKey || event.shiftKey) {
             event.preventDefault();
             toggleGroupSelection(item.feature.id);
             return;

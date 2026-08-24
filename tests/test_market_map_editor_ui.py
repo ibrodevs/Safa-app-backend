@@ -67,7 +67,7 @@ def test_container_size_can_be_reduced_in_both_admin_editors():
         assert 'data-container-size-step="width" data-delta="-0.5"' in template
         assert 'data-container-size-step="height" data-delta="-0.5"' in template
         assert 'min="0.2" max="100" step="0.1"' in template
-        assert "market_map_editor.js' %}?v=20260825-3" in template
+        assert "market_map_editor.js' %}?v=20260825-4" in template
 
     assert "resizeSelectedContainer('width', 0)" in javascript
     assert "resizeSelectedContainer('height', 0)" in javascript
@@ -264,10 +264,16 @@ def test_group_selection_and_move_logic():
 
     # Объект под курсором ищем сами: заливка района не должна перехватывать клик.
     assert "function featureAtLatLng(" in javascript
-    assert "const target = featureAtLatLng(event?.latLng) || id;" in javascript
+    assert "const target = featureAtLatLng(event?.latLng, id) || id;" in javascript
+    # Среди соседних контейнеров побеждает именно overlay, по которому кликнули,
+    # а не первый контейнер того же типа в state.items.
+    assert "function featureAtLatLng(latLng, preferredId = null)" in javascript
+    assert "let bestId = preferredRank >= 0 ? preferredId : null;" in javascript
     # Режим выбора: обычный клик набирает группу, Shift держать не нужно.
     assert "if (state.pickMode || (domEvent && (domEvent.ctrlKey" in javascript
     assert "function setPickMode(" in javascript
+    # То же поведение работает в боковом списке без обязательного Ctrl/Shift.
+    assert "if (state.pickMode || event.ctrlKey || event.metaKey || event.shiftKey)" in javascript
 
     # Перетаскивание одного объекта группы двигает всю группу.
     assert javascript.count("beginGroupDrag(feature.id)") == 3
