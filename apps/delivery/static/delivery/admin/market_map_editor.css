@@ -504,6 +504,23 @@
   padding-top: 13px;
   border-top: 1px solid var(--map-border);
 }
+/* Дублирование — самое частое действие, поэтому оно держится наверху инспектора. */
+.market-map-quick-actions {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding: 10px 0;
+  background: var(--body-bg, #fff);
+  box-shadow: 0 8px 12px -12px rgba(16, 24, 40, .55);
+}
+.market-map-quick-actions[hidden] { display: none !important; }
+.market-map-quick-actions .button {
+  min-height: 38px;
+  border-radius: 8px;
+}
 .market-map-property-actions .button {
   min-height: 38px;
   border-radius: 8px;

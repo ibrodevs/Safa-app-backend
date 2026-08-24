@@ -94,6 +94,9 @@
 .market-map-advanced-fields summary { cursor: pointer; font-size: 11px; font-weight: 650; }
 .market-map-advanced-fields[open] { display: grid; gap: 10px; }
 .market-map-property-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; padding-top: 5px; }
+/* Дублирование — самое частое действие, поэтому оно держится наверху инспектора. */
+.market-map-quick-actions { position: sticky; top: -14px; z-index: 6; display: grid; grid-template-columns: 1fr auto; gap: 7px; margin: -4px 0 -2px; padding: 8px 0; background: white; box-shadow: 0 6px 10px -10px rgba(16, 24, 40, .5); }
+.market-map-quick-actions select { min-height: 34px; }
 .market-map-apply-button { grid-column: span 2; }
 .market-map-delete-button { color: var(--red); }
 .market-map-save-help { margin-top: 16px; padding: 11px; color: var(--muted); background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius); font-size: 10px; }

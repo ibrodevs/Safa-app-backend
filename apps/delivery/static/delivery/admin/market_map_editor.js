@@ -1327,7 +1327,9 @@
 
     addFeature(copy, { select: true });
     populateForm(state.items.get(state.selectedId).feature);
-    byId('market-feature-number')?.focus();
+    // preventScroll: иначе браузер прокручивает инспектор к полю номера, и при
+    // быстром дублировании экран прыгает после каждого клика.
+    byId('market-feature-number')?.focus({ preventScroll: true });
     setStatus('Контейнер продублирован. Проверьте номер и положение.', 'success');
     recordHistory();
   }
@@ -1336,6 +1338,10 @@
     syncPassageOptions();
     const list = byId('market-feature-list');
     if (!list) return;
+    // Список перерисовывается целиком, поэтому его прокрутку возвращаем на место:
+    // при дублировании подряд экран не должен уезжать в начало.
+    const scroller = list.closest('.market-map-create-panel, .market-map-objects-panel') || list;
+    const scrollTop = scroller.scrollTop;
     list.innerHTML = '';
     const focus = focusedKind();
     const sorted = Array.from(state.items.values()).sort((a, b) => {
@@ -1377,6 +1383,7 @@
       empty.textContent = focus ? `В разделе «${featureKindLabel(focus)}» объектов пока нет.` : 'Объектов пока нет.';
       list.append(empty);
     }
+    if (scroller.scrollTop !== scrollTop) scroller.scrollTop = scrollTop;
   }
 
   function setContainerRotation(item, rotation, { record = true, status = '', skipRotationHandle = false } = {}) {
@@ -1850,6 +1857,12 @@
     document.addEventListener('keydown', (event) => {
       const editingText = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
       const command = event.ctrlKey || event.metaKey;
+      if (command && event.key.toLowerCase() === 'd') {
+        // Браузер по Ctrl+D открывает добавление в закладки — забираем сочетание себе.
+        event.preventDefault();
+        duplicateSelectedFeature();
+        return;
+      }
       if (command && !editingText && event.key.toLowerCase() === 'z') {
         event.preventDefault();
         if (event.shiftKey) redoHistory();

@@ -3,8 +3,8 @@
 
 {% block extrastyle %}
   {{ block.super }}
-  <link rel="stylesheet" href="{% static 'delivery/admin/market_map_editor.css' %}">
-  <link rel="stylesheet" href="{% static 'delivery/admin/market_map_editor_compact.css' %}">
+  <link rel="stylesheet" href="{% static 'delivery/admin/market_map_editor.css' %}?v=20260824-10">
+  <link rel="stylesheet" href="{% static 'delivery/admin/market_map_editor_compact.css' %}?v=20260824-10">
 {% endblock %}
 
 {% block breadcrumbs %}
@@ -123,6 +123,16 @@
           </div>
         </div>
 
+        <div class="market-map-quick-actions" data-kind-scope="container">
+          <button type="button" class="button default" id="market-feature-duplicate" title="Дублировать · Ctrl+D">Дублировать контейнер</button>
+          <select id="market-feature-duplicate-direction" aria-label="Куда поставить копию">
+            <option value="right">Справа</option>
+            <option value="left">Слева</option>
+            <option value="down">Снизу</option>
+            <option value="up">Сверху</option>
+          </select>
+        </div>
+
         <div class="form-row market-map-technical-field">
           <label for="market-feature-kind">Тип</label>
           <select id="market-feature-kind" disabled>
@@ -209,16 +219,6 @@
             <input id="market-feature-title" type="text" maxlength="150" placeholder="Необязательно">
           </div>
 
-          <div class="form-row" data-kind-scope="container">
-            <label for="market-feature-duplicate-direction">При дублировании разместить</label>
-            <select id="market-feature-duplicate-direction">
-              <option value="right">Справа</option>
-              <option value="left">Слева</option>
-              <option value="down">Снизу</option>
-              <option value="up">Сверху</option>
-            </select>
-          </div>
-
           <div class="form-row" data-kind-scope="advanced-container">
             <label for="market-feature-container">Связать с существующим контейнером</label>
             <select id="market-feature-container">
@@ -253,7 +253,6 @@
 
         <div class="market-map-property-actions">
           <button type="button" class="button default market-map-apply-button" id="market-feature-apply">Применить изменения</button>
-          <button type="button" class="button" id="market-feature-duplicate" data-kind-scope="container">Дублировать контейнер</button>
           <button type="button" class="button deletelink market-map-delete-button" id="market-feature-delete">Удалить</button>
         </div>
       </section>
@@ -285,9 +284,9 @@
 {{ context_geojson|json_script:"market-map-context-geojson" }}
 {{ passages|json_script:"market-map-passages" }}
 {{ containers|json_script:"market-map-containers" }}
-<script src="{% static 'delivery/admin/market_map_editor.js' %}?v=20260824-9"></script>
-<script src="{% static 'delivery/admin/market_map_editor_ui.js' %}?v=20260824-9"></script>
-<script src="{% static 'delivery/admin/market_map_editor_perf.js' %}?v=20260824-9"></script>
+<script src="{% static 'delivery/admin/market_map_editor.js' %}?v=20260824-10"></script>
+<script src="{% static 'delivery/admin/market_map_editor_ui.js' %}?v=20260824-10"></script>
+<script src="{% static 'delivery/admin/market_map_editor_perf.js' %}?v=20260824-10"></script>
 {% if google_maps_api_key %}
 <script async defer src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key|urlencode }}&callback=initMarketMapEditor&v=weekly"></script>
 {% endif %}

@@ -67,7 +67,7 @@ def test_container_size_can_be_reduced_in_both_admin_editors():
         assert 'data-container-size-step="width" data-delta="-0.5"' in template
         assert 'data-container-size-step="height" data-delta="-0.5"' in template
         assert 'min="0.2" max="100" step="0.1"' in template
-        assert "market_map_editor.js' %}?v=20260824-9" in template
+        assert "market_map_editor.js' %}?v=20260824-10" in template
 
     assert "resizeSelectedContainer('width', 0)" in javascript
     assert "resizeSelectedContainer('height', 0)" in javascript
@@ -192,3 +192,28 @@ def test_rotation_is_built_into_editor_without_patch_layer():
 
     assert "market_map_rotation.js" not in panel
     assert not (ROOT / "apps/delivery/static/delivery/admin/market_map_rotation.js").exists()
+
+
+def test_duplicate_button_sits_on_top_of_the_inspector():
+    """Дублирование — частое действие: кнопка держится наверху и не прыгает."""
+    standard = TEMPLATE.read_text(encoding="utf-8")
+    panel = (
+        ROOT / "admin_panel/templates/admin_panel/map/editor.html"
+    ).read_text(encoding="utf-8")
+    javascript = EDITOR_JS.read_text(encoding="utf-8")
+
+    for template in (standard, panel):
+        header = template.index("market-map-properties-header")
+        quick = template.index('class="market-map-quick-actions"')
+        actions = template.index("market-map-property-actions")
+        duplicate = template.index('id="market-feature-duplicate"')
+
+        # Кнопка стоит в верхнем блоке действий, а не в нижнем.
+        assert header < quick < actions
+        assert quick < duplicate < actions
+        assert template.count('id="market-feature-duplicate"') == 1
+        assert template.count('id="market-feature-duplicate-direction"') == 1
+
+    assert "focus({ preventScroll: true })" in javascript
+    assert "scroller.scrollTop = scrollTop" in javascript
+    assert "duplicateSelectedFeature();" in javascript
