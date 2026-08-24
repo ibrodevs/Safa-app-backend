@@ -381,6 +381,7 @@
     const config = KIND_CONFIG[kind] || KIND_CONFIG.district;
     const name = typeof config.name === 'function' ? config.name() : config.name;
     const inherited = kind === 'container' ? currentContainerColors() : null;
+    const inheritedLabelColor = kind === 'passage' ? currentPassageLabelColor() : null;
     return {
       kind,
       name,
@@ -393,7 +394,18 @@
       z_index: config.zIndex,
       line_pattern: config.linePattern || 'solid',
       is_active: true,
+      ...(inheritedLabelColor ? { label_color: inheritedLabelColor } : {}),
     };
+  }
+
+  function currentPassageLabelColor() {
+    let color = null;
+    state.items.forEach((item) => {
+      const properties = item.feature.properties || {};
+      if (color || properties.kind !== 'passage') return;
+      if (properties.label_color) color = properties.label_color;
+    });
+    return color;
   }
 
   function makeId(kind) {
@@ -612,6 +624,16 @@
     return bounds.isEmpty() ? null : bounds.getCenter();
   }
 
+  // Цвет подписи задаётся отдельно от цвета линии: тонкую линию прохода часто
+  // хочется оставить светлой, а номер сделать читаемым.
+  function labelColorFor(properties) {
+    const custom = String((properties || {}).label_color || '').trim();
+    if (custom) return custom;
+    return (properties || {}).kind === 'container'
+      ? '#111827'
+      : ((properties || {}).stroke_color || '#111827');
+  }
+
   const BLANK_LABEL_ICON = {
     path: 'M 0,0',
     scale: 0,
@@ -663,7 +685,7 @@
     if (!text) return null;
     const position = geometryCenter(feature.geometry);
     if (!position) return null;
-    const color = kind === 'container' ? '#111827' : (feature.properties.stroke_color || '#111827');
+    const color = labelColorFor(feature.properties);
 
     return new google.maps.Marker({
       map: state.map,
@@ -708,7 +730,7 @@
     item.label.setPosition(position);
     const selected = state.selectedId === item.feature.id;
     item.label.setZIndex(featureZIndex(item.feature.properties, selected) + 1);
-    const color = kind === 'container' ? '#111827' : (item.feature.properties.stroke_color || '#111827');
+    const color = labelColorFor(item.feature.properties);
 
     if (kind === 'passage') {
       item.label.setLabel(null);
@@ -1396,6 +1418,8 @@
     byId('market-feature-stroke-width').value = Number(properties.stroke_width ?? 2);
     byId('market-feature-stroke').value = String(properties.stroke_color || '#e47f26').slice(0, 7);
     byId('market-feature-fill').value = String(properties.fill_color || '#ff8656').slice(0, 7);
+    const labelColorField = byId('market-feature-label-color');
+    if (labelColorField) labelColorField.value = String(labelColorFor(properties)).slice(0, 7);
     updateDistrictNote(properties.kind, serialized);
     if (rect) {
       byId('market-feature-width-m').value = Math.max(0.2, Math.round(rect.width * 10) / 10);
@@ -1513,7 +1537,11 @@
       }
     } else {
       if (kind !== 'passage') delete properties.passage_id;
-      if (kind === 'passage') properties.number = name;
+      if (kind === 'passage') {
+        properties.number = name;
+        const labelColorField = byId('market-feature-label-color');
+        if (labelColorField?.value) properties.label_color = labelColorField.value;
+      }
       delete properties.container_id;
       delete properties.title;
       delete properties.rotation;
@@ -1604,6 +1632,7 @@
       properties.fill_color = source.fill_color;
       properties.stroke_width = source.stroke_width;
       properties.min_zoom = source.min_zoom;
+      if (source.label_color) properties.label_color = source.label_color;
 
       if (source.kind === 'container') {
         properties.title = source.title;

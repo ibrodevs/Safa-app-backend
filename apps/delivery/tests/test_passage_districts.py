@@ -530,3 +530,39 @@ class PassageRenameFlowTests(TestCase):
 
         self.assertEqual(Passage.objects.filter(bazar=self.bazar).count(), 2)
         self.assertTrue(Passage.objects.filter(district="Район А", number="1Б").exists())
+
+
+class PassageLabelColorTests(TestCase):
+    """Цвет подписи прохода задаётся отдельно от цвета линии."""
+
+    def test_label_color_survives_validation(self):
+        from apps.delivery.map_validation import validate_feature_collection
+
+        geojson = _map_with_two_districts()
+        for feature in geojson["features"]:
+            if feature["properties"]["kind"] == "passage":
+                feature["properties"]["label_color"] = "#111827"
+                feature["properties"]["stroke_color"] = "#fbbf24"
+
+        normalized = validate_feature_collection(geojson)
+        passages = [
+            feature for feature in normalized["features"]
+            if feature["properties"]["kind"] == "passage"
+        ]
+
+        self.assertTrue(passages)
+        for feature in passages:
+            self.assertEqual(feature["properties"]["label_color"], "#111827")
+            self.assertEqual(feature["properties"]["stroke_color"], "#fbbf24")
+
+    def test_label_color_is_dropped_when_not_set(self):
+        from apps.delivery.map_validation import validate_feature_collection
+
+        geojson = _map_with_two_districts()
+        for feature in geojson["features"]:
+            if feature["properties"]["kind"] == "passage":
+                feature["properties"]["label_color"] = "   "
+
+        normalized = validate_feature_collection(geojson)
+        for feature in normalized["features"]:
+            self.assertNotIn("label_color", feature["properties"])

@@ -450,6 +450,13 @@ def validate_feature_collection(value: Any) -> dict[str, Any]:
             min(12, int(properties.get("stroke_width", style["stroke_width"]) or style["stroke_width"])),
         )
         normalized_properties["stroke_color"] = str(properties.get("stroke_color") or style["stroke_color"])
+        # Цвет подписи задаётся отдельно от цвета линии и хранится только если
+        # админ его выбрал — иначе подпись красится цветом линии.
+        label_color = str(properties.get("label_color") or "").strip()
+        if label_color:
+            normalized_properties["label_color"] = label_color
+        else:
+            normalized_properties.pop("label_color", None)
         normalized_properties["fill_color"] = str(properties.get("fill_color") or style["fill_color"])
         normalized_properties["fill_opacity"] = _opacity(
             properties.get("fill_opacity", style["fill_opacity"]),
