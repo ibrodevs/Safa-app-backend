@@ -6,8 +6,6 @@ from datetime import date as _date
 from decimal import Decimal, ROUND_HALF_UP
 
 import requests
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, IntegerField, Prefetch, Q, Sum, Value
@@ -38,6 +36,7 @@ from .geocoding import twogis_autocomplete
 from .lifecycle import ShipmentFareUnavailable, mark_shipment_awaiting_payment
 from .map_pricing import MapPricingResolver
 from .rating import apply_rating_for_completed_shipment
+from .realtime import broadcast_shipment
 from .geo import haversine_m, polyline_len_km, is_in_bishkek
 from .models import AmanatCampaign, AmanatCategory, AmanatDonation, Bazar, Container, CourierPosition, GlobalDeliveryConfig, Passage, Shipment, ShipmentStop
 from .pagination import StandardResultsSetPagination
@@ -68,15 +67,6 @@ def _rid(request) -> str:
 
 def _demo_shipment_q() -> Q:
     return Q(is_demo=True)
-
-
-def _broadcast(shipment: Shipment) -> None:
-    layer = get_channel_layer()
-    data = ShipmentDetailSerializer(shipment).data
-    async_to_sync(layer.group_send)(
-        f"shipment_{shipment.id}",
-        {"type": "shipment.event", "payload": data},
-    )
 
 
 def _mark_work_done(s: Shipment) -> None:
@@ -454,7 +444,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("only_for_client")
         try:
             shipment = serializer.save()
-            _broadcast(shipment)
+            broadcast_shipment(shipment)
             notify_shipment_offer_for_carrier(shipment)
             logger.info(
                 "shipment_created",
@@ -480,7 +470,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         shipment.status = Shipment.Status.CANCELED
         shipment.save(update_fields=["status"])
         notify_shipment_status(shipment)
-        _broadcast(shipment)
+        broadcast_shipment(shipment)
         return response.Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(
@@ -526,7 +516,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             shipment.status = Shipment.Status.ASSIGNED
             shipment.save(update_fields=["carrier", "status"])
 
-        _broadcast(shipment)
+        broadcast_shipment(shipment)
         notify_shipment_status(shipment)
 
         logger.info(
@@ -606,7 +596,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             if new_status != old_status:
                 notify_shipment_status(s)
 
-        _broadcast(s)
+        broadcast_shipment(s)
 
         logger.info(
             "shipment_status_changed",
@@ -946,7 +936,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        _broadcast(s)
+        broadcast_shipment(s)
 
         logger.info(
             "shipment_advanced",

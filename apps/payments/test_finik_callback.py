@@ -199,6 +199,82 @@ def test_repeated_callback_does_not_credit_carrier_twice():
 
 
 @pytest.mark.django_db
+def test_client_can_reconcile_paid_item_when_callback_is_delayed(monkeypatch):
+    shipment = _shipment()
+    attempt = _attempt(shipment)
+    monkeypatch.setattr(
+        "apps.payments.views.verify_finik_payment",
+        lambda identifier, payment_attempt, key_type: {
+            "id": identifier,
+            "transactionId": "reconciled-transaction-123",
+        },
+    )
+    client = APIClient()
+    client.force_authenticate(shipment.client)
+
+    response = client.post(
+        "/api/payments/finik/reconcile/",
+        {"paymentId": str(attempt.id), "itemId": "item-123"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["paid"] is True
+    shipment.refresh_from_db()
+    attempt.refresh_from_db()
+    assert shipment.is_paid is True
+    assert shipment.status == Shipment.Status.COMPLETED
+    assert attempt.status == PaymentAttempt.Status.SUCCEEDED
+    assert attempt.finik_item_id == "item-123"
+    assert attempt.finik_transaction_id == "reconciled-transaction-123"
+
+
+@pytest.mark.django_db
+def test_reconcile_does_not_expose_another_clients_payment(monkeypatch):
+    shipment = _shipment()
+    attempt = _attempt(shipment)
+    other = User.objects.create_user(
+        phone_number="996700777888",
+        password="secret123",
+        first_name="Other",
+    )
+    client = APIClient()
+    client.force_authenticate(other)
+
+    response = client.post(
+        "/api/payments/finik/reconcile/",
+        {"paymentId": str(attempt.id), "itemId": "item-123"},
+        format="json",
+    )
+
+    assert response.status_code == 404
+    shipment.refresh_from_db()
+    assert shipment.is_paid is False
+
+
+@pytest.mark.django_db
+def test_reconcile_waits_when_finik_item_is_not_paid(monkeypatch):
+    shipment = _shipment()
+    attempt = _attempt(shipment)
+    monkeypatch.setattr(
+        "apps.payments.views.verify_finik_payment",
+        lambda identifier, payment_attempt, key_type: None,
+    )
+    client = APIClient()
+    client.force_authenticate(shipment.client)
+
+    response = client.post(
+        "/api/payments/finik/reconcile/",
+        {"paymentId": str(attempt.id), "itemId": "item-123"},
+        format="json",
+    )
+
+    assert response.status_code == 202
+    shipment.refresh_from_db()
+    assert shipment.is_paid is False
+
+
+@pytest.mark.django_db
 @override_settings(
     FINIK_ACCOUNT_ID=ACCOUNT_ID,
     FINIK_API_KEY="api-key",

@@ -86,6 +86,23 @@ class FinikCallbackInSerializer(serializers.Serializer):
             )
         return attrs
 
+
+class FinikReconcileInSerializer(serializers.Serializer):
+    paymentId = serializers.UUIDField()
+    itemId = serializers.CharField(required=False, allow_blank=True, max_length=128)
+    transactionId = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=128,
+    )
+
+    def validate(self, attrs):
+        if not attrs.get("itemId") and not attrs.get("transactionId"):
+            raise serializers.ValidationError(
+                {"detail": "itemId_or_transactionId_required"}
+            )
+        return attrs
+
 class PaymentAttemptSerializer(serializers.ModelSerializer):
     class Meta:
         model = PaymentAttempt

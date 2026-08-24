@@ -18,6 +18,7 @@ query VerifyFinikTransaction($input: ServiceInput!) {
     requestId
     fixedAmount
     paymentCount
+    transactionId
     account { id }
     requiredFields { fieldId value }
   }
@@ -53,11 +54,13 @@ def _required_field_map(item: dict[str, Any]) -> dict[str, str]:
     return result
 
 
-def verify_finik_transaction(
-    transaction_id: str,
+def verify_finik_payment(
+    identifier: str,
     attempt: PaymentAttempt | AmanatPaymentAttempt,
-) -> bool:
-    """Confirm that Finik knows a paid transaction for this exact attempt."""
+    *,
+    key_type: str = "TRANSACTION_ID",
+) -> dict[str, Any] | None:
+    """Return a verified paid Finik item bound to this server attempt."""
 
     api_key = str(getattr(settings, "FINIK_API_KEY", "") or "").strip()
     if not api_key:
@@ -70,8 +73,8 @@ def verify_finik_transaction(
                 "query": _GET_ITEM_QUERY,
                 "variables": {
                     "input": {
-                        "id": str(transaction_id),
-                        "keyType": "TRANSACTION_ID",
+                        "id": str(identifier),
+                        "keyType": key_type,
                     }
                 },
             },
@@ -92,7 +95,7 @@ def verify_finik_transaction(
 
     item = (payload.get("data") or {}).get("getItem")
     if not isinstance(item, dict):
-        return False
+        return None
 
     try:
         amount_matches = Decimal(str(item.get("fixedAmount"))) == Decimal(
@@ -100,7 +103,7 @@ def verify_finik_transaction(
         )
         payment_count = int(item.get("paymentCount") or 0)
     except (InvalidOperation, TypeError, ValueError):
-        return False
+        return None
 
     account = item.get("account") or {}
     fields = _required_field_map(item)
@@ -112,7 +115,7 @@ def verify_finik_transaction(
         )
     else:
         target_matches = fields.get("shipmentId") == str(attempt.shipment_id)
-    return (
+    verified = (
         payment_count >= 1
         and amount_matches
         and str(item.get("requestId") or "") == attempt.finik_request_id
@@ -121,4 +124,21 @@ def verify_finik_transaction(
         and fields.get("paymentId") == str(attempt.id)
         and fields.get("finikRequestId") == attempt.finik_request_id
         and target_matches
+    )
+    return item if verified else None
+
+
+def verify_finik_transaction(
+    transaction_id: str,
+    attempt: PaymentAttempt | AmanatPaymentAttempt,
+) -> bool:
+    """Backward-compatible callback verification by transaction ID."""
+
+    return (
+        verify_finik_payment(
+            transaction_id,
+            attempt,
+            key_type="TRANSACTION_ID",
+        )
+        is not None
     )

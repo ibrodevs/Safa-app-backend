@@ -148,7 +148,7 @@ def notify_shipment_offer_for_carrier(shipment) -> None:
         _send_to_user(
             carrier.id,
             dict(data),
-            ttl="30s",
+            ttl="120s",
             collapse_key=collapse_key,
         )
 

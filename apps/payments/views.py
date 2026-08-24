@@ -22,18 +22,75 @@ from apps.payments.models import (
 from apps.payments.serializers import (
     CarrierSettlementSerializer,
     FinikCallbackInSerializer,
+    FinikReconcileInSerializer,
 )
 from apps.payments.finik import (
     FinikVerificationUnavailable,
+    verify_finik_payment,
     verify_finik_transaction,
 )
 from apps.payments.settlement import complete_paid_shipment
 from apps.payments.amounts import effective_finik_test_amount
 from apps.delivery.rating import apply_rating_for_completed_shipment
+from apps.delivery.realtime import broadcast_shipment
 from apps.notification.events import notify_shipment_status
 
 
 logger = logging.getLogger("payments.finik")
+
+
+def _finish_verified_shipment_payment(
+    *,
+    attempt_id: UUID,
+    transaction_id: str = "",
+    item_id: str = "",
+    raw_payload=None,
+):
+    """Idempotently complete a verified shipment payment."""
+
+    completed_shipment = None
+    with transaction.atomic():
+        attempt = (
+            PaymentAttempt.objects.select_for_update()
+            .select_related("shipment")
+            .get(id=attempt_id)
+        )
+        shipment = attempt.shipment
+        if attempt.status == PaymentAttempt.Status.SUCCEEDED:
+            return shipment, False
+        if attempt.status == PaymentAttempt.Status.FAILED:
+            return shipment, False
+        if shipment.status not in (
+            shipment.Status.AWAITING_PAYMENT,
+            shipment.Status.COMPLETED,
+        ):
+            raise ValueError("payment_not_due")
+
+        attempt.status = PaymentAttempt.Status.SUCCEEDED
+        attempt.finik_transaction_id = str(transaction_id)[:128] or None
+        attempt.finik_item_id = str(item_id)[:128] or None
+        if raw_payload is not None:
+            attempt.raw_callback_payload = raw_payload
+        attempt.save(
+            update_fields=[
+                "status",
+                "finik_transaction_id",
+                "finik_item_id",
+                "raw_callback_payload",
+                "updated_at",
+            ]
+        )
+        if not shipment.is_paid:
+            shipment.is_paid = True
+            shipment.paid_at = timezone.now()
+            shipment.save(update_fields=["is_paid", "paid_at"])
+        complete_paid_shipment(shipment=shipment, payment_attempt=attempt)
+        completed_shipment = shipment
+
+    apply_rating_for_completed_shipment(completed_shipment)
+    notify_shipment_status(completed_shipment)
+    broadcast_shipment(completed_shipment)
+    return completed_shipment, True
 
 
 class FinikConfigView(APIView):
@@ -91,6 +148,90 @@ class CarrierWalletView(APIView):
                 ).data,
             }
         )
+
+
+class FinikReconcileView(APIView):
+    """Recover a successful mobile payment when the callback is delayed/lost."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = FinikReconcileInSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payload = serializer.validated_data
+
+        try:
+            attempt = PaymentAttempt.objects.select_related("shipment").get(
+                id=payload["paymentId"]
+            )
+        except PaymentAttempt.DoesNotExist:
+            return Response(
+                {"detail": "payment_not_found"},
+                status=drf_status.HTTP_404_NOT_FOUND,
+            )
+
+        if attempt.shipment.client_id != request.user.id:
+            return Response(
+                {"detail": "payment_not_found"},
+                status=drf_status.HTTP_404_NOT_FOUND,
+            )
+        if attempt.status == PaymentAttempt.Status.SUCCEEDED:
+            return Response(
+                {
+                    "paid": True,
+                    "status": attempt.shipment.status,
+                }
+            )
+        if attempt.status == PaymentAttempt.Status.FAILED:
+            return Response(
+                {"paid": False, "status": attempt.shipment.status},
+                status=drf_status.HTTP_409_CONFLICT,
+            )
+
+        transaction_id = str(payload.get("transactionId") or "").strip()
+        item_id = str(payload.get("itemId") or "").strip()
+        identifier = transaction_id or item_id
+        key_type = "TRANSACTION_ID" if transaction_id else "ID"
+        try:
+            verified_item = verify_finik_payment(
+                identifier,
+                attempt,
+                key_type=key_type,
+            )
+        except FinikVerificationUnavailable:
+            logger.exception(
+                "finik_reconcile_unavailable",
+                extra={"attempt_id": str(attempt.id)},
+            )
+            return Response(
+                {"detail": "finik_verification_unavailable"},
+                status=drf_status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        if verified_item is None:
+            # A newly created item legitimately has paymentCount=0 until Finik
+            # finishes processing. The app retries this response briefly.
+            return Response(
+                {"paid": False, "status": attempt.shipment.status},
+                status=drf_status.HTTP_202_ACCEPTED,
+            )
+
+        verified_transaction_id = transaction_id or str(
+            verified_item.get("transactionId") or ""
+        )
+        verified_item_id = item_id or str(verified_item.get("id") or "")
+        try:
+            shipment, _ = _finish_verified_shipment_payment(
+                attempt_id=attempt.id,
+                transaction_id=verified_transaction_id,
+                item_id=verified_item_id,
+                raw_payload={"source": "mobile_reconcile"},
+            )
+        except ValueError:
+            return Response(
+                {"detail": "payment_not_due"},
+                status=drf_status.HTTP_409_CONFLICT,
+            )
+        return Response({"paid": shipment.is_paid, "status": shipment.status})
 
 
 class FinikCallbackView(APIView):
@@ -267,6 +408,7 @@ class FinikCallbackView(APIView):
         if completed_shipment is not None:
             apply_rating_for_completed_shipment(completed_shipment)
             notify_shipment_status(completed_shipment)
+            broadcast_shipment(completed_shipment)
 
         return Response({"ok": True})
 
