@@ -512,6 +512,8 @@
 
   function normalizeContainerItem(item) {
     if (!item || (item.feature.properties || {}).kind !== 'container') return;
+    const highlighted = state.groupSelection.has(item.feature.id);
+    const selected = state.selectedId === item.feature.id && !highlighted;
     const snapshot = serializeItem(item);
     item.feature.geometry.coordinates = snapshot.geometry.coordinates;
     item.feature.properties.rotation = snapshot.properties.rotation
@@ -520,12 +522,18 @@
     item.overlays.forEach((overlay) => {
       if (!(overlay instanceof google.maps.Marker)) {
         setPolygonCoordinates(overlay, item.feature.geometry.coordinates);
-        overlay.setOptions(overlayStyle(item.feature.properties, true));
+        overlay.setOptions(overlayStyle(item.feature.properties, selected));
       }
     });
     syncContainerSizeFields(item.feature.geometry.coordinates);
     updateFeatureLabel(item);
     syncContainerResizeHandles(item);
+    // Геометрия может нормализоваться после click в отложенном mouseup-кадре.
+    // Групповая окраска всегда должна быть последним применённым стилем.
+    if (highlighted) {
+      const main = mainSelectionItem();
+      setOverlayHighlighted(item, true, main?.feature.id === item.feature.id);
+    }
   }
 
   function featureZIndex(properties, selected = false) {
@@ -1018,6 +1026,11 @@
       handleFeatureClick(feature.id, event);
     });
     polygon.addListener('mouseup', () => {
+      // Обычный mouseup приходит и при простом клике. Оптимизатор карты
+      // выполняет его в requestAnimationFrame уже после click, поэтому старый
+      // код стирал только что поставленную групповую окраску. В режиме набора
+      // группы геометрия не редактируется — этот обработчик не нужен вовсе.
+      if (state.pickMode) return;
       const item = state.items.get(feature.id);
       if (item) {
         normalizeContainerItem(item);

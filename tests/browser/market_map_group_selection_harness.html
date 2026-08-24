@@ -104,7 +104,12 @@
               const path = this.paths.getAt(i);
               for (let j = 0; j < path.getLength(); j += 1) bounds.extend(path.getAt(j));
             }
-            this.emit('click', {domEvent, latLng: bounds.getCenter()});
+            const mapEvent = {domEvent, latLng: bounds.getCenter()};
+            // Реальный Google Maps присылает mouseup перед click. Оптимизатор
+            // переносит mouseup в следующий animation frame — это и стирало
+            // цвет первого выбранного контейнера до следующего клика.
+            this.emit('mouseup', mapEvent);
+            this.emit('click', mapEvent);
           });
           document.getElementById('market-map-canvas').append(this.button);
           window.__fakePolygons.push(this);
@@ -174,10 +179,11 @@
       }};
     })();
   </script>
-  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v5.js"></script>
+  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v6.js"></script>
   <!-- Намеренно загружаем второй раз: singleton обязан не дать повесить
        дублирующий обработчик на кнопку группировки. -->
-  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v5.js"></script>
+  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v6.js"></script>
+  <script src="/apps/delivery/static/delivery/admin/market_map_editor_perf.js"></script>
   <script>
     window.initMarketMapEditor();
     document.getElementById('simulate-map-click').addEventListener('click', () => {
