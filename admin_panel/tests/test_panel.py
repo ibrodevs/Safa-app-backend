@@ -144,6 +144,18 @@ class PanelWorkflowTests(TestCase):
         self.assertContains(map_response, "Ctrl+Z")
         self.assertContains(map_response, "Что нужно создать?")
 
+    def test_awaiting_payment_order_detail_auto_refreshes_until_paid(self):
+        shipment = self._shipment()
+        shipment.status = Shipment.Status.AWAITING_PAYMENT
+        shipment.save(update_fields=["status"])
+
+        response = self.client.get(
+            reverse("admin_panel:order_detail", args=(shipment.pk,))
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "refreshPaymentState")
+
     @patch("apps.delivery.operations.broadcast_shipment")
     @patch("apps.delivery.operations.notify_shipment_status")
     def test_order_cancel_uses_post_action(self, notify, broadcast):

@@ -56,41 +56,57 @@ def _finish_verified_shipment_payment(
             .get(id=attempt_id)
         )
         shipment = attempt.shipment
-        if attempt.status == PaymentAttempt.Status.SUCCEEDED:
-            return shipment, False
         if attempt.status == PaymentAttempt.Status.FAILED:
             return shipment, False
-        if shipment.status not in (
-            shipment.Status.AWAITING_PAYMENT,
-            shipment.Status.COMPLETED,
-        ):
-            raise ValueError("payment_not_due")
 
-        attempt.status = PaymentAttempt.Status.SUCCEEDED
-        attempt.finik_transaction_id = str(transaction_id)[:128] or None
-        attempt.finik_item_id = str(item_id)[:128] or None
-        if raw_payload is not None:
-            attempt.raw_callback_payload = raw_payload
-        attempt.save(
-            update_fields=[
-                "status",
-                "finik_transaction_id",
-                "finik_item_id",
-                "raw_callback_payload",
-                "updated_at",
-            ]
-        )
+        changed = False
+        if attempt.status != PaymentAttempt.Status.SUCCEEDED:
+            if shipment.status not in (
+                shipment.Status.AWAITING_PAYMENT,
+                shipment.Status.COMPLETED,
+            ):
+                raise ValueError("payment_not_due")
+
+            attempt.status = PaymentAttempt.Status.SUCCEEDED
+            attempt.finik_transaction_id = str(transaction_id)[:128] or None
+            attempt.finik_item_id = str(item_id)[:128] or None
+            if raw_payload is not None:
+                attempt.raw_callback_payload = raw_payload
+            attempt.save(
+                update_fields=[
+                    "status",
+                    "finik_transaction_id",
+                    "finik_item_id",
+                    "raw_callback_payload",
+                    "updated_at",
+                ]
+            )
+            changed = True
+
+        shipment_update_fields = []
         if not shipment.is_paid:
             shipment.is_paid = True
-            shipment.paid_at = timezone.now()
-            shipment.save(update_fields=["is_paid", "paid_at"])
+            shipment_update_fields.append("is_paid")
+        if shipment.paid_at is None:
+            shipment.paid_at = attempt.updated_at or timezone.now()
+            shipment_update_fields.append("paid_at")
+        if shipment_update_fields:
+            shipment.save(update_fields=shipment_update_fields)
+            changed = True
+
+        needs_completion = (
+            shipment.status != shipment.Status.COMPLETED
+            or not CarrierSettlement.objects.filter(shipment=shipment).exists()
+        )
         complete_paid_shipment(shipment=shipment, payment_attempt=attempt)
+        changed = changed or needs_completion
         completed_shipment = shipment
 
-    apply_rating_for_completed_shipment(completed_shipment)
-    notify_shipment_status(completed_shipment)
-    broadcast_shipment(completed_shipment)
-    return completed_shipment, True
+    if changed:
+        apply_rating_for_completed_shipment(completed_shipment)
+        notify_shipment_status(completed_shipment)
+        broadcast_shipment(completed_shipment)
+    return completed_shipment, changed
 
 
 class FinikConfigView(APIView):
@@ -176,10 +192,22 @@ class FinikReconcileView(APIView):
                 status=drf_status.HTTP_404_NOT_FOUND,
             )
         if attempt.status == PaymentAttempt.Status.SUCCEEDED:
+            try:
+                shipment, _ = _finish_verified_shipment_payment(
+                    attempt_id=attempt.id,
+                    transaction_id=attempt.finik_transaction_id or "",
+                    item_id=attempt.finik_item_id or "",
+                    raw_payload=attempt.raw_callback_payload,
+                )
+            except ValueError:
+                return Response(
+                    {"detail": "payment_not_due"},
+                    status=drf_status.HTTP_409_CONFLICT,
+                )
             return Response(
                 {
                     "paid": True,
-                    "status": attempt.shipment.status,
+                    "status": shipment.status,
                 }
             )
         if attempt.status == PaymentAttempt.Status.FAILED:
@@ -345,6 +373,21 @@ class FinikCallbackView(APIView):
                 payload=payload,
                 attempt_id=attempt_id,
             )
+
+        if attempt.status == PaymentAttempt.Status.SUCCEEDED:
+            try:
+                _finish_verified_shipment_payment(
+                    attempt_id=attempt.id,
+                    transaction_id=attempt.finik_transaction_id or "",
+                    item_id=attempt.finik_item_id or "",
+                    raw_payload=request.data,
+                )
+            except ValueError:
+                return Response(
+                    {"detail": "payment_not_due"},
+                    status=drf_status.HTTP_409_CONFLICT,
+                )
+            return Response({"ok": True})
 
         completed_shipment = None
         with transaction.atomic():

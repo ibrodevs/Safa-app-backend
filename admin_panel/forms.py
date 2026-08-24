@@ -6,8 +6,10 @@ from apps.delivery.models import (
     AmanatCampaign,
     AmanatCategory,
     Bazar,
+    Container,
     DeliveryDistrict,
     GlobalDeliveryConfig,
+    Passage,
     Shipment,
     ShipmentStop,
 )
@@ -108,6 +110,48 @@ class BazarPanelForm(StyledModelForm):
         if commit:
             instance.save()
         return instance
+
+
+class DistrictPanelForm(StyledModelForm):
+    class Meta:
+        model = DeliveryDistrict
+        fields = (
+            "name",
+            "fixed_price",
+            "base_price",
+            "per_km_price",
+            "min_fare",
+            "is_active",
+        )
+        labels = {
+            "name": "Название района",
+            "fixed_price": "Фиксированная цена",
+            "base_price": "Базовая стоимость",
+            "per_km_price": "Стоимость за км",
+            "min_fare": "Минимальная стоимость",
+            "is_active": "Район активен",
+        }
+
+
+class PassagePanelForm(StyledModelForm):
+    class Meta:
+        model = Passage
+        fields = ("bazar", "number")
+        labels = {"bazar": "Базар", "number": "Название или номер прохода"}
+
+
+class ContainerPanelForm(StyledModelForm):
+    class Meta:
+        model = Container
+        fields = ("passage", "number", "title", "lat", "lon", "is_active")
+        labels = {
+            "passage": "Проход",
+            "number": "Номер контейнера",
+            "title": "Название или примечание",
+            "lat": "Широта",
+            "lon": "Долгота",
+            "is_active": "Контейнер активен",
+        }
 
 
 class AmanatCampaignForm(StyledModelForm):

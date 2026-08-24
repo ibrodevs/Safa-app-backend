@@ -230,6 +230,39 @@ def test_client_can_reconcile_paid_item_when_callback_is_delayed(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_reconcile_repairs_paid_order_when_attempt_already_succeeded():
+    shipment = _shipment()
+    attempt = _attempt(shipment)
+    attempt.status = PaymentAttempt.Status.SUCCEEDED
+    attempt.finik_transaction_id = "already-paid-transaction"
+    attempt.finik_item_id = "already-paid-item"
+    attempt.save(
+        update_fields=[
+            "status",
+            "finik_transaction_id",
+            "finik_item_id",
+            "updated_at",
+        ]
+    )
+    client = APIClient()
+    client.force_authenticate(shipment.client)
+
+    response = client.post(
+        "/api/payments/finik/reconcile/",
+        {"paymentId": str(attempt.id), "itemId": attempt.finik_item_id},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data == {"paid": True, "status": Shipment.Status.COMPLETED}
+    shipment.refresh_from_db()
+    assert shipment.is_paid is True
+    assert shipment.paid_at is not None
+    assert shipment.status == Shipment.Status.COMPLETED
+    assert shipment.carrier_settlement.payment_attempt_id == attempt.id
+
+
+@pytest.mark.django_db
 def test_reconcile_does_not_expose_another_clients_payment(monkeypatch):
     shipment = _shipment()
     attempt = _attempt(shipment)

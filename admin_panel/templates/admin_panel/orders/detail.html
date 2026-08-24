@@ -11,3 +11,15 @@
   <details class="card technical"><summary>Техническая информация</summary><dl class="info-list"><div><dt>ID</dt><dd>{{ shipment.pk }}</dd></div><div><dt>Текущая точка</dt><dd>{{ shipment.current_stop_index|add:1 }}</dd></div><div><dt>ETA</dt><dd>{{ shipment.eta_to_next_min }} мин</dd></div></dl></details>
 </aside></div>
 {% endblock %}
+{% block extra_js %}{% if not shipment.is_paid and shipment.status == 'awaiting_payment' %}<script>
+(function () {
+  function refreshPaymentState() {
+    if (document.visibilityState === 'visible') {
+      window.location.reload();
+      return;
+    }
+    window.setTimeout(refreshPaymentState, 5000);
+  }
+  window.setTimeout(refreshPaymentState, 5000);
+})();
+</script>{% endif %}{% endblock %}
