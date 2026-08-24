@@ -1315,14 +1315,12 @@
     if (entering && state.selectedId) {
       const selectedId = state.selectedId;
       const selected = state.items.get(selectedId);
-      if (selected) setOverlaySelected(selected, false);
-      state.selectedId = null;
       // Объект, выбранный перед нажатием «Выбрать элементы», и есть первый
       // участник будущей группы. Раньше мы только снимали его resize-маркеры,
       // но забывали перенести в groupSelection — поэтому первый контейнер не
       // окрашивался, а видимое выделение начиналось лишь со второго.
       if (selected) state.groupSelection.add(selectedId);
-      updatePropertyVisibility(null);
+      moveEditingSelectionToGroup(selectedId);
     }
     state.pickMode = entering;
     const button = byId('market-group-pick');
@@ -1371,10 +1369,17 @@
     const main = mainSelectionItem();
     const mainId = main ? main.feature.id : null;
     state.items.forEach((item) => {
-      if (item.feature.id === state.selectedId) return;
+      const highlighted = state.groupSelection.has(item.feature.id);
+      // Одиночный выбранный объект сохраняет resize-маркеры. Но если этот же
+      // объект уже добавлен в группу, пропускать его нельзя: именно из-за этого
+      // первый контейнер оставался исходного цвета.
+      if (item.feature.id === state.selectedId && !highlighted) return;
+      if (item.feature.id === state.selectedId && highlighted) {
+        clearContainerResizeHandles(item);
+      }
       setOverlayHighlighted(
         item,
-        state.groupSelection.has(item.feature.id),
+        highlighted,
         item.feature.id === mainId,
       );
     });
@@ -1385,8 +1390,19 @@
   function toggleGroupSelection(id) {
     if (!state.items.has(id)) return;
     if (state.groupSelection.has(id)) state.groupSelection.delete(id);
-    else state.groupSelection.add(id);
+    else {
+      moveEditingSelectionToGroup(id);
+      state.groupSelection.add(id);
+    }
     refreshGroupHighlight();
+  }
+
+  function moveEditingSelectionToGroup(id) {
+    if (state.selectedId !== id) return;
+    const item = state.items.get(id);
+    if (item) setOverlaySelected(item, false);
+    state.selectedId = null;
+    updatePropertyVisibility(null);
   }
 
   // В явном режиме набора обычный клик только добавляет объект. Google Maps
@@ -1396,6 +1412,7 @@
   // сколько бы раз ни пришло событие, контейнер остаётся выбранным.
   function addGroupSelection(id) {
     if (!state.items.has(id)) return;
+    moveEditingSelectionToGroup(id);
     state.groupSelection.add(id);
     refreshGroupHighlight();
     const item = state.items.get(id);
