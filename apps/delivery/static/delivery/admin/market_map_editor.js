@@ -14,6 +14,7 @@
     history: [],
     historyIndex: -1,
     restoringHistory: false,
+    lastContainerRotation: 0,
   };
 
   const byId = (id) => document.getElementById(id);
@@ -167,27 +168,132 @@
     return KIND_CONFIG[kind]?.family || 'polygon';
   }
 
-  function containerRectangle(latLng) {
-    const halfWidth = 0.000018;
-    const halfHeight = 0.000012;
-    const lng = latLng.lng();
-    const lat = latLng.lat();
+  const CONTAINER_MIN_SIZE_M = 0.2;
+  const CONTAINER_MAX_SIZE_M = 100;
+  const CONTAINER_DEFAULT_WIDTH_M = 4;
+  const CONTAINER_DEFAULT_HEIGHT_M = 2.5;
+  const METERS_PER_LAT_DEGREE = 111320;
+  // Углы контейнера по часовой стрелке от левого верхнего: знаки по осям
+  // ширины и длины. Порядок совпадает с прежними прямоугольниками карты.
+  const CONTAINER_CORNER_SIGNS = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+
+  function normalizeRotation(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return 0;
+    return ((number % 360) + 360) % 360;
+  }
+
+  function clampContainerSize(meters) {
+    const number = Number(meters);
+    if (!Number.isFinite(number)) return CONTAINER_MIN_SIZE_M;
+    return Math.max(CONTAINER_MIN_SIZE_M, Math.min(CONTAINER_MAX_SIZE_M, number));
+  }
+
+  function safeContainerSize(meters) {
+    const number = Number(meters);
+    if (!Number.isFinite(number)) return CONTAINER_MIN_SIZE_M;
+    return Math.max(CONTAINER_MIN_SIZE_M, number);
+  }
+
+  function lngMetersPerDegree(lat) {
+    return METERS_PER_LAT_DEGREE * Math.max(0.2, Math.cos((Number(lat) || 0) * Math.PI / 180));
+  }
+
+  // Локальные метры с началом в центре контейнера: x — на восток, y — на север.
+  // В этой системе поворот считается обычной тригонометрией, без искажений долготы.
+  function toLocalMeters(point, center) {
     return [
-      [lng - halfWidth, lat + halfHeight],
-      [lng + halfWidth, lat + halfHeight],
-      [lng + halfWidth, lat - halfHeight],
-      [lng - halfWidth, lat - halfHeight],
-      [lng - halfWidth, lat + halfHeight],
+      (Number(point[0]) - center[0]) * lngMetersPerDegree(center[1]),
+      (Number(point[1]) - center[1]) * METERS_PER_LAT_DEGREE,
     ];
   }
 
-  function metersToLat(meters) {
-    return Number(meters || 0) / 111320;
+  function fromLocalMeters(point, center) {
+    return [
+      center[0] + point[0] / lngMetersPerDegree(center[1]),
+      center[1] + point[1] / METERS_PER_LAT_DEGREE,
+    ];
   }
 
-  function metersToLng(meters, lat) {
-    const cos = Math.max(0.2, Math.cos((Number(lat) || 0) * Math.PI / 180));
-    return Number(meters || 0) / (111320 * cos);
+  // rotation — поворот контейнера по часовой стрелке в градусах.
+  // 0° — ширина смотрит строго на восток, длина строго на юг.
+  function containerAxes(rotation) {
+    const radians = normalizeRotation(rotation) * Math.PI / 180;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    return { width: [cos, -sin], height: [-sin, -cos] };
+  }
+
+  function ringFromContainerRect(rect) {
+    const axes = containerAxes(rect.rotation);
+    const halfWidth = safeContainerSize(rect.width) / 2;
+    const halfHeight = safeContainerSize(rect.height) / 2;
+    const ring = CONTAINER_CORNER_SIGNS.map(([signWidth, signHeight]) => fromLocalMeters([
+      signWidth * halfWidth * axes.width[0] + signHeight * halfHeight * axes.height[0],
+      signWidth * halfWidth * axes.width[1] + signHeight * halfHeight * axes.height[1],
+    ], rect.center));
+    return [...ring, [...ring[0]]];
+  }
+
+  function containerBboxRect(points) {
+    const bounds = rectangleBounds(points);
+    const center = [(bounds.left + bounds.right) / 2, (bounds.top + bounds.bottom) / 2];
+    return {
+      center,
+      width: (bounds.right - bounds.left) * lngMetersPerDegree(center[1]),
+      height: (bounds.top - bounds.bottom) * METERS_PER_LAT_DEGREE,
+      rotation: 0,
+    };
+  }
+
+  // Контейнер всегда остаётся прямоугольником, поэтому его достаточно описать
+  // центром, шириной, длиной и углом поворота. Кольцо неправильной формы
+  // (старые данные, ручная правка) сводится к описанной рамке без поворота.
+  function containerRectFromRing(ring) {
+    const points = (ring || [])
+      .filter((point) => Array.isArray(point) && Number.isFinite(Number(point[0])) && Number.isFinite(Number(point[1])))
+      .map((point) => [Number(point[0]), Number(point[1])]);
+    if (!points.length) return null;
+
+    const closed = points.length === 5
+      && points[0][0] === points[4][0]
+      && points[0][1] === points[4][1];
+    if (points.length !== 4 && !closed) return containerBboxRect(points);
+
+    const corners = points.slice(0, 4);
+    const center = [
+      corners.reduce((sum, point) => sum + point[0], 0) / corners.length,
+      corners.reduce((sum, point) => sum + point[1], 0) / corners.length,
+    ];
+    const local = corners.map((point) => toLocalMeters(point, center));
+    const widthVector = [local[1][0] - local[0][0], local[1][1] - local[0][1]];
+    const heightVector = [local[2][0] - local[1][0], local[2][1] - local[1][1]];
+    const width = Math.hypot(widthVector[0], widthVector[1]);
+    const height = Math.hypot(heightVector[0], heightVector[1]);
+    const dot = widthVector[0] * heightVector[0] + widthVector[1] * heightVector[1];
+    if (width < 1e-6 || height < 1e-6 || Math.abs(dot) > 0.02 * width * height) {
+      return containerBboxRect(points);
+    }
+
+    return {
+      center,
+      width,
+      height,
+      rotation: normalizeRotation(Math.atan2(-widthVector[1], widthVector[0]) * 180 / Math.PI),
+    };
+  }
+
+  function containerRect(coordinates) {
+    return containerRectFromRing((coordinates || [[]])[0]);
+  }
+
+  function containerRectangle(latLng, rotation = 0) {
+    return ringFromContainerRect({
+      center: [latLng.lng(), latLng.lat()],
+      width: CONTAINER_DEFAULT_WIDTH_M,
+      height: CONTAINER_DEFAULT_HEIGHT_M,
+      rotation,
+    });
   }
 
   function defaultProperties(kind) {
@@ -275,28 +381,14 @@
     };
   }
 
-  function rectangleFromBounds(bounds) {
-    return [
-      [bounds.left, bounds.top],
-      [bounds.right, bounds.top],
-      [bounds.right, bounds.bottom],
-      [bounds.left, bounds.bottom],
-      [bounds.left, bounds.top],
-    ];
-  }
-
-  function resizeContainerCoordinates(coordinates, widthM, heightM) {
-    const ring = rectangleFromRing(coordinates?.[0] || []);
-    const bounds = rectangleBounds(ring);
-    const centerLon = (bounds.left + bounds.right) / 2;
-    const centerLat = (bounds.top + bounds.bottom) / 2;
-    const halfWidth = metersToLng(widthM, centerLat) / 2;
-    const halfHeight = metersToLat(heightM) / 2;
-    return [rectangleFromBounds({
-      left: centerLon - halfWidth,
-      right: centerLon + halfWidth,
-      bottom: centerLat - halfHeight,
-      top: centerLat + halfHeight,
+  function resizeContainerCoordinates(coordinates, widthM, heightM, rotationDeg = null) {
+    const rect = containerRect(coordinates);
+    if (!rect) return coordinates;
+    return [ringFromContainerRect({
+      center: rect.center,
+      width: clampContainerSize(widthM),
+      height: clampContainerSize(heightM),
+      rotation: rotationDeg === null ? rect.rotation : normalizeRotation(rotationDeg),
     })];
   }
 
@@ -305,17 +397,21 @@
   }
 
   function syncContainerSizeFields(coordinates) {
-    const bounds = rectangleBounds(rectangleFromRing((coordinates || [[]])[0]));
-    const centerLat = (bounds.top + bounds.bottom) / 2;
-    byId('market-feature-width-m').value = Math.max(0.2, Math.round((bounds.right - bounds.left) * 111320 * Math.cos(centerLat * Math.PI / 180) * 10) / 10);
-    byId('market-feature-height-m').value = Math.max(0.2, Math.round((bounds.top - bounds.bottom) * 111320 * 10) / 10);
+    const rect = containerRect(coordinates);
+    if (!rect) return;
+    byId('market-feature-width-m').value = Math.max(0.2, Math.round(rect.width * 10) / 10);
+    byId('market-feature-height-m').value = Math.max(0.2, Math.round(rect.height * 10) / 10);
+    const rotationField = byId('market-feature-rotation-deg');
+    if (rotationField) rotationField.value = Math.round(normalizeRotation(rect.rotation) * 10) / 10;
   }
 
   function normalizeContainerItem(item) {
     if (!item || (item.feature.properties || {}).kind !== 'container') return;
     const snapshot = serializeItem(item);
-    snapshot.geometry.coordinates = [rectangleFromRing((snapshot.geometry.coordinates || [[]])[0])];
     item.feature.geometry.coordinates = snapshot.geometry.coordinates;
+    item.feature.properties.rotation = snapshot.properties.rotation
+      ?? item.feature.properties.rotation
+      ?? 0;
     item.overlays.forEach((overlay) => {
       if (!(overlay instanceof google.maps.Marker)) {
         setPolygonCoordinates(overlay, item.feature.geometry.coordinates);
@@ -504,40 +600,56 @@
   function clearContainerResizeHandles(item) {
     (item.resizeHandles || []).forEach((handle) => handle.setMap(null));
     item.resizeHandles = [];
+    if (item.rotationHandle) {
+      item.rotationHandle.setMap(null);
+      item.rotationHandle = null;
+    }
   }
 
+  // Угол тянут за противоположный: он остаётся на месте, а стороны меряются
+  // вдоль собственных осей контейнера, поэтому поворот при изменении размера
+  // не теряется.
   function containerCoordinatesFromCorner(item, cornerIndex, position) {
-    const ring = rectangleFromRing((item.feature.geometry.coordinates || [[]])[0]);
-    const opposite = ring[(cornerIndex + 2) % 4];
-    const original = ring[cornerIndex];
-    let lng = position.lng();
-    let lat = position.lat();
-    const centerLat = (lat + opposite[1]) / 2;
-    const minLng = metersToLng(0.2, centerLat);
-    const maxLng = metersToLng(100, centerLat);
-    const minLat = metersToLat(0.2);
-    const maxLat = metersToLat(100);
-    const lngDirection = original[0] >= opposite[0] ? 1 : -1;
-    const latDirection = original[1] >= opposite[1] ? 1 : -1;
-    const lngDistance = Math.max(minLng, Math.min(maxLng, Math.abs(lng - opposite[0])));
-    const latDistance = Math.max(minLat, Math.min(maxLat, Math.abs(lat - opposite[1])));
-    lng = opposite[0] + lngDirection * lngDistance;
-    lat = opposite[1] + latDirection * latDistance;
-    return [rectangleFromBounds({
-      left: Math.min(lng, opposite[0]),
-      right: Math.max(lng, opposite[0]),
-      bottom: Math.min(lat, opposite[1]),
-      top: Math.max(lat, opposite[1]),
-    })];
+    const rect = containerRect(item.feature.geometry.coordinates);
+    if (!rect) return item.feature.geometry.coordinates;
+    const axes = containerAxes(rect.rotation);
+    const [signWidth, signHeight] = CONTAINER_CORNER_SIGNS[cornerIndex % 4];
+    const anchorPoint = ringFromContainerRect(rect)[(cornerIndex + 2) % 4];
+    const anchor = toLocalMeters(anchorPoint, rect.center);
+    const pointer = toLocalMeters([position.lng(), position.lat()], rect.center);
+    const delta = [pointer[0] - anchor[0], pointer[1] - anchor[1]];
+    const width = clampContainerSize(
+      (delta[0] * axes.width[0] + delta[1] * axes.width[1]) * signWidth,
+    );
+    const height = clampContainerSize(
+      (delta[0] * axes.height[0] + delta[1] * axes.height[1]) * signHeight,
+    );
+    const center = fromLocalMeters([
+      anchor[0] + signWidth * (width / 2) * axes.width[0] + signHeight * (height / 2) * axes.height[0],
+      anchor[1] + signWidth * (width / 2) * axes.width[1] + signHeight * (height / 2) * axes.height[1],
+    ], rect.center);
+    return [ringFromContainerRect({ center, width, height, rotation: rect.rotation })];
   }
 
-  function syncContainerResizeHandles(item, activeIndex = -1) {
-    if (!item?.resizeHandles?.length) return;
-    const ring = rectangleFromRing((item.feature.geometry.coordinates || [[]])[0]);
-    item.resizeHandles.forEach((handle, index) => {
+  function containerRotationHandlePosition(rect) {
+    const axes = containerAxes(rect.rotation);
+    const distance = safeContainerSize(rect.height) / 2 + Math.max(1.5, safeContainerSize(rect.height) / 2);
+    return fromLocalMeters([-axes.height[0] * distance, -axes.height[1] * distance], rect.center);
+  }
+
+  function syncContainerResizeHandles(item, activeIndex = -1, { skipRotationHandle = false } = {}) {
+    if (!item?.resizeHandles?.length && !item?.rotationHandle) return;
+    const rect = containerRect(item.feature.geometry.coordinates);
+    if (!rect) return;
+    const ring = ringFromContainerRect(rect);
+    (item.resizeHandles || []).forEach((handle, index) => {
       if (index === activeIndex) return;
       handle.setPosition({ lat: ring[index][1], lng: ring[index][0] });
     });
+    if (item.rotationHandle && !skipRotationHandle) {
+      const position = containerRotationHandlePosition(rect);
+      item.rotationHandle.setPosition({ lat: position[1], lng: position[0] });
+    }
   }
 
   function showContainerResizeHandles(item) {
@@ -546,7 +658,9 @@
       (item.feature.properties || {}).kind !== 'container'
       || item.feature.geometry.type !== 'Polygon'
     ) return;
-    const ring = rectangleFromRing((item.feature.geometry.coordinates || [[]])[0]);
+    const rect = containerRect(item.feature.geometry.coordinates);
+    if (!rect) return;
+    const ring = ringFromContainerRect(rect);
     item.resizeHandles = ring.slice(0, 4).map((point, cornerIndex) => {
       const handle = new google.maps.Marker({
         map: state.map,
@@ -589,6 +703,53 @@
       });
       return handle;
     });
+    showContainerRotationHandle(item);
+  }
+
+  function showContainerRotationHandle(item) {
+    const rect = containerRect(item.feature.geometry.coordinates);
+    if (!rect) return;
+    const position = containerRotationHandlePosition(rect);
+    const handle = new google.maps.Marker({
+      map: state.map,
+      position: { lat: position[1], lng: position[0] },
+      draggable: true,
+      clickable: true,
+      cursor: 'grab',
+      title: 'Потяните, чтобы повернуть контейнер. Shift — шаг 15°',
+      zIndex: featureZIndex(item.feature.properties, true) + 3,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        fillColor: '#ffffff',
+        fillOpacity: 1,
+        strokeColor: item.feature.properties.stroke_color || '#dc2626',
+        strokeWeight: 3,
+        scale: 9,
+      },
+      label: {
+        text: '↻',
+        color: '#111827',
+        fontSize: '13px',
+        fontWeight: '900',
+      },
+    });
+    handle.addListener('click', stopMapClickPropagation);
+    handle.addListener('drag', (event) => {
+      const current = containerRect(item.feature.geometry.coordinates);
+      const dragged = handle.getPosition();
+      if (!current || !dragged) return;
+      const local = toLocalMeters([dragged.lng(), dragged.lat()], current.center);
+      if (Math.hypot(local[0], local[1]) < 1e-6) return;
+      let angle = normalizeRotation(Math.atan2(local[0], local[1]) * 180 / Math.PI);
+      if (event?.domEvent?.shiftKey) angle = normalizeRotation(Math.round(angle / 15) * 15);
+      setContainerRotation(item, angle, { record: false, skipRotationHandle: true });
+    });
+    handle.addListener('dragend', () => {
+      syncContainerResizeHandles(item);
+      setStatus('Контейнер повёрнут. Сохраните карту.', 'success');
+      recordHistory();
+    });
+    item.rotationHandle = handle;
   }
 
   function createMarker(feature) {
@@ -703,7 +864,13 @@
   function addFeature(rawFeature, { select = false } = {}) {
     const feature = normalizeFeature(rawFeature);
     if (state.items.has(feature.id)) removeFeature(feature.id);
-    const item = { feature, overlays: buildOverlays(feature), label: null, resizeHandles: [] };
+    const item = {
+      feature,
+      overlays: buildOverlays(feature),
+      label: null,
+      resizeHandles: [],
+      rotationHandle: null,
+    };
     state.items.set(feature.id, item);
     updateFeatureLabel(item);
     if (select) selectFeature(feature.id);
@@ -722,7 +889,11 @@
     } else if (type === 'Polygon') {
       feature.geometry.coordinates = pathsToCoordinates(item.overlays[0].getPaths());
       if ((feature.properties || {}).kind === 'container') {
-        feature.geometry.coordinates = [rectangleFromRing(feature.geometry.coordinates[0])];
+        const rect = containerRect(feature.geometry.coordinates);
+        if (rect) {
+          feature.geometry.coordinates = [ringFromContainerRect(rect)];
+          feature.properties.rotation = Math.round(normalizeRotation(rect.rotation) * 100) / 100;
+        }
       }
     } else if (type === 'MultiPolygon') {
       feature.geometry.coordinates = item.overlays.map((overlay) => pathsToCoordinates(overlay.getPaths()));
@@ -839,7 +1010,7 @@
     setOverlaySelected(item, true);
     populateForm(item.feature);
     if ((item.feature.properties || {}).kind === 'container') {
-      setStatus('Тяните белые точки по углам, чтобы визуально изменить размер контейнера.', 'success');
+      setStatus('Углы меняют размер, круглый маркер ↻ сверху поворачивает контейнер.', 'success');
     }
     refreshList();
   }
@@ -858,10 +1029,9 @@
   function populateForm(feature) {
     const properties = feature.properties || {};
     const serialized = state.items.has(feature.id) ? serializeItem(state.items.get(feature.id)) : feature;
-    const containerBounds = properties.kind === 'container'
-      ? rectangleBounds(rectangleFromRing((serialized.geometry.coordinates || [[]])[0]))
+    const rect = properties.kind === 'container' && serialized.geometry.type === 'Polygon'
+      ? containerRect(serialized.geometry.coordinates)
       : null;
-    const centerLat = containerBounds ? (containerBounds.top + containerBounds.bottom) / 2 : 42.8746;
     byId('market-feature-kind').value = properties.kind || 'district';
     byId('market-feature-name').value = properties.name || '';
     byId('market-feature-number').value = properties.number || '';
@@ -875,9 +1045,11 @@
     byId('market-feature-stroke-width').value = Number(properties.stroke_width ?? 2);
     byId('market-feature-stroke').value = String(properties.stroke_color || '#e47f26').slice(0, 7);
     byId('market-feature-fill').value = String(properties.fill_color || '#ff8656').slice(0, 7);
-    if (containerBounds) {
-      byId('market-feature-width-m').value = Math.max(0.2, Math.round((containerBounds.right - containerBounds.left) * 111320 * Math.cos(centerLat * Math.PI / 180) * 10) / 10);
-      byId('market-feature-height-m').value = Math.max(0.2, Math.round((containerBounds.top - containerBounds.bottom) * 111320 * 10) / 10);
+    if (rect) {
+      byId('market-feature-width-m').value = Math.max(0.2, Math.round(rect.width * 10) / 10);
+      byId('market-feature-height-m').value = Math.max(0.2, Math.round(rect.height * 10) / 10);
+      const rotationField = byId('market-feature-rotation-deg');
+      if (rotationField) rotationField.value = Math.round(normalizeRotation(rect.rotation) * 10) / 10;
     }
     updatePropertyVisibility(properties.kind || 'district');
   }
@@ -929,10 +1101,21 @@
     properties.line_pattern = KIND_CONFIG[kind]?.linePattern || properties.line_pattern || 'solid';
     if (kind === 'container') {
       const serialized = serializeItem(item);
-      const widthM = Math.max(0.2, Number(byId('market-feature-width-m').value || 4));
-      const heightM = Math.max(0.2, Number(byId('market-feature-height-m').value || 2.5));
-      serialized.geometry.coordinates = resizeContainerCoordinates(serialized.geometry.coordinates, widthM, heightM);
+      const widthM = Math.max(0.2, Number(byId('market-feature-width-m').value || CONTAINER_DEFAULT_WIDTH_M));
+      const heightM = Math.max(0.2, Number(byId('market-feature-height-m').value || CONTAINER_DEFAULT_HEIGHT_M));
+      const rotationField = byId('market-feature-rotation-deg');
+      const rotation = rotationField
+        ? normalizeRotation(rotationField.value)
+        : normalizeRotation(properties.rotation);
+      serialized.geometry.coordinates = resizeContainerCoordinates(
+        serialized.geometry.coordinates,
+        widthM,
+        heightM,
+        rotation,
+      );
       item.feature.geometry.coordinates = serialized.geometry.coordinates;
+      properties.rotation = Math.round(rotation * 100) / 100;
+      state.lastContainerRotation = rotation;
       const passageValue = byId('market-feature-passage').value;
       if (passageValue.startsWith('feature:')) {
         properties.passage_id = null;
@@ -958,6 +1141,7 @@
       if (kind === 'passage') properties.number = name;
       delete properties.container_id;
       delete properties.title;
+      delete properties.rotation;
       if (kind !== 'passage') delete properties.number;
     }
     item.overlays.forEach((overlay) => {
@@ -977,6 +1161,7 @@
         overlay.setOptions(overlayStyle(properties, true));
       }
     });
+    if (kind === 'container') syncContainerSizeFields(item.feature.geometry.coordinates);
     syncContainerResizeHandles(item);
     updateFeatureLabel(item);
     refreshList();
@@ -993,31 +1178,27 @@
       : coordinates;
   }
 
+  // Копия встаёт вплотную вдоль осей самого контейнера: у повёрнутого ряда
+  // «справа» означает вдоль ряда, а не строго на восток.
   function adjacentContainerCoordinates(coordinates, direction) {
-    const bounds = rectangleBounds(rectangleFromRing(coordinates?.[0] || []));
-    const width = bounds.right - bounds.left;
-    const height = bounds.top - bounds.bottom;
-    const next = { ...bounds };
-    switch (direction) {
-      case 'left':
-        next.left = bounds.left - width;
-        next.right = bounds.left;
-        break;
-      case 'up':
-        next.bottom = bounds.top;
-        next.top = bounds.top + height;
-        break;
-      case 'down':
-        next.bottom = bounds.bottom - height;
-        next.top = bounds.bottom;
-        break;
-      case 'right':
-      default:
-        next.left = bounds.right;
-        next.right = bounds.right + width;
-        break;
-    }
-    return [rectangleFromBounds(next)];
+    const rect = containerRect(coordinates);
+    if (!rect) return coordinates;
+    const axes = containerAxes(rect.rotation);
+    const width = safeContainerSize(rect.width);
+    const height = safeContainerSize(rect.height);
+    const offsets = {
+      right: [axes.width[0] * width, axes.width[1] * width],
+      left: [-axes.width[0] * width, -axes.width[1] * width],
+      down: [axes.height[0] * height, axes.height[1] * height],
+      up: [-axes.height[0] * height, -axes.height[1] * height],
+    };
+    const offset = offsets[direction] || offsets.right;
+    return [ringFromContainerRect({
+      center: fromLocalMeters(offset, rect.center),
+      width: rect.width,
+      height: rect.height,
+      rotation: rect.rotation,
+    })];
   }
 
   function nextContainerNumber(value) {
@@ -1124,6 +1305,42 @@
     }
   }
 
+  function setContainerRotation(item, rotation, { record = true, status = '', skipRotationHandle = false } = {}) {
+    const rect = containerRect(item.feature.geometry.coordinates);
+    if (!rect) return;
+    const angle = normalizeRotation(rotation);
+    item.feature.geometry.coordinates = [ringFromContainerRect({ ...rect, rotation: angle })];
+    item.feature.properties.rotation = Math.round(angle * 100) / 100;
+    state.lastContainerRotation = angle;
+    item.overlays.forEach((overlay) => {
+      if (!(overlay instanceof google.maps.Marker)) {
+        setPolygonCoordinates(overlay, item.feature.geometry.coordinates);
+      }
+    });
+    syncContainerSizeFields(item.feature.geometry.coordinates);
+    syncContainerResizeHandles(item, -1, { skipRotationHandle });
+    updateFeatureLabel(item);
+    root()?.dispatchEvent(new CustomEvent('market-map:dirty'));
+    if (status) setStatus(status, 'success');
+    if (record) recordHistory();
+  }
+
+  function rotateSelectedContainer({ delta = 0, value = null } = {}) {
+    const item = state.items.get(state.selectedId);
+    if (!item || (item.feature.properties || {}).kind !== 'container') {
+      setStatus('Сначала выберите контейнер', 'error');
+      return;
+    }
+    const rect = containerRect(item.feature.geometry.coordinates);
+    if (!rect) return;
+    const angle = value === null
+      ? normalizeRotation(rect.rotation + Number(delta || 0))
+      : normalizeRotation(value);
+    setContainerRotation(item, angle, {
+      status: `Контейнер повёрнут на ${Math.round(angle * 10) / 10}°`,
+    });
+  }
+
   function resizeSelectedContainer(dimension, delta) {
     const item = state.items.get(state.selectedId);
     if (!item || (item.feature.properties || {}).kind !== 'container') {
@@ -1225,12 +1442,16 @@
         properties.name = number;
         properties.number = number;
       }
+      // Ряд контейнеров обычно стоит под одним углом, поэтому новый объект
+      // повторяет поворот предыдущего.
+      const rotation = normalizeRotation(state.lastContainerRotation);
+      properties.rotation = Math.round(rotation * 100) / 100;
       const id = makeId(kind);
       addFeature({
         type: 'Feature',
         id,
         properties,
-        geometry: { type: 'Polygon', coordinates: [containerRectangle(event.latLng)] },
+        geometry: { type: 'Polygon', coordinates: [containerRectangle(event.latLng, rotation)] },
       }, { select: true });
       setTool('select');
       setStatus(`${featureKindLabel(kind)} добавлен. Заполните его свойства.`, 'success');
@@ -1474,6 +1695,19 @@
     });
     byId('market-feature-width-m')?.addEventListener('change', () => resizeSelectedContainer('width', 0));
     byId('market-feature-height-m')?.addEventListener('change', () => resizeSelectedContainer('height', 0));
+    document.querySelectorAll('[data-container-rotate-step]').forEach((button) => {
+      button.addEventListener('click', () => rotateSelectedContainer({
+        delta: Number(button.dataset.containerRotateStep || 0),
+      }));
+    });
+    document.querySelectorAll('[data-container-rotate-set]').forEach((button) => {
+      button.addEventListener('click', () => rotateSelectedContainer({
+        value: Number(button.dataset.containerRotateSet || 0),
+      }));
+    });
+    byId('market-feature-rotation-deg')?.addEventListener('change', (event) => {
+      rotateSelectedContainer({ value: event.target.value });
+    });
     byId('market-feature-container')?.addEventListener('change', (event) => {
       const option = event.target.selectedOptions[0];
       if (!option?.value) return;

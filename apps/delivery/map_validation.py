@@ -90,6 +90,17 @@ def _opacity(value: Any, *, fallback: float) -> float:
     return max(0, min(1, number))
 
 
+def _rotation(value: Any) -> float:
+    """Поворот контейнера в градусах по часовой стрелке, приведённый к [0, 360)."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(number):
+        return 0.0
+    return round(number % 360, 2)
+
+
 def _point(value: Any, *, label: str) -> list[float]:
     if not isinstance(value, (list, tuple)) or len(value) < 2:
         raise ValidationError(f"{label}: точка должна содержать [lon, lat]")
@@ -359,6 +370,8 @@ def validate_feature_collection(value: Any) -> dict[str, Any]:
             fallback=float(style["fill_opacity"]),
         )
         normalized_properties["z_index"] = int(properties.get("z_index", style["z_index"]) or style["z_index"])
+        if kind == "container":
+            normalized_properties["rotation"] = _rotation(properties.get("rotation"))
         if "line_pattern" in style:
             pattern = str(properties.get("line_pattern") or style["line_pattern"]).strip().lower()
             normalized_properties["line_pattern"] = pattern if pattern in {"solid", "dashed"} else style["line_pattern"]

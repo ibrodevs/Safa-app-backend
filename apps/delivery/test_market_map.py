@@ -398,3 +398,48 @@ def test_self_intersecting_polygon_is_rejected():
     ]]
     with pytest.raises(ValidationError):
         validate_feature_collection({"type": "FeatureCollection", "features": [invalid]})
+
+
+def test_container_rotation_is_normalized_to_a_single_turn():
+    bazar_id = 1
+    feature = container_rectangle_feature(bazar_id, 1, 1)
+    feature["properties"]["rotation"] = -45
+
+    collection = validate_feature_collection(
+        {"type": "FeatureCollection", "features": [polygon_feature(bazar_id), feature]}
+    )
+
+    assert collection["features"][1]["properties"]["rotation"] == 315.0
+
+
+def test_broken_container_rotation_falls_back_to_zero():
+    bazar_id = 1
+    feature = container_rectangle_feature(bazar_id, 1, 1)
+    feature["properties"]["rotation"] = "не число"
+
+    collection = validate_feature_collection(
+        {"type": "FeatureCollection", "features": [polygon_feature(bazar_id), feature]}
+    )
+
+    assert collection["features"][1]["properties"]["rotation"] == 0.0
+
+
+def test_rotated_container_rectangle_is_accepted():
+    bazar_id = 1
+    feature = container_rectangle_feature(bazar_id, 1, 1)
+    # Прямоугольник, повёрнутый примерно на 30°, вокруг того же центра.
+    feature["geometry"]["coordinates"] = [[
+        [74.62290, 42.94098],
+        [74.62307, 42.94106],
+        [74.62310, 42.94102],
+        [74.62293, 42.94094],
+        [74.62290, 42.94098],
+    ]]
+    feature["properties"]["rotation"] = 30
+
+    collection = validate_feature_collection(
+        {"type": "FeatureCollection", "features": [polygon_feature(bazar_id), feature]}
+    )
+
+    assert collection["features"][1]["properties"]["rotation"] == 30.0
+    assert collection["features"][1]["geometry"]["type"] == "Polygon"

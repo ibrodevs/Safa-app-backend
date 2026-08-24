@@ -67,7 +67,7 @@ def test_container_size_can_be_reduced_in_both_admin_editors():
         assert 'data-container-size-step="width" data-delta="-0.5"' in template
         assert 'data-container-size-step="height" data-delta="-0.5"' in template
         assert 'min="0.2" max="100" step="0.1"' in template
-        assert "market_map_editor.js' %}?v=20260824-6" in template
+        assert "market_map_editor.js' %}?v=20260824-7" in template
 
     assert "resizeSelectedContainer('width', 0)" in javascript
     assert "resizeSelectedContainer('height', 0)" in javascript
@@ -147,3 +147,48 @@ def test_missing_container_passage_is_blocked_with_modal_warning():
     assert "Для контейнера обязательно выберите проход." in ui_js
     assert "event.stopImmediatePropagation()" in ui_js
     assert "showError('Для контейнера обязательно выберите проход.')" in ui_js
+
+
+def test_containers_can_be_rotated_from_both_admin_editors():
+    standard = TEMPLATE.read_text(encoding="utf-8")
+    panel = (
+        ROOT / "admin_panel/templates/admin_panel/map/editor.html"
+    ).read_text(encoding="utf-8")
+    javascript = EDITOR_JS.read_text(encoding="utf-8")
+
+    for template in (standard, panel):
+        assert 'id="market-feature-rotation-deg"' in template
+        assert 'data-container-rotate-step="-15"' in template
+        assert 'data-container-rotate-step="15"' in template
+        for angle in ("0", "90", "180", "270"):
+            assert f'data-container-rotate-set="{angle}"' in template
+
+    assert "function containerAxes(rotation)" in javascript
+    assert "function ringFromContainerRect(rect)" in javascript
+    assert "function containerRectFromRing(ring)" in javascript
+    assert "function showContainerRotationHandle(item)" in javascript
+    assert "function rotateSelectedContainer(" in javascript
+    assert "Потяните, чтобы повернуть контейнер" in javascript
+    assert "data-container-rotate-step" in javascript
+    assert "data-container-rotate-set" in javascript
+
+
+def test_rotation_survives_resize_duplicate_and_save():
+    javascript = EDITOR_JS.read_text(encoding="utf-8")
+
+    # Прежний редактор сводил контейнер к описанной рамке и терял поворот.
+    assert "rectangleFromBounds" not in javascript
+    assert "[rectangleFromRing(feature.geometry.coordinates[0])]" not in javascript
+
+    assert "rotation: rect.rotation" in javascript
+    assert "feature.properties.rotation = Math.round(normalizeRotation(rect.rotation) * 100) / 100" in javascript
+    assert "resizeContainerCoordinates(coordinates, widthM, heightM, rotationDeg = null)" in javascript
+
+
+def test_rotation_is_built_into_editor_without_patch_layer():
+    panel = (
+        ROOT / "admin_panel/templates/admin_panel/map/editor.html"
+    ).read_text(encoding="utf-8")
+
+    assert "market_map_rotation.js" not in panel
+    assert not (ROOT / "apps/delivery/static/delivery/admin/market_map_rotation.js").exists()

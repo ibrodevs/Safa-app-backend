@@ -180,6 +180,22 @@
           </div>
         </div>
 
+        <div class="form-row map-rotation-row" data-kind-scope="container">
+          <label for="market-feature-rotation-deg">Поворот, °</label>
+          <div class="map-size-stepper">
+            <button type="button" data-container-rotate-step="-15" aria-label="Повернуть влево на 15 градусов">↶</button>
+            <input id="market-feature-rotation-deg" type="number" min="0" max="359.9" step="1" value="0">
+            <button type="button" data-container-rotate-step="15" aria-label="Повернуть вправо на 15 градусов">↷</button>
+          </div>
+          <div class="map-rotation-presets">
+            <button type="button" data-container-rotate-set="0">0°</button>
+            <button type="button" data-container-rotate-set="90">90°</button>
+            <button type="button" data-container-rotate-set="180">180°</button>
+            <button type="button" data-container-rotate-set="270">270°</button>
+          </div>
+          <p class="help market-map-inline-help">Любой угол — тяните круглый маркер ↻ над контейнером, Shift держит шаг 15°.</p>
+        </div>
+
         <details class="market-map-advanced-fields">
           <summary>Дополнительные настройки</summary>
 
@@ -264,9 +280,9 @@
 {{ context_geojson|json_script:"market-map-context-geojson" }}
 {{ passages|json_script:"market-map-passages" }}
 {{ containers|json_script:"market-map-containers" }}
-<script src="{% static 'delivery/admin/market_map_editor.js' %}?v=20260824-6"></script>
-<script src="{% static 'delivery/admin/market_map_editor_ui.js' %}?v=20260824-6"></script>
-<script src="{% static 'delivery/admin/market_map_editor_perf.js' %}?v=20260824-6"></script>
+<script src="{% static 'delivery/admin/market_map_editor.js' %}?v=20260824-7"></script>
+<script src="{% static 'delivery/admin/market_map_editor_ui.js' %}?v=20260824-7"></script>
+<script src="{% static 'delivery/admin/market_map_editor_perf.js' %}?v=20260824-7"></script>
 {% if google_maps_api_key %}
 <script async defer src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key|urlencode }}&callback=initMarketMapEditor&v=weekly"></script>
 {% endif %}

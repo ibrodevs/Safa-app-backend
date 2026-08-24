@@ -451,6 +451,42 @@
   grid-template-columns: 1fr 1fr;
   gap: 0 9px;
 }
+.map-size-stepper {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 32px;
+}
+.map-size-stepper input {
+  min-width: 0;
+  text-align: center;
+}
+.map-size-stepper button {
+  border: 1px solid var(--map-border);
+  background: var(--map-soft);
+  color: var(--map-text);
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 700;
+}
+.map-rotation-presets {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 6px;
+}
+.map-rotation-presets button {
+  padding: 5px 0;
+  border: 1px solid var(--map-border);
+  border-radius: 8px;
+  background: var(--map-soft);
+  color: var(--map-text);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+}
+.map-rotation-presets button:hover,
+.map-size-stepper button:hover {
+  background: #eceff3;
+}
 .market-map-advanced-fields {
   margin: 4px 0 14px;
   padding: 0;
