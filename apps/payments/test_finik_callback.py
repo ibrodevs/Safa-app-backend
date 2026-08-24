@@ -335,7 +335,44 @@ def test_reconcile_waits_when_finik_item_is_not_paid(monkeypatch):
 
     assert response.status_code == 202
     shipment.refresh_from_db()
+    attempt.refresh_from_db()
     assert shipment.is_paid is False
+    assert attempt.finik_item_id == "item-123"
+
+
+@pytest.mark.django_db
+def test_reconcile_recovers_paid_item_by_request_id(monkeypatch):
+    shipment = _shipment()
+    attempt = _attempt(shipment)
+    candidate = {
+        "id": "recovered-item-123",
+        "transactionId": "recovered-transaction-123",
+    }
+    monkeypatch.setattr(
+        "apps.payments.views.find_finik_item_by_request_id",
+        lambda payment_attempt: candidate,
+    )
+    monkeypatch.setattr(
+        "apps.payments.views.finik_item_matches_attempt",
+        lambda item, payment_attempt: True,
+    )
+    client = APIClient()
+    client.force_authenticate(shipment.client)
+
+    response = client.post(
+        "/api/payments/finik/reconcile/",
+        {"paymentId": str(attempt.id)},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    shipment.refresh_from_db()
+    attempt.refresh_from_db()
+    assert shipment.is_paid is True
+    assert shipment.status == Shipment.Status.COMPLETED
+    assert attempt.status == PaymentAttempt.Status.SUCCEEDED
+    assert attempt.finik_item_id == "recovered-item-123"
+    assert attempt.finik_transaction_id == "recovered-transaction-123"
 
 
 @pytest.mark.django_db

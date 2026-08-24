@@ -96,13 +96,6 @@ class FinikReconcileInSerializer(serializers.Serializer):
         max_length=128,
     )
 
-    def validate(self, attrs):
-        if not attrs.get("itemId") and not attrs.get("transactionId"):
-            raise serializers.ValidationError(
-                {"detail": "itemId_or_transactionId_required"}
-            )
-        return attrs
-
 class PaymentAttemptSerializer(serializers.ModelSerializer):
     class Meta:
         model = PaymentAttempt

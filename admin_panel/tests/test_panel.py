@@ -205,6 +205,45 @@ class PanelWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "refreshPaymentState")
 
+    @patch("admin_panel.views.finance.finik_item_matches_attempt", return_value=True)
+    @patch("admin_panel.views.finance.find_finik_item_by_request_id")
+    def test_staff_can_reconcile_lost_finik_callback(self, find_item, _matches):
+        shipment = self._shipment()
+        shipment.carrier = self.carrier
+        shipment.status = Shipment.Status.AWAITING_PAYMENT
+        shipment.final_fare = 10
+        shipment.save(update_fields=["carrier", "status", "final_fare"])
+        payment = PaymentAttempt.objects.create(
+            shipment=shipment,
+            amount=10,
+            finik_request_id="lost-request-id",
+        )
+        find_item.return_value = {
+            "id": "recovered-item-id",
+            "transactionId": "recovered-transaction-id",
+        }
+
+        detail = self.client.get(
+            reverse("admin_panel:payment_detail", args=(payment.pk,))
+        )
+        self.assertContains(detail, "Проверить в Finik")
+        self.assertContains(detail, "window.setTimeout(check, 400)")
+
+        response = self.client.post(
+            reverse("admin_panel:payment_reconcile", args=(payment.pk,)),
+            HTTP_ACCEPT="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["paid"])
+        payment.refresh_from_db()
+        shipment.refresh_from_db()
+        self.assertEqual(payment.status, PaymentAttempt.Status.SUCCEEDED)
+        self.assertEqual(payment.finik_item_id, "recovered-item-id")
+        self.assertEqual(payment.finik_transaction_id, "recovered-transaction-id")
+        self.assertTrue(shipment.is_paid)
+        self.assertEqual(shipment.status, Shipment.Status.COMPLETED)
+
     @patch("apps.delivery.operations.broadcast_shipment")
     @patch("apps.delivery.operations.notify_shipment_status")
     def test_order_cancel_uses_post_action(self, notify, broadcast):

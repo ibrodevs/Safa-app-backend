@@ -56,6 +56,7 @@ urlpatterns = [
     path("tariffs/bazar/<int:pk>/save/", tariffs.bazar_tariff_save, name="bazar_tariff_save"),
     path("finance/", finance.finance, name="finance"),
     path("finance/payments/<uuid:pk>/", finance.payment_detail, name="payment_detail"),
+    path("finance/payments/<uuid:pk>/reconcile/", finance.payment_reconcile, name="payment_reconcile"),
     path("amanat/", amanat.amanat_list, name="amanat"),
     path("amanat/new/", amanat.amanat_create, name="amanat_create"),
     path("amanat/categories/new/", amanat.amanat_category_form, name="amanat_category_create"),

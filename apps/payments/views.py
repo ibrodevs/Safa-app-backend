@@ -26,6 +26,8 @@ from apps.payments.serializers import (
 )
 from apps.payments.finik import (
     FinikVerificationUnavailable,
+    find_finik_item_by_request_id,
+    finik_item_matches_attempt,
     verify_finik_payment,
     verify_finik_transaction,
 )
@@ -217,15 +219,32 @@ class FinikReconcileView(APIView):
             )
 
         transaction_id = str(payload.get("transactionId") or "").strip()
-        item_id = str(payload.get("itemId") or "").strip()
+        item_id = str(payload.get("itemId") or attempt.finik_item_id or "").strip()
+        if item_id and not attempt.finik_item_id:
+            # The authenticated client receives this ID as soon as Finik creates
+            # the item. Saving it now lets the server recover if the callback is
+            # delayed and the payment screen is closed.
+            attempt.finik_item_id = item_id[:128]
+            attempt.save(update_fields=["finik_item_id", "updated_at"])
         identifier = transaction_id or item_id
         key_type = "TRANSACTION_ID" if transaction_id else "ID"
         try:
-            verified_item = verify_finik_payment(
-                identifier,
-                attempt,
-                key_type=key_type,
-            )
+            if identifier:
+                verified_item = verify_finik_payment(
+                    identifier,
+                    attempt,
+                    key_type=key_type,
+                )
+            else:
+                candidate = find_finik_item_by_request_id(attempt)
+                if candidate and not attempt.finik_item_id:
+                    attempt.finik_item_id = str(candidate.get("id") or "")[:128] or None
+                    attempt.save(update_fields=["finik_item_id", "updated_at"])
+                verified_item = (
+                    candidate
+                    if candidate and finik_item_matches_attempt(candidate, attempt)
+                    else None
+                )
         except FinikVerificationUnavailable:
             logger.exception(
                 "finik_reconcile_unavailable",
