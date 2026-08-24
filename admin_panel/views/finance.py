@@ -131,17 +131,21 @@ def payment_reconcile(request, pk):
                 if candidate and finik_item_matches_attempt(candidate, payment)
                 else None
             )
-    except FinikVerificationUnavailable:
+    except FinikVerificationUnavailable as exc:
+        error_code = str(exc) or "finik_verification_unavailable"
         logger.exception(
             "admin_finik_reconcile_unavailable",
-            extra={"attempt_id": str(payment.id)},
+            extra={"attempt_id": str(payment.id), "finik_error_code": error_code},
         )
         if wants_json:
             return JsonResponse(
-                {"paid": False, "detail": "finik_verification_unavailable"},
+                {"paid": False, "detail": error_code},
                 status=503,
             )
-        messages.error(request, "Finik временно недоступен. Повторите проверку позже.")
+        messages.error(
+            request,
+            f"Finik не выполнил проверку ({error_code}). Повторите позже.",
+        )
         return redirect("admin_panel:payment_detail", pk=payment.pk)
 
     if payment.status == PaymentAttempt.Status.SUCCEEDED:

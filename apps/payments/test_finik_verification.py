@@ -135,7 +135,6 @@ def test_item_can_be_recovered_by_exact_request_id(mock_post):
     assert kwargs["json"]["variables"]["input"]["query"] == attempt.finik_request_id
     assert kwargs["json"]["variables"]["input"]["filter"] == {
         "accountId": "account-123",
-        "types": ["Item"],
     }
 
 

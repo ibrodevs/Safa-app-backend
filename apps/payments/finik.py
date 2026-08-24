@@ -129,11 +129,27 @@ def _finik_graphql(query: str, variables: dict[str, Any]) -> dict[str, Any]:
         )
         response.raise_for_status()
         payload = response.json()
+    except requests.HTTPError as exc:
+        status_code = getattr(exc.response, "status_code", None) or "unknown"
+        raise FinikVerificationUnavailable(f"finik_http_{status_code}") from exc
+    except requests.Timeout as exc:
+        raise FinikVerificationUnavailable("finik_timeout") from exc
     except (requests.RequestException, ValueError) as exc:
-        raise FinikVerificationUnavailable("finik_verification_unavailable") from exc
+        raise FinikVerificationUnavailable("finik_network_error") from exc
 
-    if not isinstance(payload, dict) or payload.get("errors"):
-        raise FinikVerificationUnavailable("finik_verification_invalid_response")
+    if not isinstance(payload, dict):
+        raise FinikVerificationUnavailable("finik_invalid_response")
+    if payload.get("errors"):
+        error = (payload.get("errors") or [{}])[0] or {}
+        error_type = str((error.get("extensions") or {}).get("errorType") or "")
+        message = str(error.get("message") or "").lower()
+        if "unauthor" in error_type.lower() or "unauthor" in message:
+            code = "finik_graphql_unauthorized"
+        elif "validation" in error_type.lower() or "cannot query field" in message:
+            code = "finik_graphql_schema_mismatch"
+        else:
+            code = "finik_graphql_error"
+        raise FinikVerificationUnavailable(code)
     return payload
 
 
@@ -146,23 +162,37 @@ def find_finik_item_by_request_id(
     search_inputs = [
         {
             "from": 0,
-            "size": 50,
+            "size": 100,
             "query": attempt.finik_request_id,
-            "filter": {"accountId": account_id, "types": ["Item"]},
+            "filter": {"accountId": account_id},
         },
         {
             "from": 0,
-            "size": 100,
+            "size": 200,
             "startDate": int(attempt.created_at.timestamp()) - 3600,
             "endDate": int(attempt.created_at.timestamp()) + 86400,
             "filter": {"accountId": account_id, "types": ["Item"]},
         },
+        {
+            "from": 0,
+            "size": 200,
+            "startDate": int(attempt.created_at.timestamp()) - 3600,
+            "endDate": int(attempt.created_at.timestamp()) + 86400,
+            "filter": {"accountId": account_id},
+        },
     ]
+    last_error = None
+    had_successful_response = False
     for search_input in search_inputs:
-        payload = _finik_graphql(
-            _LIST_ITEMS_QUERY,
-            {"input": search_input},
-        )
+        try:
+            payload = _finik_graphql(
+                _LIST_ITEMS_QUERY,
+                {"input": search_input},
+            )
+        except FinikVerificationUnavailable as exc:
+            last_error = exc
+            continue
+        had_successful_response = True
         services = ((payload.get("data") or {}).get("listItems") or {}).get(
             "services"
         ) or []
@@ -173,6 +203,8 @@ def find_finik_item_by_request_id(
                 continue
             if finik_item_matches_attempt(item, attempt, require_payment=False):
                 return item
+    if last_error is not None and not had_successful_response:
+        raise last_error
     return None
 
 
