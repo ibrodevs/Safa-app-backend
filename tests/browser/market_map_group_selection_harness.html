@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Market map group selection harness</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    #market-map-canvas { display: flex; gap: 12px; margin: 16px 0; }
+    .fake-map-polygon { min-width: 180px; min-height: 90px; border: 6px solid; color: white; font-weight: 800; }
+    #market-map-status { margin-top: 12px; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div id="market-map-editor" data-bazar-name="Тестовый базар" data-focus-kind="">
+    <button type="button" id="market-group-pick">Выбрать элементы</button>
+    <button type="button" id="market-group-create" disabled>Группировать</button>
+    <button type="button" id="market-group-duplicate" disabled>Дублировать группу</button>
+    <button type="button" id="market-group-ungroup" disabled>Разгруппировать</button>
+    <button type="button" id="market-group-clear">Снять выделение</button>
+    <select id="market-group-direction"><option value="right">Справа</option></select>
+    <div id="market-group-counter"></div>
+    <div id="market-map-canvas"></div>
+    <div id="market-feature-list"></div>
+    <select id="market-feature-passage"><option value="">Выберите проход</option></select>
+    <div id="market-map-status"></div>
+  </div>
+
+  <script id="market-map-initial-geojson" type="application/json">
+  {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "id": "container-first",
+        "properties": {"kind": "container", "name": "A-1", "number": "A-1", "fill_color": "#ef4444", "stroke_color": "#dc2626"},
+        "geometry": {"type": "Polygon", "coordinates": [[[74.60000,42.87000],[74.60005,42.87000],[74.60005,42.87003],[74.60000,42.87003],[74.60000,42.87000]]]}
+      },
+      {
+        "type": "Feature",
+        "id": "container-second",
+        "properties": {"kind": "container", "name": "A-2", "number": "A-2", "fill_color": "#ef4444", "stroke_color": "#dc2626"},
+        "geometry": {"type": "Polygon", "coordinates": [[[74.60008,42.87000],[74.60013,42.87000],[74.60013,42.87003],[74.60008,42.87003],[74.60008,42.87000]]]}
+      }
+    ]
+  }
+  </script>
+  <script id="market-map-context-geojson" type="application/json">{"type":"FeatureCollection","features":[]}</script>
+  <script id="market-map-passages" type="application/json">[]</script>
+  <script id="market-map-containers" type="application/json">[]</script>
+
+  <script>
+    (() => {
+      const asLatLng = (value) => value instanceof FakeLatLng
+        ? value
+        : new FakeLatLng(Number(value.lat), Number(value.lng));
+
+      class FakeLatLng {
+        constructor(lat, lng) { this._lat = Number(lat); this._lng = Number(lng); }
+        lat() { return this._lat; }
+        lng() { return this._lng; }
+      }
+
+      class FakeMVCArray {
+        constructor(values = []) { this.values = values; }
+        getLength() { return this.values.length; }
+        getAt(index) { return this.values[index]; }
+        push(value) { this.values.push(value); }
+        clear() { this.values.length = 0; }
+      }
+
+      class FakeLatLngBounds {
+        constructor() { this.points = []; }
+        extend(value) { this.points.push(asLatLng(value)); return this; }
+        union(other) { this.points.push(...other.points); return this; }
+        isEmpty() { return this.points.length === 0; }
+        getCenter() {
+          const lat = this.points.reduce((sum, point) => sum + point.lat(), 0) / Math.max(this.points.length, 1);
+          const lng = this.points.reduce((sum, point) => sum + point.lng(), 0) / Math.max(this.points.length, 1);
+          return new FakeLatLng(lat, lng);
+        }
+        contains() { return true; }
+      }
+
+      class FakeOverlay {
+        constructor(options = {}) { this.options = {...options}; this.listeners = {}; this.map = options.map || null; }
+        addListener(name, callback) { (this.listeners[name] ||= []).push(callback); return {remove() {}}; }
+        emit(name, event = {}) { (this.listeners[name] || []).forEach((callback) => callback(event)); }
+        setOptions(options) { Object.assign(this.options, options); this.render?.(); }
+        setMap(map) { this.map = map; }
+      }
+
+      class FakePolygon extends FakeOverlay {
+        constructor(options = {}) {
+          super(options);
+          this.setPaths(options.paths || []);
+          this.button = document.createElement('button');
+          this.button.type = 'button';
+          this.button.className = 'fake-map-polygon';
+          this.button.textContent = `Контейнер ${window.__fakePolygons.length + 1}`;
+          this.button.addEventListener('click', (domEvent) => {
+            const bounds = new FakeLatLngBounds();
+            for (let i = 0; i < this.paths.getLength(); i += 1) {
+              const path = this.paths.getAt(i);
+              for (let j = 0; j < path.getLength(); j += 1) bounds.extend(path.getAt(j));
+            }
+            this.emit('click', {domEvent, latLng: bounds.getCenter()});
+          });
+          document.getElementById('market-map-canvas').append(this.button);
+          window.__fakePolygons.push(this);
+          this.render();
+        }
+        setPaths(paths) {
+          const source = paths instanceof FakeMVCArray ? paths.values : paths;
+          this.paths = new FakeMVCArray(source.map((ring) => {
+            const values = ring instanceof FakeMVCArray ? ring.values : ring;
+            return new FakeMVCArray(values.map(asLatLng));
+          }));
+        }
+        getPaths() { return this.paths; }
+        getPath() { return this.paths.getAt(0); }
+        render() {
+          if (!this.button) return;
+          this.button.style.backgroundColor = this.options.fillColor || 'transparent';
+          this.button.style.borderColor = this.options.strokeColor || 'transparent';
+          this.button.dataset.fillColor = this.options.fillColor || '';
+          this.button.dataset.strokeColor = this.options.strokeColor || '';
+        }
+      }
+
+      class FakePolyline extends FakeOverlay {
+        constructor(options = {}) { super(options); this.setPath(options.path || []); }
+        setPath(path) { this.path = new FakeMVCArray(path.map(asLatLng)); }
+        getPath() { return this.path; }
+      }
+
+      class FakeMarker extends FakeOverlay {
+        constructor(options = {}) { super(options); this.position = options.position ? asLatLng(options.position) : null; }
+        getPosition() { return this.position; }
+        setPosition(value) { this.position = asLatLng(value); }
+        setDraggable(value) { this.options.draggable = value; }
+        setIcon(value) { this.options.icon = value; }
+        setLabel(value) { this.options.label = value; }
+        setTitle(value) { this.options.title = value; }
+        setZIndex(value) { this.options.zIndex = value; }
+        setAnimation(value) { this.options.animation = value; }
+        setVisible(value) { this.options.visible = value; }
+        getVisible() { return this.options.visible !== false; }
+      }
+
+      class FakeMap extends FakeOverlay {
+        constructor(element, options = {}) { super(options); this.element = element; this.zoom = options.zoom || 15; }
+        fitBounds() {}
+        getZoom() { return this.zoom; }
+        getBounds() { return new FakeLatLngBounds(); }
+      }
+
+      window.__fakePolygons = [];
+      window.google = {maps: {
+        Map: FakeMap,
+        Marker: FakeMarker,
+        Polygon: FakePolygon,
+        Polyline: FakePolyline,
+        LatLngBounds: FakeLatLngBounds,
+        Point: class { constructor(x, y) { this.x = x; this.y = y; } },
+        Size: class { constructor(width, height) { this.width = width; this.height = height; } },
+        SymbolPath: {CIRCLE: 'circle'},
+        Animation: {BOUNCE: 'bounce'}
+      }};
+    })();
+  </script>
+  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v2.js"></script>
+  <script>window.initMarketMapEditor();</script>
+</body>
+</html>
