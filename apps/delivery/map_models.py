@@ -16,6 +16,7 @@ from .map_validation import (
     empty_feature_collection,
     geometries_intersect,
     iter_district_features,
+    passage_angle_for_geometry,
     representative_point,
     validate_feature_collection,
 )
@@ -186,6 +187,7 @@ class MarketMapRevision(models.Model):
             # Номер прохода уникален внутри района, а не всего базара: «1 проход»
             # может быть в каждом районе базара.
             district = district_name_for_geometry(feature.get("geometry") or {}, districts)
+            angle = passage_angle_for_geometry(feature.get("geometry") or {})
 
             passage = None
             passage_id = properties.get("passage_id")
@@ -196,6 +198,7 @@ class MarketMapRevision(models.Model):
                     bazar=self.bazar,
                     district=district,
                     number=number,
+                    defaults={"angle": angle},
                 )
             elif (passage.number, passage.district) != (number, district):
                 if (
@@ -206,12 +209,20 @@ class MarketMapRevision(models.Model):
                     raise ValidationError(duplicate_passage_message(number, district))
                 passage.number = number
                 passage.district = district
-                passage.save(update_fields=("number", "district"))
+                passage.angle = angle
+                passage.save(update_fields=("number", "district", "angle"))
+
+            if angle is not None and (
+                passage.angle is None or abs(float(passage.angle) - angle) >= 0.05
+            ):
+                passage.angle = angle
+                passage.save(update_fields=("angle",))
 
             properties["passage_id"] = passage.id
             properties["number"] = passage.number
             properties["name"] = passage.number
             properties["district"] = passage.district
+            properties["angle"] = float(passage.angle) if passage.angle is not None else None
             passages_by_feature[str(feature.get("id") or "")] = passage
 
         return passages_by_feature

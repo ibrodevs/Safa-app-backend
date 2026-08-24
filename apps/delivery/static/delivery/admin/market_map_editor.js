@@ -19,7 +19,10 @@
 
   const byId = (id) => document.getElementById(id);
   const root = () => byId('market-map-editor');
-  const KIND_ORDER = ['bazar', 'district', 'passage', 'container', 'sector', 'row'];
+  // Порядок слоёв и списка объектов: контейнеры сверху, под ними проходы,
+  // районы и граница базара. Так мелкий объект всегда выбирается первым и
+  // крупные заливки не перехватывают клик.
+  const KIND_ORDER = ['container', 'passage', 'district', 'bazar', 'sector', 'row'];
 
   const KIND_CONFIG = {
     bazar: {
@@ -82,7 +85,7 @@
       fillOpacity: 0,
       zIndex: 60,
       linePattern: 'solid',
-      hint: 'Проведите длинную стрелку прохода. Двойной клик завершает линию.',
+      hint: 'Проведите линию прохода. Двойной клик завершает линию.',
     },
     container: {
       label: 'Контейнер',
@@ -278,6 +281,32 @@
   // Контейнер всегда остаётся прямоугольником, поэтому его достаточно описать
   // центром, шириной, длиной и углом поворота. Кольцо неправильной формы
   // (старые данные, ручная правка) сводится к описанной рамке без поворота.
+  // Наклон прохода в той же системе координат, что и поворот контейнера:
+  // 0° — линия на восток, отсчёт по часовой стрелке. Направление рисования не
+  // важно, поэтому угол сводится к диапазону 0–180°.
+  function passageAngleDegrees(feature) {
+    const points = iterCoordinatePoints(feature?.geometry?.coordinates || []);
+    if (points.length < 2) return null;
+
+    const center = points[0];
+    let longest = null;
+    let longestLength = 0;
+    for (let index = 0; index < points.length - 1; index += 1) {
+      const from = toLocalMeters(points[index], center);
+      const to = toLocalMeters(points[index + 1], center);
+      const vector = [to[0] - from[0], to[1] - from[1]];
+      const length = Math.hypot(vector[0], vector[1]);
+      if (length > longestLength) {
+        longestLength = length;
+        longest = vector;
+      }
+    }
+    if (!longest || longestLength < 1e-6) return null;
+
+    const angle = normalizeRotation(Math.atan2(-longest[1], longest[0]) * 180 / Math.PI);
+    return Math.round((angle % 180) * 10) / 10;
+  }
+
   function containerRectFromRing(ring) {
     const points = (ring || [])
       .filter((point) => Array.isArray(point) && Number.isFinite(Number(point[0])) && Number.isFinite(Number(point[1])))
@@ -455,7 +484,9 @@
   function featureZIndex(properties, selected = false) {
     const kind = properties.kind || 'district';
     const config = KIND_CONFIG[kind] || KIND_CONFIG.district;
-    return Number(properties.z_index || config.zIndex || 1) + (selected ? 1 : 0);
+    // Слой задаётся типом объекта, а не сохранённым z_index: иначе старая карта
+    // может положить район поверх контейнеров и перехватывать клики.
+    return Number(config.zIndex || 1) + (selected ? 1 : 0);
   }
 
   function overlayStyle(properties, selected) {
@@ -464,17 +495,7 @@
     const strokeWidth = Number(properties.stroke_width || config.strokeWidth || 2) + (selected ? 1 : 0);
     const linePattern = properties.line_pattern || config.linePattern || 'solid';
     let icons = null;
-    if (kind === 'passage') {
-      icons = [{
-        icon: {
-          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          strokeOpacity: 1,
-          fillOpacity: 1,
-          scale: 3,
-        },
-        offset: '100%',
-      }];
-    } else if (linePattern === 'dashed') {
+    if (linePattern === 'dashed') {
       icons = [{
         icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 },
         offset: '0',
@@ -1092,9 +1113,16 @@
       return;
     }
     const district = districtNameForFeature(feature);
-    note.textContent = district
-      ? `Район: ${district}. Номер прохода уникален внутри района — в других районах этот же номер можно использовать снова.`
-      : 'Проход не попал ни в один район базара. Номер должен быть уникален среди проходов вне районов.';
+    const angle = passageAngleDegrees(feature);
+    const parts = [
+      district
+        ? `Район: ${district}. Номер прохода уникален внутри района — в других районах этот же номер можно использовать снова.`
+        : 'Проход не попал ни в один район базара. Номер должен быть уникален среди проходов вне районов.',
+    ];
+    if (angle !== null) {
+      parts.push(`Угол наклона: ${angle}°. Тот же угол можно задать контейнерам этого прохода кнопкой «По проходу».`);
+    }
+    note.textContent = parts.join(' ');
   }
 
   function updatePropertyVisibility(kind) {
@@ -1385,6 +1413,50 @@
     setContainerRotation(item, angle, {
       status: `Контейнер повёрнут на ${Math.round(angle * 10) / 10}°`,
     });
+  }
+
+  // Угол прохода, к которому привязан контейнер: сначала ищем сам проход на
+  // карте, затем берём сохранённый угол из справочника проходов.
+  function passageAngleForContainer(properties) {
+    const featureId = properties.passage_feature_id;
+    if (featureId && state.items.has(featureId)) {
+      const angle = passageAngleDegrees(state.items.get(featureId).feature);
+      if (angle !== null) return angle;
+    }
+
+    const passageId = Number(properties.passage_id || 0) || null;
+    if (!passageId) return null;
+
+    let drawn = null;
+    state.items.forEach((item) => {
+      const itemProperties = item.feature.properties || {};
+      if (itemProperties.kind === 'passage' && Number(itemProperties.passage_id || 0) === passageId) {
+        drawn = item.feature;
+      }
+    });
+    if (drawn) {
+      const angle = passageAngleDegrees(drawn);
+      if (angle !== null) return angle;
+    }
+
+    const stored = readJsonScript('market-map-passages', [])
+      .find((passage) => Number(passage.id) === passageId);
+    const storedAngle = stored ? Number(stored.angle) : NaN;
+    return Number.isFinite(storedAngle) ? storedAngle : null;
+  }
+
+  function rotateSelectedContainerAlongPassage() {
+    const item = state.items.get(state.selectedId);
+    if (!item || (item.feature.properties || {}).kind !== 'container') {
+      setStatus('Сначала выберите контейнер', 'error');
+      return;
+    }
+    const angle = passageAngleForContainer(item.feature.properties || {});
+    if (angle === null) {
+      setStatus('Сначала выберите проход контейнера — угол берётся у него', 'error');
+      return;
+    }
+    rotateSelectedContainer({ value: angle });
   }
 
   function resizeSelectedContainer(dimension, delta) {
@@ -1745,6 +1817,9 @@
       button.addEventListener('click', () => rotateSelectedContainer({
         delta: Number(button.dataset.containerRotateStep || 0),
       }));
+    });
+    document.querySelectorAll('[data-container-rotate-passage]').forEach((button) => {
+      button.addEventListener('click', rotateSelectedContainerAlongPassage);
     });
     document.querySelectorAll('[data-container-rotate-set]').forEach((button) => {
       button.addEventListener('click', () => rotateSelectedContainer({

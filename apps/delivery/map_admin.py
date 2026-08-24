@@ -149,7 +149,7 @@ class MarketMapRevisionAdmin(admin.ModelAdmin):
         passages = list(
             Passage.objects.filter(bazar=bazar)
             .order_by("district", "number")
-            .values("id", "number", "district")
+            .values("id", "number", "district", "angle")
         )
         containers = list(
             Container.objects.filter(passage__bazar=bazar)

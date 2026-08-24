@@ -136,17 +136,23 @@ class DistrictPanelForm(StyledModelForm):
 class PassagePanelForm(StyledModelForm):
     class Meta:
         model = Passage
-        fields = ("bazar", "district", "number")
+        fields = ("bazar", "district", "number", "angle")
         labels = {
             "bazar": "Базар",
             "district": "Район",
             "number": "Название или номер прохода",
+            "angle": "Угол наклона, °",
         }
         help_texts = {
             "district": (
                 "Название района с карты базара. Номера проходов уникальны внутри "
                 "района, поэтому «1 проход» может быть в каждом районе. "
                 "Оставьте пустым, если проход не входит ни в один район."
+            ),
+            "angle": (
+                "Считается автоматически по линии прохода на карте: 0° — на восток, "
+                "дальше по часовой стрелке. Под этим же углом удобно создавать и "
+                "дублировать контейнеры вдоль прохода."
             ),
         }
 

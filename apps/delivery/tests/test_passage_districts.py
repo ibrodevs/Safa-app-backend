@@ -275,3 +275,111 @@ class PassageDistrictBackfillTests(TestCase):
         passage_b.refresh_from_db()
         self.assertEqual(passage_a.district, "Район А")
         self.assertEqual(passage_b.district, "Район Б")
+
+
+class PassageAngleTests(TestCase):
+    """Угол наклона прохода: 0° — на восток, дальше по часовой стрелке."""
+
+    def setUp(self):
+        self.bazar = Bazar.objects.create(name="Дордой")
+
+    def _save_draft(self, geojson):
+        revision, _ = MarketMapRevision.get_or_create_draft(bazar=self.bazar)
+        revision.geojson = geojson
+        revision.full_clean()
+        revision.save(update_fields=("geojson", "updated_at"))
+        revision.refresh_from_db()
+        return revision
+
+    def test_horizontal_passage_has_zero_angle(self):
+        from apps.delivery.map_validation import passage_angle_for_geometry
+
+        line = {"type": "LineString", "coordinates": [[74.602, 42.882], [74.608, 42.882]]}
+        self.assertEqual(passage_angle_for_geometry(line), 0.0)
+
+    def test_angle_does_not_depend_on_drawing_direction(self):
+        from apps.delivery.map_validation import passage_angle_for_geometry
+
+        forward = {"type": "LineString", "coordinates": [[74.602, 42.882], [74.608, 42.886]]}
+        backward = {"type": "LineString", "coordinates": [[74.608, 42.886], [74.602, 42.882]]}
+        angle = passage_angle_for_geometry(forward)
+
+        self.assertEqual(angle, passage_angle_for_geometry(backward))
+        self.assertTrue(0 <= angle < 180)
+        # Линия уходит на северо-восток: против часовой стрелки это ≈42°,
+        # то есть 317.7° по часовой, что в диапазоне 0–180 даёт 137.7°.
+        self.assertAlmostEqual(angle, 137.7, delta=0.2)
+
+    def test_vertical_passage_is_ninety_degrees(self):
+        from apps.delivery.map_validation import passage_angle_for_geometry
+
+        line = {"type": "LineString", "coordinates": [[74.602, 42.882], [74.602, 42.888]]}
+        self.assertEqual(passage_angle_for_geometry(line), 90.0)
+
+    def test_angle_is_saved_to_the_passage_and_to_the_feature(self):
+        geojson = _map_with_two_districts()
+        tilted = next(item for item in geojson["features"] if item["id"] == "passage-b")
+        tilted["geometry"] = {"type": "LineString", "coordinates": [[74.612, 42.882], [74.618, 42.886]]}
+        revision = self._save_draft(geojson)
+
+        straight = Passage.objects.get(district="Район А", number="1")
+        self.assertEqual(float(straight.angle), 0.0)
+
+        angled = Passage.objects.get(district="Район Б", number="1")
+        self.assertGreater(float(angled.angle), 0.0)
+
+        features = {feature["id"]: feature["properties"] for feature in revision.geojson["features"]}
+        self.assertEqual(features["passage-b"]["angle"], float(angled.angle))
+
+    def test_angle_follows_a_redrawn_passage(self):
+        self._save_draft(_map_with_two_districts())
+        passage = Passage.objects.get(district="Район А", number="1")
+        self.assertEqual(float(passage.angle), 0.0)
+
+        geojson = _map_with_two_districts()
+        redrawn = next(item for item in geojson["features"] if item["id"] == "passage-a")
+        redrawn["properties"]["passage_id"] = passage.pk
+        redrawn["geometry"] = {"type": "LineString", "coordinates": [[74.604, 42.882], [74.604, 42.888]]}
+        self._save_draft(geojson)
+
+        passage.refresh_from_db()
+        self.assertEqual(float(passage.angle), 90.0)
+
+    def test_angle_label_is_shown_in_the_panel_list(self):
+        staff = User.objects.create_user(
+            phone_number="996700000041",
+            password="test-password",
+            first_name="Admin",
+            is_staff=True,
+        )
+        self.client.force_login(staff)
+        Passage.objects.create(bazar=self.bazar, district="Район А", number="1", angle="37.5")
+        Passage.objects.create(bazar=self.bazar, district="Район Б", number="1")
+
+        response = self.client.get(reverse("admin_panel:passages"))
+
+        self.assertContains(response, "Угол наклона")
+        self.assertContains(response, "37.5°")
+
+
+class MapLayerOrderTests(TestCase):
+    """Слои карты: контейнеры сверху, под ними проходы, районы и базар."""
+
+    def test_z_index_is_forced_by_kind(self):
+        from apps.delivery.map_validation import STYLE_DEFAULTS, validate_feature_collection
+
+        geojson = _map_with_two_districts()
+        # Старая карта могла сохранить район поверх контейнеров.
+        for feature in geojson["features"]:
+            feature["properties"]["z_index"] = 500
+
+        normalized = validate_feature_collection(geojson)
+        by_kind = {
+            feature["properties"]["kind"]: feature["properties"]["z_index"]
+            for feature in normalized["features"]
+        }
+
+        self.assertEqual(by_kind["container"], STYLE_DEFAULTS["container"]["z_index"])
+        self.assertGreater(by_kind["container"], by_kind["passage"])
+        self.assertGreater(by_kind["passage"], by_kind["district"])
+        self.assertGreater(by_kind["district"], by_kind["bazar"])

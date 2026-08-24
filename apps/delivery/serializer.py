@@ -205,7 +205,7 @@ class PassageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Passage
-        fields = ["id", "bazar_id", "bazar_name", "district", "number"]
+        fields = ["id", "bazar_id", "bazar_name", "district", "number", "angle"]
 
 
 class ContainerSerializer(serializers.ModelSerializer):

@@ -151,6 +151,15 @@ class SimplePassageAdminForm(forms.ModelForm):
             label="Название или номер прохода",
             help_text="Например: 1, 7А или Центральный проход.",
         )
+        _configure_field(
+            self,
+            "angle",
+            label="Угол наклона, °",
+            help_text=(
+                "Считается автоматически по линии прохода на карте: 0° — на восток, "
+                "дальше по часовой стрелке. Под этим же углом удобно ставить контейнеры."
+            ),
+        )
 
 
 class SimpleContainerAdminForm(forms.ModelForm):
@@ -260,7 +269,7 @@ def _passage_fieldsets(self, request, obj=None):
         (
             "Проход",
             {
-                "fields": ("bazar", "district", "number"),
+                "fields": ("bazar", "district", "number", "angle"),
                 "description": "Выберите базар, район внутри него и укажите понятное название или номер прохода. Если проход рисуется на карте, район и номер синхронизируются с этим списком автоматически.",
             },
         ),
@@ -340,7 +349,7 @@ def simplify_delivery_admin() -> None:
         cls = passage_admin.__class__
         cls.form = SimplePassageAdminForm
         cls.get_fieldsets = _passage_fieldsets
-        cls.list_display = ("number", "district", "bazar")
+        cls.list_display = ("number", "district", "angle_display", "bazar")
         cls.list_per_page = 40
 
     container_admin = admin.site._registry.get(Container)

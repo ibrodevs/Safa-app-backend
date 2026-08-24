@@ -360,6 +360,46 @@ def district_name_for_geometry(
     return best_name
 
 
+METERS_PER_LAT_DEGREE = 111320.0
+
+
+def passage_angle_for_geometry(geometry: dict[str, Any]) -> float | None:
+    """Наклон линии прохода в градусах.
+
+    Система координат та же, что у поворота контейнера: 0° — линия на восток,
+    отсчёт по часовой стрелке. Направление рисования не важно, поэтому угол
+    сводится к диапазону 0–180°. Берётся самый длинный сегмент ломаной — он
+    задаёт основное направление прохода.
+    """
+    try:
+        points = list(_iter_points((geometry or {}).get("coordinates") or []))
+    except (TypeError, ValueError):
+        return None
+    if len(points) < 2:
+        return None
+
+    origin_lat = points[0][1]
+    lon_meters = math.cos(math.radians(origin_lat)) * METERS_PER_LAT_DEGREE
+
+    longest: tuple[float, float] | None = None
+    longest_length = 0.0
+    for start, end in zip(points, points[1:]):
+        vector = (
+            (end[0] - start[0]) * lon_meters,
+            (end[1] - start[1]) * METERS_PER_LAT_DEGREE,
+        )
+        length = math.hypot(vector[0], vector[1])
+        if length > longest_length:
+            longest_length = length
+            longest = vector
+
+    if longest is None or longest_length < 1e-6:
+        return None
+
+    angle = math.degrees(math.atan2(-longest[1], longest[0])) % 360
+    return round(angle % 180, 1)
+
+
 def duplicate_passage_message(number: str, district: str) -> str:
     where = f"в районе «{district}»" if district else "в этом базаре вне районов"
     return f"Проход «{number}» уже существует {where}"
@@ -415,7 +455,10 @@ def validate_feature_collection(value: Any) -> dict[str, Any]:
             properties.get("fill_opacity", style["fill_opacity"]),
             fallback=float(style["fill_opacity"]),
         )
-        normalized_properties["z_index"] = int(properties.get("z_index", style["z_index"]) or style["z_index"])
+        # Слой строго по типу объекта: контейнеры сверху, под ними проходы,
+        # районы и граница базара. Иначе сохранённый в старой карте z_index
+        # кладёт заливку района поверх контейнеров и перехватывает клики.
+        normalized_properties["z_index"] = int(style["z_index"])
         if kind == "container":
             normalized_properties["rotation"] = _rotation(properties.get("rotation"))
         if "line_pattern" in style:

@@ -130,12 +130,16 @@ class BazarAdmin(admin.ModelAdmin):
 class PassageAdmin(admin.ModelAdmin):
     """Проход удаляется вместе со своими контейнерами."""
 
-    list_display = ("id", "number", "district", "bazar")
+    list_display = ("id", "number", "district", "angle_display", "bazar")
     search_fields = ("number", "district", "bazar__name")
     list_filter = ("bazar", "district")
     autocomplete_fields = ("bazar",)
-    fields = ("bazar", "district", "number")
+    fields = ("bazar", "district", "number", "angle")
     ordering = ("bazar__name", "district", "number")
+
+    @admin.display(description="Угол наклона", ordering="angle")
+    def angle_display(self, obj: Passage) -> str:
+        return obj.angle_label
 
     def get_deleted_objects(self, objs, request):
         deleted_objects, model_count, perms_needed, protected = super().get_deleted_objects(objs, request)

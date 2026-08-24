@@ -104,6 +104,17 @@ class Passage(models.Model):
     district = models.CharField(max_length=155, blank=True, verbose_name="Район")
     number = models.CharField(max_length=50, verbose_name="Проход")
 
+    # Наклон линии прохода на карте: 0° — на восток, отсчёт по часовой стрелке,
+    # диапазон 0–180° (направление рисования не важно). Под этим же углом удобно
+    # ставить и дублировать контейнеры вдоль прохода.
+    angle = models.DecimalField(
+        max_digits=4,
+        decimal_places=1,
+        null=True,
+        blank=True,
+        verbose_name="Угол наклона, °",
+    )
+
     class Meta:
         ordering = ["bazar__name", "district", "number"]
         verbose_name = "Проход"
@@ -114,6 +125,10 @@ class Passage(models.Model):
                 name="uniq_passage_bazar_district_number",
             ),
         ]
+
+    @property
+    def angle_label(self) -> str:
+        return f"{self.angle:g}°" if self.angle is not None else "—"
 
     @property
     def ui_label(self) -> str:

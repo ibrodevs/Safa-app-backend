@@ -113,12 +113,12 @@ def test_bazar_add_form_hides_legacy_coordinates_and_prices():
     assert list(form.fields) == ["name", "district_tariff", "fixed_price"]
 
 
-def test_passage_add_form_is_bazar_district_and_number():
-    # Номер прохода уникален внутри района, поэтому район — часть адреса прохода.
-    assert _field_names(Passage) == ["bazar", "district", "number"]
+def test_passage_add_form_is_bazar_district_number_and_angle():
+    # Номер прохода уникален внутри района, а угол наклона нужен для контейнеров.
+    assert _field_names(Passage) == ["bazar", "district", "number", "angle"]
 
     form = _build_add_form(Passage)
-    assert list(form.fields) == ["bazar", "district", "number"]
+    assert list(form.fields) == ["bazar", "district", "number", "angle"]
 
 
 def test_container_add_form_keeps_only_business_fields_and_location():

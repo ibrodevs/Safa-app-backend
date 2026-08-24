@@ -10,11 +10,16 @@ from .map_validation import (
     district_name_for_geometry,
     duplicate_passage_message,
     iter_district_features,
+    passage_angle_for_geometry,
 )
 from .models import Passage
 
 
 DEFAULT_PASSAGE_NAMES = {"", "Новый проход", "New passage"}
+
+
+def _angle_changed(stored, computed: float) -> bool:
+    return stored is None or abs(float(stored) - computed) >= 0.05
 
 
 def sync_passages(revision: MarketMapRevision) -> None:
@@ -34,6 +39,7 @@ def sync_passages(revision: MarketMapRevision) -> None:
         # Одинаковые номера проходов в разных районах одного базара — норма,
         # поэтому проход ищется и создаётся с учётом своего района.
         district = district_name_for_geometry(feature.get("geometry") or {}, districts)
+        angle = passage_angle_for_geometry(feature.get("geometry") or {})
 
         passage = None
         passage_id = properties.get("passage_id")
@@ -45,6 +51,7 @@ def sync_passages(revision: MarketMapRevision) -> None:
                 bazar=revision.bazar,
                 district=district,
                 number=number,
+                defaults={"angle": angle},
             )
         elif (passage.number, passage.district) != (number, district):
             duplicate = Passage.objects.filter(
@@ -56,17 +63,25 @@ def sync_passages(revision: MarketMapRevision) -> None:
                 raise ValidationError(duplicate_passage_message(number, district))
             passage.number = number
             passage.district = district
-            passage.save(update_fields=("number", "district"))
+            passage.angle = angle
+            passage.save(update_fields=("number", "district", "angle"))
 
+        if angle is not None and _angle_changed(passage.angle, angle):
+            passage.angle = angle
+            passage.save(update_fields=("angle",))
+
+        passage_angle = float(passage.angle) if passage.angle is not None else None
         if (
             properties.get("passage_id") != passage.id
             or properties.get("number") != passage.number
             or properties.get("district") != passage.district
+            or properties.get("angle") != passage_angle
         ):
             properties["passage_id"] = passage.id
             properties["number"] = passage.number
             properties["name"] = passage.number
             properties["district"] = passage.district
+            properties["angle"] = passage_angle
             feature["properties"] = properties
             changed = True
 
