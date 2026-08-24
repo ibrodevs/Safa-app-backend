@@ -20,8 +20,11 @@
     pickMode: false,
   };
 
-  const GROUP_HIGHLIGHT_COLOR = '#7c3aed';
-  const GROUP_MAIN_COLOR = '#db2777';
+  // Выбранный контейнер должен резко отличаться от обычного красного. Раньше
+  // главный был розово-красным (#db2777), поэтому визуально казалось, что
+  // первый клик ничего не сделал, тогда как второй участник уже был фиолетовым.
+  const GROUP_HIGHLIGHT_COLOR = '#2563eb';
+  const GROUP_MAIN_COLOR = '#facc15';
 
   const byId = (id) => document.getElementById(id);
   const root = () => byId('market-map-editor');
@@ -558,9 +561,9 @@
     };
   }
 
-  function markerIcon(properties, selected = false, highlightColor = '') {
+  function markerIcon(properties, selected = false, highlightColor = '', highlightStroke = '') {
     const fill = highlightColor || properties.fill_color || KIND_CONFIG.container.fillColor;
-    const stroke = highlightColor || properties.stroke_color || KIND_CONFIG.container.strokeColor;
+    const stroke = highlightStroke || highlightColor || properties.stroke_color || KIND_CONFIG.container.strokeColor;
     return {
       path: google.maps.SymbolPath.CIRCLE,
       fillColor: fill,
@@ -1338,10 +1341,13 @@
   }
 
   function setOverlayHighlighted(item, highlighted, isMain = false) {
-    const color = highlighted ? (isMain ? GROUP_MAIN_COLOR : GROUP_HIGHLIGHT_COLOR) : '';
+    const fillColor = highlighted ? GROUP_HIGHLIGHT_COLOR : '';
+    const strokeColor = highlighted
+      ? (isMain ? GROUP_MAIN_COLOR : GROUP_HIGHLIGHT_COLOR)
+      : '';
     item.overlays.forEach((overlay) => {
       if (overlay instanceof google.maps.Marker) {
-        overlay.setIcon(markerIcon(item.feature.properties, highlighted, color));
+        overlay.setIcon(markerIcon(item.feature.properties, highlighted, fillColor, strokeColor));
         return;
       }
       const style = overlayStyle(item.feature.properties, false);
@@ -1350,9 +1356,9 @@
         editable: false,
         draggable: false,
         strokeColor: highlighted
-          ? color
+          ? strokeColor
           : (item.feature.properties.stroke_color || style.strokeColor),
-        fillColor: highlighted ? color : style.fillColor,
+        fillColor: highlighted ? fillColor : style.fillColor,
         fillOpacity: highlighted
           ? Math.max(Number(style.fillOpacity || 0), 0.35)
           : style.fillOpacity,
@@ -1392,6 +1398,9 @@
     if (!state.items.has(id)) return;
     state.groupSelection.add(id);
     refreshGroupHighlight();
+    const item = state.items.get(id);
+    const name = String((item.feature.properties || {}).name || id);
+    setStatus(`Выбран «${name}» · всего: ${state.groupSelection.size}`, 'success');
   }
 
   function clearGroupSelection() {

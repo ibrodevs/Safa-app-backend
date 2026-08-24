@@ -106,7 +106,7 @@
 .map-group-pick.is-active { border-color: #7c3aed; background: #ede9fe; color: #5b21b6; }
 #market-map-editor.is-picking .market-map-main { cursor: copy; }
 .market-feature-group-badge { display: inline-block; margin-top: 3px; padding: 1px 6px; color: #5b21b6; background: #ede9fe; border-radius: 999px; font-size: 9px; }
-#market-feature-list button.is-group-selected { border-color: #7c3aed; background: #f5f3ff; box-shadow: inset 2px 0 0 #7c3aed; }
+#market-feature-list button.is-group-selected { border-color: #2563eb; background: #dbeafe; box-shadow: inset 3px 0 0 #2563eb; }
 .page--map #market-map-editor.is-picking #market-map-canvas { cursor: crosshair; }
 .market-map-apply-button { grid-column: span 2; }
 .market-map-delete-button { color: var(--red); }

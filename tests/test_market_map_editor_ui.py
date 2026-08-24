@@ -67,7 +67,7 @@ def test_container_size_can_be_reduced_in_both_admin_editors():
         assert 'data-container-size-step="width" data-delta="-0.5"' in template
         assert 'data-container-size-step="height" data-delta="-0.5"' in template
         assert 'min="0.2" max="100" step="0.1"' in template
-        assert "market_map_editor.js' %}?v=20260825-7" in template
+        assert "market_map_editor.js' %}?v=20260825-8" in template
 
     assert "resizeSelectedContainer('width', 0)" in javascript
     assert "resizeSelectedContainer('height', 0)" in javascript
@@ -284,9 +284,11 @@ def test_group_selection_and_move_logic():
     # То же поведение работает в боковом списке без обязательного Ctrl/Shift.
     assert "addGroupSelection(item.feature.id);" in javascript
     # Выделение видно сразу и для старых контейнеров-точек, и в списке.
-    assert "markerIcon(item.feature.properties, highlighted, color)" in javascript
-    assert "fillColor: highlighted ? color : style.fillColor" in javascript
-    assert "background: #f5f3ff" in CSS.read_text(encoding="utf-8")
+    assert "markerIcon(item.feature.properties, highlighted, fillColor, strokeColor)" in javascript
+    assert "fillColor: highlighted ? fillColor : style.fillColor" in javascript
+    assert "const GROUP_HIGHLIGHT_COLOR = '#2563eb';" in javascript
+    assert "const GROUP_MAIN_COLOR = '#facc15';" in javascript
+    assert "background: #dbeafe" in CSS.read_text(encoding="utf-8")
 
     # Перетаскивание одного объекта группы двигает всю группу.
     assert javascript.count("beginGroupDrag(feature.id)") == 3

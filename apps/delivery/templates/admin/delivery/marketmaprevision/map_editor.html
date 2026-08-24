@@ -3,8 +3,8 @@
 
 {% block extrastyle %}
   {{ block.super }}
-  <link rel="stylesheet" href="{% static 'delivery/admin/market_map_editor.css' %}?v=20260825-7">
-  <link rel="stylesheet" href="{% static 'delivery/admin/market_map_editor_compact.css' %}?v=20260825-7">
+  <link rel="stylesheet" href="{% static 'delivery/admin/market_map_editor.css' %}?v=20260825-8">
+  <link rel="stylesheet" href="{% static 'delivery/admin/market_map_editor_compact.css' %}?v=20260825-8">
 {% endblock %}
 
 {% block breadcrumbs %}
@@ -316,9 +316,9 @@
 {{ context_geojson|json_script:"market-map-context-geojson" }}
 {{ passages|json_script:"market-map-passages" }}
 {{ containers|json_script:"market-map-containers" }}
-<script src="{% static 'delivery/admin/market_map_editor.js' %}?v=20260825-7"></script>
-<script src="{% static 'delivery/admin/market_map_editor_ui.js' %}?v=20260825-7"></script>
-<script src="{% static 'delivery/admin/market_map_editor_perf.js' %}?v=20260825-7"></script>
+<script src="{% static 'delivery/admin/market_map_editor.js' %}?v=20260825-8"></script>
+<script src="{% static 'delivery/admin/market_map_editor_ui.js' %}?v=20260825-8"></script>
+<script src="{% static 'delivery/admin/market_map_editor_perf.js' %}?v=20260825-8"></script>
 {% if google_maps_api_key %}
 <script async defer src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key|urlencode }}&callback=initMarketMapEditor&v=weekly"></script>
 {% endif %}

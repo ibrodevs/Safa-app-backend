@@ -543,9 +543,9 @@
   border-radius: 999px;
 }
 #market-feature-list button.is-group-selected {
-  border-color: #7c3aed;
-  background: #f5f3ff;
-  box-shadow: inset 2px 0 0 #7c3aed;
+  border-color: #2563eb;
+  background: #dbeafe;
+  box-shadow: inset 3px 0 0 #2563eb;
 }
 #market-map-editor.is-picking #market-map-canvas { cursor: crosshair; }
 .market-map-quick-actions .button {
