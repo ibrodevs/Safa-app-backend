@@ -609,6 +609,50 @@
     return bounds.isEmpty() ? null : bounds.getCenter();
   }
 
+  const BLANK_LABEL_ICON = {
+    path: 'M 0,0',
+    scale: 0,
+    fillOpacity: 0,
+    strokeOpacity: 0,
+  };
+
+  function escapeXml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // Подпись прохода поворачивается вместе с ним: вертикальный проход — текст
+  // вертикально, горизонтальный — горизонтально. Метка Google Maps поворот не
+  // поддерживает, поэтому текст рисуется SVG-иконкой маркера.
+  function passageLabelIcon(text, angle, color) {
+    const fontSize = 13;
+    // Угол прохода 0–180° отсчитывается по часовой от востока — как раз система
+    // координат SVG. Наклон больше 90° разворачиваем, чтобы текст не читался
+    // вверх ногами.
+    const textAngle = angle > 90 ? angle - 180 : angle;
+    const width = Math.max(String(text).length * fontSize * 0.66 + 12, 26);
+    const size = Math.ceil(Math.hypot(width, fontSize + 12));
+    const middle = size / 2;
+    const svg = [
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`,
+      `<g transform="rotate(${textAngle.toFixed(1)} ${middle} ${middle})">`,
+      `<text x="${middle}" y="${middle}" text-anchor="middle" dominant-baseline="central"`,
+      ` font-family="Inter, Segoe UI, Arial, sans-serif" font-size="${fontSize}" font-weight="800"`,
+      ` fill="${escapeXml(color)}" stroke="#ffffff" stroke-width="3" paint-order="stroke">`,
+      escapeXml(text),
+      '</text></g></svg>',
+    ].join('');
+
+    return {
+      url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+      anchor: new google.maps.Point(middle, middle),
+      scaledSize: new google.maps.Size(size, size),
+    };
+  }
+
   function createFeatureLabel(feature) {
     const kind = (feature.properties || {}).kind;
     if (!['bazar', 'district', 'passage', 'container'].includes(kind)) return null;
@@ -657,12 +701,22 @@
     if (!item.label) {
       item.label = createFeatureLabel(item.feature);
     }
+    if (!item.label) return;
     item.label.setPosition(position);
     const selected = state.selectedId === item.feature.id;
     item.label.setZIndex(featureZIndex(item.feature.properties, selected) + 1);
+    const color = kind === 'container' ? '#111827' : (item.feature.properties.stroke_color || '#111827');
+
+    if (kind === 'passage') {
+      item.label.setLabel(null);
+      item.label.setIcon(passageLabelIcon(text, passageAngleDegrees(item.feature) ?? 0, color));
+      return;
+    }
+
+    item.label.setIcon(BLANK_LABEL_ICON);
     item.label.setLabel({
       text,
-      color: kind === 'container' ? '#111827' : (item.feature.properties.stroke_color || '#111827'),
+      color,
       fontSize: kind === 'container' ? '12px' : '13px',
       fontWeight: '800',
     });
