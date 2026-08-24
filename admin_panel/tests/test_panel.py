@@ -137,6 +137,13 @@ class PanelWorkflowTests(TestCase):
             with self.subTest(url=url):
                 self.assertEqual(self.client.get(url).status_code, 200)
 
+        map_response = self.client.get(
+            reverse("admin_panel:map_editor", args=(bazar.pk,))
+        )
+        self.assertContains(map_response, 'id="market-map-undo"')
+        self.assertContains(map_response, "Ctrl+Z")
+        self.assertContains(map_response, "Что нужно создать?")
+
     @patch("apps.delivery.operations.broadcast_shipment")
     @patch("apps.delivery.operations.notify_shipment_status")
     def test_order_cancel_uses_post_action(self, notify, broadcast):

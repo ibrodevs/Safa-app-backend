@@ -11,6 +11,9 @@
     drawing: [],
     preview: null,
     counter: 0,
+    history: [],
+    historyIndex: -1,
+    restoringHistory: false,
   };
 
   const byId = (id) => document.getElementById(id);
@@ -483,6 +486,7 @@
     marker.addListener('dragend', () => {
       refreshList();
       document.getElementById('market-map-editor')?.dispatchEvent(new CustomEvent('market-map:dirty'));
+      recordHistory();
     });
     return marker;
   }
@@ -504,11 +508,13 @@
       const item = state.items.get(feature.id);
       if (item) updateFeatureLabel(item);
       document.getElementById('market-map-editor')?.dispatchEvent(new CustomEvent('market-map:dirty'));
+      recordHistory();
     });
     line.addListener('dragend', () => {
       const item = state.items.get(feature.id);
       if (item) updateFeatureLabel(item);
       document.getElementById('market-map-editor')?.dispatchEvent(new CustomEvent('market-map:dirty'));
+      recordHistory();
     });
     return line;
   }
@@ -534,6 +540,7 @@
         updateFeatureLabel(item);
       }
       document.getElementById('market-map-editor')?.dispatchEvent(new CustomEvent('market-map:dirty'));
+      recordHistory();
     });
     polygon.addListener('dragend', () => {
       const item = state.items.get(feature.id);
@@ -542,6 +549,7 @@
         updateFeatureLabel(item);
       }
       document.getElementById('market-map-editor')?.dispatchEvent(new CustomEvent('market-map:dirty'));
+      recordHistory();
     });
     return polygon;
   }
@@ -592,6 +600,69 @@
       type: 'FeatureCollection',
       features: Array.from(state.items.values()).map(serializeItem),
     };
+  }
+
+  function updateHistoryControls() {
+    const undoButton = byId('market-map-undo');
+    const redoButton = byId('market-map-redo');
+    if (undoButton) undoButton.disabled = state.historyIndex <= 0;
+    if (redoButton) redoButton.disabled = state.historyIndex >= state.history.length - 1;
+  }
+
+  function recordHistory(force = false) {
+    if (state.restoringHistory || !state.map) return;
+    const snapshot = collectionSnapshot();
+    const serialized = JSON.stringify(snapshot);
+    const current = state.history[state.historyIndex];
+    if (!force && current?.serialized === serialized) return;
+    state.history = state.history.slice(0, state.historyIndex + 1);
+    state.history.push({ snapshot, serialized });
+    if (state.history.length > 80) state.history.shift();
+    state.historyIndex = state.history.length - 1;
+    updateHistoryControls();
+  }
+
+  function restoreHistory(index) {
+    const entry = state.history[index];
+    if (!entry) return;
+    state.restoringHistory = true;
+    selectFeature(null);
+    state.items.forEach((item) => {
+      item.overlays.forEach((overlay) => overlay.setMap(null));
+      if (item.label) item.label.setMap(null);
+    });
+    state.items.clear();
+    (entry.snapshot.features || []).forEach((feature) => addFeature(feature));
+    state.historyIndex = index;
+    state.restoringHistory = false;
+    refreshList();
+    updateHistoryControls();
+    root()?.dispatchEvent(new CustomEvent('market-map:dirty'));
+  }
+
+  function undoHistory() {
+    if (state.tool === 'draw' && state.drawing.length) {
+      state.drawing.pop();
+      if (state.drawing.length) {
+        state.preview?.setPath(state.drawing);
+      } else {
+        if (state.preview) state.preview.setMap(null);
+        state.preview = null;
+        const actions = document.querySelector('.market-map-draw-actions');
+        if (actions) actions.hidden = true;
+      }
+      setStatus('Последняя точка рисунка удалена · Ctrl+Z', 'success');
+      return;
+    }
+    if (state.historyIndex <= 0) return;
+    restoreHistory(state.historyIndex - 1);
+    setStatus('Последнее изменение отменено · Ctrl+Z', 'success');
+  }
+
+  function redoHistory() {
+    if (state.historyIndex >= state.history.length - 1) return;
+    restoreHistory(state.historyIndex + 1);
+    setStatus('Изменение возвращено · Ctrl+Shift+Z', 'success');
   }
 
   function setOverlaySelected(item, selected) {
@@ -754,6 +825,7 @@
     updateFeatureLabel(item);
     refreshList();
     setStatus('Свойства объекта применены', 'success');
+    recordHistory();
   }
 
   function cloneCoordinatesWithOffset(coordinates, deltaLng, deltaLat) {
@@ -846,6 +918,7 @@
     populateForm(state.items.get(state.selectedId).feature);
     byId('market-feature-number')?.focus();
     setStatus('Контейнер продублирован. Проверьте номер и положение.', 'success');
+    recordHistory();
   }
 
   function refreshList() {
@@ -921,7 +994,7 @@
       button.classList.toggle('active', active);
     });
     document.querySelectorAll('.market-kind-section').forEach((section) => {
-      const button = section.querySelector('[data-map-kind]');
+      const button = section.matches('[data-map-kind]') ? section : section.querySelector('[data-map-kind]');
       section.classList.toggle('active', tool === 'draw' && button?.dataset.mapKind === kind);
     });
     if (state.map) {
@@ -975,6 +1048,7 @@
       }, { select: true });
       setTool('select');
       setStatus(`${featureKindLabel(kind)} добавлен. Заполните его свойства.`, 'success');
+      recordHistory();
       return;
     }
     if (family === 'point') return;
@@ -1003,6 +1077,7 @@
     addFeature({ type: 'Feature', id, properties: defaultProperties(kind), geometry }, { select: true });
     setTool('select');
     setStatus('Объект добавлен. Уточните название и свойства.', 'success');
+    recordHistory();
   }
 
   function allBounds() {
@@ -1197,8 +1272,13 @@
         setStatus('Сначала выберите объект, который нужно удалить', 'error');
         return;
       }
-      if (window.confirm('Удалить выбранный объект?')) removeFeature(state.selectedId);
+      if (window.confirm('Удалить выбранный объект?')) {
+        removeFeature(state.selectedId);
+        recordHistory();
+      }
     });
+    byId('market-map-undo')?.addEventListener('click', undoHistory);
+    byId('market-map-redo')?.addEventListener('click', redoHistory);
     byId('market-feature-duplicate')?.addEventListener('click', duplicateSelectedFeature);
     byId('market-feature-container')?.addEventListener('change', (event) => {
       const option = event.target.selectedOptions[0];
@@ -1219,9 +1299,23 @@
       }
     });
     document.addEventListener('keydown', (event) => {
+      const editingText = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
+      const command = event.ctrlKey || event.metaKey;
+      if (command && !editingText && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) redoHistory();
+        else undoHistory();
+        return;
+      }
+      if (command && !editingText && event.key.toLowerCase() === 'y') {
+        event.preventDefault();
+        redoHistory();
+        return;
+      }
       if (event.key === 'Escape') setTool('select');
-      if ((event.key === 'Delete' || event.key === 'Backspace') && state.selectedId && !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
+      if ((event.key === 'Delete' || event.key === 'Backspace') && state.selectedId && !editingText) {
         removeFeature(state.selectedId);
+        recordHistory();
       }
     });
   }
@@ -1239,7 +1333,7 @@
       link.classList.toggle('active', link.dataset.sectionKind === kind);
     });
     document.querySelectorAll('.market-kind-section').forEach((section) => {
-      const button = section.querySelector('[data-map-kind]');
+      const button = section.matches('[data-map-kind]') ? section : section.querySelector('[data-map-kind]');
       section.hidden = button?.dataset.mapKind !== kind;
     });
   }
@@ -1265,6 +1359,7 @@
     applyFocusedSection();
     (context.features || []).forEach((feature) => addContextFeature(feature));
     (initial.features || []).forEach((feature) => addFeature(feature));
+    recordHistory(true);
     const bounds = allBounds();
     if (bounds) state.map.fitBounds(bounds, 48);
     refreshList();

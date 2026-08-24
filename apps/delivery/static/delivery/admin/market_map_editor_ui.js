@@ -59,6 +59,17 @@
   // as a fallback so every existing setStatus(..., 'error') also opens the modal.
   window.marketMapShowError = showError;
 
+  // Keep the legacy Django Admin contract unchanged. The custom /panel/ editor
+  // uses a compact collapsible inspector instead.
+  if (!document.body.dataset.panelSection) {
+    document.querySelectorAll('details.market-map-advanced-fields').forEach((details) => {
+      details.open = true;
+      details.addEventListener('toggle', () => {
+        if (!details.open) details.open = true;
+      });
+    });
+  }
+
   function syncStatus() {
     if (!status.classList.contains('error')) return;
     const message = status.textContent.trim();
@@ -72,23 +83,6 @@
     childList: true,
     characterData: true,
     subtree: true,
-  });
-
-  // Дополнительные настройки в редакторе карты всегда видимы.
-  document.querySelectorAll('details.market-map-advanced-fields').forEach((details) => {
-    details.open = true;
-    details.setAttribute('open', '');
-    const summary = details.querySelector('summary');
-    if (summary) {
-      summary.setAttribute('aria-disabled', 'true');
-      summary.setAttribute('tabindex', '-1');
-    }
-    details.addEventListener('toggle', () => {
-      if (!details.open) {
-        details.open = true;
-        details.setAttribute('open', '');
-      }
-    });
   });
 
   const featureKind = document.getElementById('market-feature-kind');
