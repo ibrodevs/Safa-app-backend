@@ -2,7 +2,7 @@
 {% block content %}
 <header class="page-header">
   <div><p class="eyebrow">Благотворительность</p><h1>Amanat</h1><p>Сборы и подтверждённые пожертвования.</p></div>
-  <a class="btn btn-primary" href="{% url 'admin_panel:amanat_create' %}">Новый сбор</a>
+  <div class="action-row"><a class="btn btn-secondary" href="{% url 'admin_panel:amanat_category_create' %}">Новая категория</a><a class="btn btn-primary" href="{% url 'admin_panel:amanat_create' %}">Новый сбор</a></div>
 </header>
 <nav class="tabs">
   <a class="tab {% if selected_status == 'active' %}is-active{% endif %}" href="?status=active">Активные</a>
@@ -20,4 +20,5 @@
   </tbody></table></div>{% include "admin_panel/components/pagination.html" %}
   {% else %}{% include "admin_panel/components/empty_state.html" with empty_title="Сборов в этом статусе нет" empty_text="Создайте новый сбор или выберите другую вкладку." %}{% endif %}
 </section>
+{% if categories %}<section class="card" style="margin-top:16px"><div class="card-header"><div><h2>Категории</h2><p>Используются в формах сборов Amanat.</p></div></div><div class="compact-list">{% for category in categories %}<a href="{% url 'admin_panel:amanat_category_edit' category.pk %}"><span><strong>{{ category.name }}</strong><small>{{ category.slug }}</small></span><span class="badge {% if category.is_active %}badge--success{% endif %}">{% if category.is_active %}Активна{% else %}Выключена{% endif %}</span></a>{% endfor %}</div></section>{% endif %}
 {% endblock %}

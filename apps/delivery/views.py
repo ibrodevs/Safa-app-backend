@@ -36,7 +36,8 @@ from .geocoding import twogis_autocomplete
 from .lifecycle import ShipmentFareUnavailable, mark_shipment_awaiting_payment
 from .map_pricing import MapPricingResolver
 from .rating import apply_rating_for_completed_shipment
-from .realtime import broadcast_shipment
+from .realtime import broadcast_courier_position, broadcast_shipment
+from .reverse_geocoding import reverse_geocode_address
 from .operations import cancel_shipment
 from .geo import haversine_m, polyline_len_km, is_in_bishkek
 from .models import AmanatCampaign, AmanatCategory, AmanatDonation, Bazar, Container, CourierPosition, GlobalDeliveryConfig, Passage, Shipment, ShipmentStop
@@ -1044,6 +1045,7 @@ class CourierPositionView(APIView):
                 "lon": Decimal(str(lon)).quantize(Decimal("0.000001")),
             },
         )
+        broadcast_courier_position(position)
         return Response(
             {
                 "lat": float(position.lat),
@@ -1082,44 +1084,16 @@ class ReverseGeocodeView(APIView):
             logger.warning("reverse_geocode_missing_params", extra={"request_id": rid})
             return Response({"error": "lat and lon are required"}, status=400)
 
-        api_key = getattr(settings, "YANDEX_API_KEY", None)
-        if not api_key:
-            logger.warning(
-                "reverse_geocode_coordinate_fallback_no_api_key",
-                extra={"request_id": rid},
-            )
-            return Response(
-                {
-                    "address": f"{float(lat):.6f}, {float(lon):.6f}",
-                    "source": "coordinates",
-                }
-            )
-
-        url = f"https://geocode-maps.yandex.ru/1.x/?apikey={api_key}&geocode={lon},{lat}&format=json"
-
-        try:
-            r = requests.get(url, timeout=7)
-            r.raise_for_status()
-            data = r.json()
-            address = (
-                data["response"]["GeoObjectCollection"]["featureMember"][0]["GeoObject"]["metaDataProperty"][
-                    "GeocoderMetaData"
-                ]["text"]
-            )
-            logger.info("reverse_geocode_ok", extra={"request_id": rid})
-            return Response({"address": address})
-        except Exception:
-            logger.warning(
-                "reverse_geocode_coordinate_fallback",
-                extra={"request_id": rid},
-                exc_info=True,
-            )
-            return Response(
-                {
-                    "address": f"{float(lat):.6f}, {float(lon):.6f}",
-                    "source": "coordinates",
-                }
-            )
+        resolved = reverse_geocode_address(float(lat), float(lon))
+        if resolved is None:
+            logger.warning("reverse_geocode_unavailable", extra={"request_id": rid})
+            return Response({"error": "reverse_geocode_unavailable"}, status=502)
+        address, source = resolved
+        logger.info(
+            "reverse_geocode_ok",
+            extra={"request_id": rid, "provider": source},
+        )
+        return Response({"address": address, "source": source})
 
 
 @extend_schema(tags=["Гео"])

@@ -7,10 +7,12 @@ from asgiref.sync import async_to_sync
 from channels.generic.websocket import JsonWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
 from django.db import transaction
+from django.utils import timezone
 
 from .lifecycle import mark_shipment_awaiting_payment
 from .models import Shipment, CourierPosition, ARRIVAL_RADIUS_M
 from .geo import haversine_m
+from .realtime import courier_position_payload
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +72,10 @@ class ShipmentTrackingConsumer(JsonWebsocketConsumer):
             return
 
         self.accept()
-
-
-
+        if shipment.carrier_id:
+            position = CourierPosition.objects.filter(user_id=shipment.carrier_id).first()
+            if position is not None:
+                self.send_json(courier_position_payload(shipment, position))
 
     def disconnect(self, code):
         group = getattr(self, "group", None)
@@ -137,7 +140,8 @@ class ShipmentTrackingConsumer(JsonWebsocketConsumer):
                 if not created:
                     pos.lat = lat
                     pos.lon = lon
-                    pos.save(update_fields=["lat", "lon"])
+                    pos.updated_at = timezone.now()
+                    pos.save(update_fields=["lat", "lon", "updated_at"])
 
                 dist_m_to_target = shipment.distance_to_next_m(float(lat), float(lon))
                 arrived = dist_m_to_target <= ARRIVAL_RADIUS_M
@@ -173,6 +177,7 @@ class ShipmentTrackingConsumer(JsonWebsocketConsumer):
                 "courier": {
                     "lat": str(lat),
                     "lon": str(lon),
+                    "updated_at": pos.updated_at.isoformat(),
                 },
                 "target_index": shipment.current_stop_index,
                 "distance_m": str(dist_m_to_target),

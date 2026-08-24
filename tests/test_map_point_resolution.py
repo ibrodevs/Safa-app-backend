@@ -1,6 +1,8 @@
 from decimal import Decimal
+from unittest.mock import Mock, patch
 
 import pytest
+import requests
 
 from apps.delivery.map_models import MarketMapRevision
 from apps.delivery.map_point_resolver import resolve_market_point
@@ -112,8 +114,17 @@ def test_reverse_geocode_prefers_safa_container_over_external_address(
 
 
 @pytest.mark.django_db
-def test_reverse_geocode_falls_back_to_coordinates_without_api_key(client, settings):
+@patch("apps.delivery.reverse_geocoding.requests.get")
+def test_reverse_geocode_uses_openstreetmap_without_yandex_key(
+    request_get, client, settings
+):
     settings.YANDEX_API_KEY = ""
+    response_mock = Mock()
+    response_mock.raise_for_status.return_value = None
+    response_mock.json.return_value = {
+        "display_name": "улица Токтогула, Бишкек, Кыргызстан"
+    }
+    request_get.return_value = response_mock
 
     response = client.get(
         "/api/delivery/geo/reverse/",
@@ -122,9 +133,31 @@ def test_reverse_geocode_falls_back_to_coordinates_without_api_key(client, setti
 
     assert response.status_code == 200
     assert response.json() == {
-        "address": "42.844139, 74.600176",
-        "source": "coordinates",
+        "address": "улица Токтогула, Бишкек, Кыргызстан",
+        "source": "openstreetmap",
     }
+    assert request_get.call_args.args[0] == (
+        "https://nominatim.openstreetmap.org/reverse"
+    )
+
+
+@pytest.mark.django_db
+@patch(
+    "apps.delivery.reverse_geocoding.requests.get",
+    side_effect=requests.Timeout,
+)
+def test_reverse_geocode_never_returns_coordinates_as_address(
+    _request_get, client, settings
+):
+    settings.YANDEX_API_KEY = ""
+
+    response = client.get(
+        "/api/delivery/geo/reverse/",
+        {"lat": "42.8452", "lon": "74.6012"},
+    )
+
+    assert response.status_code == 502
+    assert "42.8452" not in response.content.decode()
 
 
 @pytest.mark.django_db

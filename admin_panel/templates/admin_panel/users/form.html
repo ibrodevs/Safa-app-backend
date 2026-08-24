@@ -1,0 +1,11 @@
+{% extends "admin_panel/base.html" %}
+{% block content %}
+<nav class="breadcrumbs"><a href="{% if courier_mode %}{% url 'admin_panel:couriers' %}{% else %}{% url 'admin_panel:users' %}{% endif %}">{% if courier_mode %}Специалисты{% else %}Пользователи{% endif %}</a> / {% if person %}Редактирование{% else %}Создание{% endif %}</nav>
+<header class="page-header"><div><h1>{% if person %}Редактировать профиль{% elif courier_mode %}Новый специалист{% else %}Новый пользователь{% endif %}</h1><p>Управляйте профилем и доступом к приложению.</p></div></header>
+<form method="post" enctype="multipart/form-data" class="card">{% csrf_token %}<div class="card-body"><div class="form-grid">
+  {% include "admin_panel/components/form_field.html" with field=form.phone_number %}{% include "admin_panel/components/form_field.html" with field=form.first_name %}
+  {% if not courier_mode %}{% include "admin_panel/components/form_field.html" with field=form.role %}{% else %}<input type="hidden" name="role" value="carrier">{% endif %}
+  {% include "admin_panel/components/form_field.html" with field=form.specialist_type %}{% include "admin_panel/components/form_field.html" with field=form.city %}{% include "admin_panel/components/form_field.html" with field=form.avatar %}
+  {% include "admin_panel/components/form_field.html" with field=form.is_verify %}{% include "admin_panel/components/form_field.html" with field=form.is_active %}
+</div></div><div class="card-header"><a class="btn btn-secondary" href="{% if person %}{% if courier_mode %}{% url 'admin_panel:courier_detail' person.pk %}{% else %}{% url 'admin_panel:user_detail' person.pk %}{% endif %}{% elif courier_mode %}{% url 'admin_panel:couriers' %}{% else %}{% url 'admin_panel:users' %}{% endif %}">Отмена</a><button class="btn btn-primary" type="submit">Сохранить</button></div></form>
+{% endblock %}

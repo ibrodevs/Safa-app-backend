@@ -1,0 +1,32 @@
+{% extends "admin_panel/base.html" %}
+{% block content %}
+<nav class="breadcrumbs"><a href="{% url 'admin_panel:orders' %}">Заказы</a> / {% if shipment %}#{{ shipment.public_code }} / Редактирование{% else %}Новый заказ{% endif %}</nav>
+<header class="page-header"><div><h1>{% if shipment %}Редактировать заказ #{{ shipment.public_code }}{% else %}Создать заказ{% endif %}</h1><p>Основные данные, участники, статус и маршрут в одной форме.</p></div></header>
+<form method="post" class="stack" id="shipment-form">{% csrf_token %}
+  {% if form.non_field_errors %}<div class="form-alert">{{ form.non_field_errors }}</div>{% endif %}
+  <section class="card"><div class="card-header"><div><h2>Основное</h2><p>Клиент и специалист выбираются из существующих пользователей.</p></div></div><div class="card-body"><div class="form-grid">
+    {% include "admin_panel/components/form_field.html" with field=form.title %}{% include "admin_panel/components/form_field.html" with field=form.service_type %}
+    {% include "admin_panel/components/form_field.html" with field=form.client %}{% include "admin_panel/components/form_field.html" with field=form.carrier %}
+    {% include "admin_panel/components/form_field.html" with field=form.description wide=True %}
+  </div></div></section>
+  <section class="card"><div class="card-header"><div><h2>Статус и оплата</h2><p>Завершённый заказ обязательно должен быть оплачен.</p></div></div><div class="card-body"><div class="form-grid">
+    {% include "admin_panel/components/form_field.html" with field=form.status %}{% include "admin_panel/components/form_field.html" with field=form.final_fare %}
+    {% include "admin_panel/components/form_field.html" with field=form.is_paid %}
+  </div></div></section>
+  <section class="card"><div class="card-header"><div><h2>Маршрут</h2><p>Выберите контейнер с карты или укажите название и координаты вручную.</p></div><button class="btn btn-secondary btn-sm" type="button" data-add-stop>Добавить точку</button></div><div class="card-body">
+    {{ formset.management_form }}{% if formset.non_form_errors %}<div class="form-alert">{{ formset.non_form_errors }}</div>{% endif %}
+    <div class="route-editor" id="route-editor">{% for stop_form in formset %}{% include "admin_panel/orders/stop_form.html" with stop_form=stop_form index=forloop.counter %}{% endfor %}</div>
+    <template id="empty-stop-template">{% include "admin_panel/orders/stop_form.html" with stop_form=formset.empty_form index="__number__" %}</template>
+  </div></section>
+  <div class="sticky-actions"><a class="btn btn-secondary" href="{% if shipment %}{% url 'admin_panel:order_detail' shipment.pk %}{% else %}{% url 'admin_panel:orders' %}{% endif %}">Отмена</a><button class="btn btn-primary" type="submit">{% if shipment %}Сохранить изменения{% else %}Создать заказ{% endif %}</button></div>
+</form>
+{% endblock %}
+{% block extra_js %}<script>
+(function(){
+  var editor=document.getElementById('route-editor'), total=document.getElementById('id_stops-TOTAL_FORMS'), template=document.getElementById('empty-stop-template');
+  function renumber(){editor.querySelectorAll('.route-edit-item:not(.is-removed)').forEach(function(row,i){row.querySelector('[data-stop-number]').textContent=i+1; var order=row.querySelector('input[name$="-ORDER"]'); if(order) order.value=i;});}
+  document.querySelector('[data-add-stop]').addEventListener('click',function(){var index=Number(total.value), html=template.innerHTML.replaceAll('__prefix__',index).replaceAll('__number__',index+1); editor.insertAdjacentHTML('beforeend',html); total.value=index+1; renumber();});
+  editor.addEventListener('click',function(e){var button=e.target.closest('[data-remove-stop]'); if(!button)return; var row=button.closest('.route-edit-item'), del=row.querySelector('input[name$="-DELETE"]'); if(del){del.checked=true; row.classList.add('is-removed');}else row.remove(); renumber();});
+  renumber();
+})();
+</script>{% endblock %}

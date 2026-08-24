@@ -5,10 +5,10 @@ from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404, redirect
 from django.views.decorators.http import require_http_methods
 
-from apps.delivery.models import AmanatCampaign, AmanatDonation
+from apps.delivery.models import AmanatCampaign, AmanatCategory, AmanatDonation
 
 from admin_panel.access import staff_required
-from admin_panel.forms import AmanatCampaignForm
+from admin_panel.forms import AmanatCampaignForm, AmanatCategoryForm
 from .common import panel_render
 
 
@@ -35,9 +35,31 @@ def amanat_list(request):
     return panel_render(
         request,
         "admin_panel/amanat/list.html",
-        {"page": page, "selected_status": selected},
+        {
+            "page": page,
+            "selected_status": selected,
+            "categories": AmanatCategory.objects.order_by("sort_order", "name"),
+        },
         section="amanat",
         title="Amanat",
+    )
+
+
+@staff_required
+@require_http_methods(["GET", "POST"])
+def amanat_category_form(request, pk=None):
+    category = get_object_or_404(AmanatCategory, pk=pk) if pk else None
+    form = AmanatCategoryForm(request.POST or None, instance=category)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Категория Amanat сохранена.")
+        return redirect("admin_panel:amanat")
+    return panel_render(
+        request,
+        "admin_panel/amanat/category_form.html",
+        {"form": form, "category": category},
+        section="amanat",
+        title="Категория Amanat",
     )
 
 

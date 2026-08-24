@@ -1,7 +1,7 @@
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
-from .models import Shipment
+from .models import CourierPosition, Shipment
 from .serializer import ShipmentDetailSerializer
 
 
@@ -16,3 +16,43 @@ def broadcast_shipment(shipment: Shipment) -> None:
         f"shipment_{shipment.id}",
         {"type": "shipment.event", "payload": data},
     )
+
+
+def courier_position_payload(
+    shipment: Shipment,
+    position: CourierPosition,
+) -> dict:
+    return {
+        "type": "telemetry",
+        "shipment_id": shipment.id,
+        "status": shipment.status,
+        "courier": {
+            "lat": str(position.lat),
+            "lon": str(position.lon),
+            "updated_at": position.updated_at.isoformat(),
+        },
+    }
+
+
+def broadcast_courier_position(position: CourierPosition) -> None:
+    """Publish one GPS update to every active order of this specialist."""
+
+    layer = get_channel_layer()
+    if layer is None:
+        return
+    shipments = Shipment.objects.filter(
+        carrier_id=position.user_id,
+        status__in=(
+            Shipment.Status.ASSIGNED,
+            Shipment.Status.IN_TRANSIT,
+            Shipment.Status.AWAITING_PAYMENT,
+        ),
+    ).only("id", "status")
+    for shipment in shipments.iterator():
+        async_to_sync(layer.group_send)(
+            f"shipment_{shipment.id}",
+            {
+                "type": "shipment.event",
+                "payload": courier_position_payload(shipment, position),
+            },
+        )

@@ -1,7 +1,6 @@
 from django.contrib import admin
 from django import forms
 from django.core.exceptions import ValidationError
-from django.utils import timezone
 
 from .models import (
     AmanatCampaign,
@@ -17,7 +16,12 @@ from .models import (
     Container,
 )
 from .map_models import MarketMapRevision
-from .operations import cancel_shipment, reestimate_shipment
+from .operations import (
+    cancel_shipment,
+    normalize_shipment_stops,
+    reestimate_shipment,
+    sync_shipment_admin_state,
+)
 
 
 def available_district_choices(current: str | None = None) -> list[tuple[str, str]]:
@@ -373,42 +377,14 @@ class ShipmentAdmin(admin.ModelAdmin):
     )
 
     def save_model(self, request, obj, form, change):
-        now = timezone.now()
-        if obj.is_paid:
-            obj.paid_at = obj.paid_at or now
-        else:
-            obj.paid_at = None
-
-        if obj.status == Shipment.Status.COMPLETED:
-            obj.work_completed_at = obj.work_completed_at or now
-            obj.finished_at = obj.finished_at or now
-        elif obj.status == Shipment.Status.AWAITING_PAYMENT:
-            obj.work_completed_at = obj.work_completed_at or now
-            obj.finished_at = None
-        elif obj.status == Shipment.Status.CANCELED:
-            obj.finished_at = obj.finished_at or now
-        else:
-            obj.work_completed_at = None
-            obj.finished_at = None
-
+        sync_shipment_admin_state(obj)
         super().save_model(request, obj, form, change)
 
     def save_related(self, request, form, formsets, change):
         """После сохранения инлайнов пере-нумеровываем остановки: position = 0,1,2,..."""
         super().save_related(request, form, formsets, change)
 
-        shipment = form.instance
-        stops = list(shipment.stops.order_by("position", "id"))
-
-        # 1) позиция строго по порядку
-        for idx, stop in enumerate(stops):
-            if stop.position != idx:
-                ShipmentStop.objects.filter(pk=stop.pk).update(position=idx)
-
-        # 2) пересчёт стоимости (если есть минимум 2 точки)
-        # estimate() безопасен даже если координаты ещё не заполнены (даст 0км)
-        shipment.estimate()
-        shipment.save(update_fields=["distance_km", "estimated_fare"])
+        normalize_shipment_stops(form.instance)
 
 
 @admin.register(CourierPosition)

@@ -265,6 +265,8 @@ KYC_ENROLLMENT_TOKEN_MAX_AGE = int(
 )
 DEMO_OTP_CODE = os.getenv("DEMO_OTP_CODE", "").strip()
 YANDEX_API_KEY = os.getenv("YANDEX_API_KEY", "").strip()
+GEOCODER_USER_AGENT = os.getenv("GEOCODER_USER_AGENT", "SAFA/1.0").strip()
+GEOCODER_CONTACT_EMAIL = os.getenv("GEOCODER_CONTACT_EMAIL", "").strip()
 
 
 OSRM_URL = os.getenv("OSRM_URL", "https://router.project-osrm.org").strip()

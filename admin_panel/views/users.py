@@ -1,10 +1,14 @@
 from django.core.paginator import Paginator
+from django.contrib import messages
+from django.db import transaction
 from django.db.models import Q
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect
+from django.views.decorators.http import require_http_methods
 
 from apps.users.models import User
 
 from admin_panel.access import staff_required
+from admin_panel.forms import PanelUserForm
 from .common import panel_render
 
 
@@ -51,6 +55,42 @@ def user_detail(request, pk):
         _detail_context(person),
         section="users",
         title=person.first_name or person.phone_number,
+    )
+
+
+@staff_required
+@require_http_methods(["GET", "POST"])
+def user_form(request, pk=None, courier=False):
+    person = get_object_or_404(User, pk=pk, is_staff=False) if pk else User()
+    initial = {"role": User.Roles.CARRIER} if courier and not pk else None
+    form = PanelUserForm(
+        request.POST or None,
+        request.FILES or None,
+        instance=person,
+        initial=initial,
+    )
+    if request.method == "POST" and form.is_valid():
+        with transaction.atomic():
+            person = form.save(commit=False)
+            if courier:
+                person.role = User.Roles.CARRIER
+            person.save()
+            from apps.users.models import CourierKYC, UserProfile
+
+            UserProfile.objects.get_or_create(user=person)
+            if person.role == User.Roles.CARRIER:
+                CourierKYC.objects.get_or_create(user=person)
+        messages.success(request, "Пользователь сохранён.")
+        return redirect(
+            "admin_panel:courier_detail" if person.role == User.Roles.CARRIER else "admin_panel:user_detail",
+            pk=person.pk,
+        )
+    return panel_render(
+        request,
+        "admin_panel/users/form.html",
+        {"form": form, "person": person if pk else None, "courier_mode": courier},
+        section="couriers" if courier else "users",
+        title="Редактирование" if pk else ("Новый специалист" if courier else "Новый пользователь"),
     )
 
 

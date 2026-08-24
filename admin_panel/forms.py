@@ -1,12 +1,17 @@
 from django import forms
+from django.forms import BaseInlineFormSet, inlineformset_factory
 
 from apps.delivery.district_catalog import available_district_choices
 from apps.delivery.models import (
     AmanatCampaign,
+    AmanatCategory,
     Bazar,
     DeliveryDistrict,
     GlobalDeliveryConfig,
+    Shipment,
+    ShipmentStop,
 )
+from apps.users.models import User
 
 
 class StyledModelForm(forms.ModelForm):
@@ -86,6 +91,25 @@ class BazarTariffForm(StyledModelForm):
         return instance
 
 
+class BazarPanelForm(StyledModelForm):
+    class Meta:
+        model = Bazar
+        fields = ("name", "district_tariff", "fixed_price")
+        labels = {
+            "name": "Название базара",
+            "district_tariff": "Тариф района",
+            "fixed_price": "Собственная фиксированная цена",
+        }
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if instance.district_tariff_id:
+            instance.district = instance.district_tariff.name
+        if commit:
+            instance.save()
+        return instance
+
+
 class AmanatCampaignForm(StyledModelForm):
     class Meta:
         model = AmanatCampaign
@@ -108,6 +132,18 @@ class AmanatCampaignForm(StyledModelForm):
         widgets = {"ends_at": forms.DateInput(attrs={"type": "date"})}
 
 
+class AmanatCategoryForm(StyledModelForm):
+    class Meta:
+        model = AmanatCategory
+        fields = ("name", "slug", "sort_order", "is_active")
+        labels = {
+            "name": "Название",
+            "slug": "Код категории",
+            "sort_order": "Порядок",
+            "is_active": "Категория активна",
+        }
+
+
 class KYCDecisionForm(forms.Form):
     comment = forms.CharField(
         required=False,
@@ -115,3 +151,146 @@ class KYCDecisionForm(forms.Form):
         label="Комментарий",
         widget=forms.Textarea(attrs={"class": "textarea", "rows": 4}),
     )
+
+
+class PanelUserForm(StyledModelForm):
+    class Meta:
+        model = User
+        fields = (
+            "phone_number",
+            "first_name",
+            "role",
+            "specialist_type",
+            "city",
+            "avatar",
+            "is_verify",
+            "is_active",
+        )
+        labels = {
+            "phone_number": "Телефон",
+            "first_name": "Имя",
+            "role": "Роль",
+            "specialist_type": "Специализация",
+            "city": "Город",
+            "avatar": "Аватар",
+            "is_verify": "Телефон подтверждён",
+            "is_active": "Доступ активен",
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("role") != User.Roles.CARRIER:
+            cleaned["specialist_type"] = None
+        elif not cleaned.get("specialist_type"):
+            self.add_error("specialist_type", "Выберите специализацию.")
+        return cleaned
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        if not user.pk:
+            user.set_unusable_password()
+        if commit:
+            user.save()
+        return user
+
+
+class ShipmentPanelForm(StyledModelForm):
+    class Meta:
+        model = Shipment
+        fields = (
+            "title",
+            "service_type",
+            "description",
+            "client",
+            "carrier",
+            "status",
+            "is_paid",
+            "final_fare",
+        )
+        labels = {
+            "title": "Название заказа",
+            "service_type": "Тип услуги",
+            "description": "Описание",
+            "client": "Клиент",
+            "carrier": "Специалист",
+            "status": "Статус",
+            "is_paid": "Заказ оплачен",
+            "final_fare": "Итоговая стоимость",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["client"].queryset = User.objects.filter(
+            role=User.Roles.CLIENT, is_staff=False
+        ).order_by("first_name", "phone_number")
+        self.fields["carrier"].queryset = User.objects.filter(
+            role=User.Roles.CARRIER, is_staff=False
+        ).order_by("first_name", "phone_number")
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("status") == Shipment.Status.COMPLETED and not cleaned.get("is_paid"):
+            self.add_error("is_paid", "Завершённый заказ должен быть оплачен.")
+        return cleaned
+
+
+class ShipmentStopPanelForm(StyledModelForm):
+    class Meta:
+        model = ShipmentStop
+        fields = ("container", "title", "lat", "lon")
+        labels = {
+            "container": "Контейнер на карте",
+            "title": "Адрес или название точки",
+            "lat": "Широта",
+            "lon": "Долгота",
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("DELETE"):
+            return cleaned
+        has_data = any(
+            cleaned.get(name) not in (None, "")
+            for name in ("container", "title", "lat", "lon")
+        )
+        if not has_data and not self.instance.pk:
+            return cleaned
+        if not cleaned.get("container"):
+            if not (cleaned.get("title") or "").strip():
+                self.add_error("title", "Укажите название или выберите контейнер.")
+            if cleaned.get("lat") is None or cleaned.get("lon") is None:
+                raise forms.ValidationError("Для ручной точки укажите широту и долготу.")
+        return cleaned
+
+
+class BaseShipmentStopFormSet(BaseInlineFormSet):
+    ordering_widget = forms.HiddenInput
+
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        active = []
+        for form in self.forms:
+            data = form.cleaned_data
+            has_data = form.instance.pk or any(
+                data.get(name) not in (None, "")
+                for name in ("container", "title", "lat", "lon")
+            )
+            if has_data and not data.get("DELETE"):
+                active.append(form)
+        if len(active) < 2:
+            raise forms.ValidationError("Маршрут должен содержать минимум две точки.")
+        if len(active) > 30:
+            raise forms.ValidationError("В маршруте может быть не больше 30 точек.")
+
+
+ShipmentStopFormSet = inlineformset_factory(
+    Shipment,
+    ShipmentStop,
+    form=ShipmentStopPanelForm,
+    formset=BaseShipmentStopFormSet,
+    extra=2,
+    can_delete=True,
+    can_order=True,
+)

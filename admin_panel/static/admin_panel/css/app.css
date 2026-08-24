@@ -159,6 +159,13 @@ td small, .table-primary small { display: block; margin-top: 2px; color: var(--m
 .form-section { margin: 0; padding: 0 0 22px; border: 0; }
 .form-section + .form-section { padding-top: 22px; border-top: 1px solid var(--border); }
 .form-section legend { width: 100%; margin-bottom: 14px; font-size: 14px; font-weight: 720; }
+.sticky-actions { position: sticky; z-index: 12; bottom: 16px; display: flex; justify-content: flex-end; gap: 8px; padding: 12px; background: rgb(255 255 255 / .94); backdrop-filter: blur(10px); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); }
+.route-editor { display: grid; gap: 10px; }
+.route-edit-item { position: relative; display: grid; grid-template-columns: 32px 1fr 34px; gap: 12px; align-items: start; padding: 14px; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.route-edit-item.is-removed { display: none; }
+.route-edit-item__number { display: grid; place-items: center; width: 28px; height: 28px; color: white; background: var(--primary); border-radius: 50%; font-size: 12px; font-weight: 700; }
+.route-edit-item__fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.route-edit-item__remove { color: var(--red); }
 .span-2 { grid-column: span 2; }
 .tabs { display: flex; gap: 3px; padding: 4px; margin-bottom: 16px; width: max-content; max-width: 100%; overflow-x: auto; background: #ededee; border-radius: 9px; }
 .tab { padding: 7px 12px; border-radius: 6px; color: var(--muted); font-weight: 600; white-space: nowrap; }

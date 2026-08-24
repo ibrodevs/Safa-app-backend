@@ -4,8 +4,8 @@ import os
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404
-from django.views.decorators.http import require_POST
+from django.shortcuts import get_object_or_404, redirect
+from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.delivery.map_admin import other_bazar_boundaries
 from apps.delivery.map_models import MarketMapRevision
@@ -14,6 +14,7 @@ from apps.delivery.map_validation import validate_feature_collection
 from apps.delivery.models import Bazar, Container, DeliveryDistrict, Passage
 
 from admin_panel.access import staff_required
+from admin_panel.forms import BazarPanelForm
 from .common import panel_render
 
 
@@ -40,6 +41,24 @@ def map_list(request):
     )
 
 
+@staff_required
+@require_http_methods(["GET", "POST"])
+def bazar_form(request, pk=None):
+    bazar = get_object_or_404(Bazar, pk=pk) if pk else None
+    form = BazarPanelForm(request.POST or None, instance=bazar)
+    if request.method == "POST" and form.is_valid():
+        bazar = form.save()
+        messages.success(request, f"Базар «{bazar.name}» сохранён.")
+        return redirect("admin_panel:map_editor", pk=bazar.pk)
+    return panel_render(
+        request,
+        "admin_panel/map/bazar_form.html",
+        {"form": form, "bazar": bazar},
+        section="map",
+        title="Настройки базара" if bazar else "Новый базар",
+    )
+
+
 def _editor_context(request, bazar):
     revision, _ = MarketMapRevision.get_or_create_draft(
         bazar=bazar,
@@ -59,6 +78,7 @@ def _editor_context(request, bazar):
         item["lon"] = float(item["lon"])
     return {
         "bazar": bazar,
+        "all_bazars": Bazar.objects.order_by("name"),
         "revision": revision,
         "initial_geojson": revision.geojson,
         "context_geojson": other_bazar_boundaries(bazar),

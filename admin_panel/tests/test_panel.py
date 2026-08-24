@@ -176,3 +176,83 @@ class PanelWorkflowTests(TestCase):
     def test_global_search_requires_two_characters(self):
         response = self.client.get(reverse("admin_panel:search"), {"q": "1"})
         self.assertEqual(response.json(), {"groups": []})
+
+    def test_staff_can_create_and_edit_user(self):
+        response = self.client.post(
+            reverse("admin_panel:user_create"),
+            {
+                "phone_number": "996700000099",
+                "first_name": "New client",
+                "role": User.Roles.CLIENT,
+                "specialist_type": "",
+                "city": "Бишкек",
+                "is_active": "on",
+            },
+        )
+        person = User.objects.get(phone_number="996700000099")
+        self.assertRedirects(
+            response,
+            reverse("admin_panel:user_detail", args=(person.pk,)),
+            fetch_redirect_response=False,
+        )
+        self.assertFalse(person.has_usable_password())
+        response = self.client.post(
+            reverse("admin_panel:user_edit", args=(person.pk,)),
+            {
+                "phone_number": person.phone_number,
+                "first_name": "Updated client",
+                "role": User.Roles.CLIENT,
+                "specialist_type": "",
+                "city": "Ош",
+                "is_active": "on",
+                "is_verify": "on",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        person.refresh_from_db()
+        self.assertEqual(person.first_name, "Updated client")
+        self.assertEqual(person.city, "Ош")
+
+    def test_staff_can_create_order_with_route(self):
+        customer = User.objects.create_user(
+            phone_number="996700000098",
+            first_name="Order client",
+        )
+        response = self.client.post(
+            reverse("admin_panel:order_create"),
+            {
+                "title": "Новый заказ",
+                "service_type": Shipment.ServiceType.DELIVERY,
+                "description": "Тестовый маршрут",
+                "client": customer.pk,
+                "carrier": "",
+                "status": Shipment.Status.PENDING,
+                "final_fare": 0,
+                "stops-TOTAL_FORMS": 2,
+                "stops-INITIAL_FORMS": 0,
+                "stops-MIN_NUM_FORMS": 0,
+                "stops-MAX_NUM_FORMS": 1000,
+                "stops-0-container": "",
+                "stops-0-title": "Точка А",
+                "stops-0-lat": "42.870000",
+                "stops-0-lon": "74.610000",
+                "stops-0-ORDER": 0,
+                "stops-1-container": "",
+                "stops-1-title": "Точка Б",
+                "stops-1-lat": "42.880000",
+                "stops-1-lon": "74.620000",
+                "stops-1-ORDER": 1,
+            },
+        )
+        shipment = Shipment.objects.get(title="Новый заказ")
+        self.assertRedirects(
+            response,
+            reverse("admin_panel:order_detail", args=(shipment.pk,)),
+            fetch_redirect_response=False,
+        )
+        self.assertEqual(shipment.stops.count(), 2)
+        self.assertGreater(shipment.estimated_fare, 0)
+        self.assertEqual(
+            self.client.get(reverse("admin_panel:order_edit", args=(shipment.pk,))).status_code,
+            200,
+        )

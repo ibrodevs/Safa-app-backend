@@ -1,6 +1,6 @@
 {% extends "admin_panel/base.html" %}{% load panel_tags %}
 {% block content %}
-<header class="page-header"><div><p class="eyebrow">Работа</p><h1>Заказы</h1><p>Все доставки и их текущий статус.</p></div></header>
+<header class="page-header"><div><p class="eyebrow">Работа</p><h1>Заказы</h1><p>Все доставки и их текущий статус.</p></div><a class="btn btn-primary" href="{% url 'admin_panel:order_create' %}">Создать заказ</a></header>
 <form class="filter-bar" method="get">
   <div class="search-input"><span>⌕</span><input class="input" type="search" name="q" value="{{ query }}" placeholder="ID, имя или телефон…"></div>
   <select class="select" name="status" aria-label="Статус"><option value="">Все статусы</option>{% for code,label in statuses %}<option value="{{ code }}" {% if selected_status == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>

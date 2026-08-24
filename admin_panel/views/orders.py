@@ -1,14 +1,20 @@
 from django.contrib import messages
 from django.core.paginator import Paginator
-from django.db.models import Q
-from django.http import Http404
+from django.db import transaction
+from django.db.models import F, Q
 from django.shortcuts import get_object_or_404, redirect
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.delivery.models import Shipment
-from apps.delivery.operations import cancel_shipment, reestimate_shipment
+from apps.delivery.operations import (
+    cancel_shipment,
+    normalize_shipment_stops,
+    reestimate_shipment,
+    sync_shipment_admin_state,
+)
 
 from admin_panel.access import staff_required
+from admin_panel.forms import ShipmentPanelForm, ShipmentStopFormSet
 from .common import panel_render
 
 
@@ -89,6 +95,55 @@ def order_detail(request, pk):
         {"shipment": shipment, "status_label": STATUS_LABELS.get(shipment.status)},
         section="orders",
         title=f"Заказ #{shipment.public_code}",
+    )
+
+
+@staff_required
+@require_http_methods(["GET", "POST"])
+def order_form(request, pk=None):
+    shipment = get_object_or_404(Shipment, pk=pk) if pk else Shipment()
+    form = ShipmentPanelForm(request.POST or None, instance=shipment)
+    formset = ShipmentStopFormSet(
+        request.POST or None,
+        instance=shipment,
+        prefix="stops",
+    )
+    if request.method == "POST" and form.is_valid() and formset.is_valid():
+        with transaction.atomic():
+            shipment = form.save(commit=False)
+            sync_shipment_admin_state(shipment)
+            shipment.save()
+            if shipment.pk:
+                shipment.stops.filter(position__isnull=False).update(position=F("position") + 1000)
+            formset.save(commit=False)
+            for deleted in formset.deleted_objects:
+                deleted.delete()
+            ordered = [
+                stop_form
+                for stop_form in formset.ordered_forms
+                if stop_form.instance.pk
+                or any(
+                    stop_form.cleaned_data.get(name) not in (None, "")
+                    for name in ("container", "title", "lat", "lon")
+                )
+            ]
+            for position, stop_form in enumerate(ordered):
+                stop = stop_form.save(commit=False)
+                stop.shipment = shipment
+                stop.position = position
+                stop.save()
+            normalize_shipment_stops(shipment)
+        messages.success(
+            request,
+            f"Заказ #{shipment.public_code} {'обновлён' if pk else 'создан'}.",
+        )
+        return redirect("admin_panel:order_detail", pk=shipment.pk)
+    return panel_render(
+        request,
+        "admin_panel/orders/form.html",
+        {"form": form, "formset": formset, "shipment": shipment if pk else None},
+        section="orders",
+        title="Редактирование заказа" if pk else "Новый заказ",
     )
 
 

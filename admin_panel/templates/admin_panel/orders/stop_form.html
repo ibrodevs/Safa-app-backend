@@ -1,0 +1,12 @@
+<article class="route-edit-item">
+  {{ stop_form.id }}{{ stop_form.ORDER }}<div hidden>{{ stop_form.DELETE }}</div>
+  <div class="route-edit-item__number" data-stop-number>{{ index }}</div>
+  <div class="route-edit-item__fields">
+    {% include "admin_panel/components/form_field.html" with field=stop_form.container %}
+    {% include "admin_panel/components/form_field.html" with field=stop_form.title %}
+    {% include "admin_panel/components/form_field.html" with field=stop_form.lat %}
+    {% include "admin_panel/components/form_field.html" with field=stop_form.lon %}
+    {% if stop_form.non_field_errors %}<div class="form-alert span-2">{{ stop_form.non_field_errors }}</div>{% endif %}
+  </div>
+  <button class="icon-button route-edit-item__remove" type="button" data-remove-stop aria-label="Удалить точку">×</button>
+</article>
