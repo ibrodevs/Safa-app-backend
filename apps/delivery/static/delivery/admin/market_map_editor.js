@@ -1293,7 +1293,11 @@
   function handleFeatureClick(id, event) {
     const domEvent = event?.domEvent;
     const target = featureAtLatLng(event?.latLng, id) || id;
-    if (state.pickMode || (domEvent && (domEvent.ctrlKey || domEvent.metaKey || domEvent.shiftKey))) {
+    if (state.pickMode) {
+      addGroupSelection(target);
+      return;
+    }
+    if (domEvent && (domEvent.ctrlKey || domEvent.metaKey || domEvent.shiftKey)) {
       toggleGroupSelection(target);
       return;
     }
@@ -1370,6 +1374,17 @@
     if (!state.items.has(id)) return;
     if (state.groupSelection.has(id)) state.groupSelection.delete(id);
     else state.groupSelection.add(id);
+    refreshGroupHighlight();
+  }
+
+  // В явном режиме набора обычный клик только добавляет объект. Google Maps
+  // иногда присылает повторный click для одного касания поверх вложенных
+  // полигонов; toggle в таком случае мгновенно снимал только что поставленное
+  // выделение и создавал эффект «красится через один». Добавление идемпотентно:
+  // сколько бы раз ни пришло событие, контейнер остаётся выбранным.
+  function addGroupSelection(id) {
+    if (!state.items.has(id)) return;
+    state.groupSelection.add(id);
     refreshGroupHighlight();
   }
 
@@ -2173,7 +2188,12 @@
         button.addEventListener('click', (event) => {
           // The explicit pick mode must behave identically on the map and in
           // the object list: every ordinary click toggles one group member.
-          if (state.pickMode || event.ctrlKey || event.metaKey || event.shiftKey) {
+          if (state.pickMode) {
+            event.preventDefault();
+            addGroupSelection(item.feature.id);
+            return;
+          }
+          if (event.ctrlKey || event.metaKey || event.shiftKey) {
             event.preventDefault();
             toggleGroupSelection(item.feature.id);
             return;
