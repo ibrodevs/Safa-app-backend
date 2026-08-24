@@ -11,7 +11,7 @@
   </style>
 </head>
 <body>
-  <div id="market-map-editor" data-bazar-name="Тестовый базар" data-focus-kind="">
+  <div id="market-map-editor" data-bazar-name="Тестовый базар" data-focus-kind="container">
     <button type="button" id="market-group-pick">Выбрать элементы</button>
     <button type="button" id="market-group-create" disabled>Группировать</button>
     <button type="button" id="market-group-duplicate" disabled>Дублировать группу</button>
@@ -168,10 +168,10 @@
       }};
     })();
   </script>
-  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v3.js"></script>
+  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v4.js"></script>
   <!-- Намеренно загружаем второй раз: singleton обязан не дать повесить
        дублирующий обработчик на кнопку группировки. -->
-  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v3.js"></script>
+  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v4.js"></script>
   <script>window.initMarketMapEditor();</script>
 </body>
 </html>

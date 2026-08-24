@@ -931,6 +931,13 @@
     });
     marker.addListener('click', (event) => {
       stopMapClickPropagation(event);
+      // Набор группы важнее текущего инструмента. В редакторе отдельного
+      // раздела контейнеров начальный инструмент — draw, и раньше он съедал
+      // первый клик, создавая новый контейнер вместо мгновенной подсветки.
+      if (state.pickMode) {
+        handleFeatureClick(feature.id, event);
+        return;
+      }
       if (state.tool === 'draw') {
         mapClick(event);
         return;
@@ -960,6 +967,10 @@
     });
     line.addListener('click', (event) => {
       stopMapClickPropagation(event);
+      if (state.pickMode) {
+        handleFeatureClick(feature.id, event);
+        return;
+      }
       if (state.tool === 'draw') {
         mapClick(event);
         return;
@@ -995,6 +1006,10 @@
     polygon.addListener('click', (event) => {
       stopMapClickPropagation(event);
       if ((feature.properties || {}).readonly) return;
+      if (state.pickMode) {
+        handleFeatureClick(feature.id, event);
+        return;
+      }
       if (state.tool === 'draw') {
         mapClick(event);
         return;
@@ -1322,6 +1337,10 @@
 
   function setPickMode(enabled) {
     const entering = Boolean(enabled);
+    // Сфокусированные страницы (/editor/?kind=container) открываются в draw.
+    // Группировка всегда является режимом выбора: иначе первый клик попадал в
+    // mapClick(), а окраска происходила только при следующем нажатии.
+    if (entering && state.tool !== 'select') setTool('select');
     // Редактирование одного объекта и набор группы — разные режимы. Убираем
     // старое одиночное выделение и его resize-маркеры, чтобы первый же клик
     // получил групповую окраску и ничто не перехватывало соседний контейнер.
