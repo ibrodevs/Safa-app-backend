@@ -24,6 +24,9 @@
     <div id="market-map-canvas"></div>
     <div id="market-feature-list"></div>
     <select id="market-feature-passage"><option value="">Выберите проход</option></select>
+    <input id="market-feature-width-m" type="number" value="4">
+    <input id="market-feature-height-m" type="number" value="2.5">
+    <input id="market-feature-rotation-deg" type="number" value="0">
     <div id="market-map-status"></div>
   </div>
 
@@ -199,6 +202,7 @@
       window.__fakeMap.emit('click', {latLng: bounds.getCenter(), domEvent: new Event('click')});
     });
     document.getElementById('simulate-group-drag').addEventListener('click', (event) => {
+      const button = event.currentTarget;
       const first = window.__fakePolygons[0];
       const second = window.__fakePolygons[1];
       const center = (polygon) => {
@@ -221,8 +225,8 @@
       first.emit('dragend');
       window.setTimeout(() => {
         const after = center(second);
-        event.currentTarget.dataset.secondDeltaLng = String(after[0] - before[0]);
-        event.currentTarget.dataset.secondDeltaLat = String(after[1] - before[1]);
+        button.dataset.secondDeltaLng = String(after[0] - before[0]);
+        button.dataset.secondDeltaLat = String(after[1] - before[1]);
       }, 40);
     });
   </script>
