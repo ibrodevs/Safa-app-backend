@@ -18,6 +18,7 @@
     <button type="button" id="market-group-ungroup" disabled>Разгруппировать</button>
     <button type="button" id="market-group-clear">Снять выделение</button>
     <button type="button" id="simulate-map-click">Клик через базовый слой карты</button>
+    <button type="button" id="simulate-group-drag">Переместить группу</button>
     <select id="market-group-direction"><option value="right">Справа</option></select>
     <div id="market-group-counter"></div>
     <div id="market-map-canvas"></div>
@@ -130,6 +131,7 @@
           this.button.style.borderColor = this.options.strokeColor || 'transparent';
           this.button.dataset.fillColor = this.options.fillColor || '';
           this.button.dataset.strokeColor = this.options.strokeColor || '';
+          this.button.dataset.draggable = String(Boolean(this.options.draggable));
         }
       }
 
@@ -179,10 +181,10 @@
       }};
     })();
   </script>
-  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v6.js"></script>
+  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v7.js"></script>
   <!-- Намеренно загружаем второй раз: singleton обязан не дать повесить
        дублирующий обработчик на кнопку группировки. -->
-  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v6.js"></script>
+  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v7.js"></script>
   <script src="/apps/delivery/static/delivery/admin/market_map_editor_perf.js"></script>
   <script>
     window.initMarketMapEditor();
@@ -195,6 +197,33 @@
         for (let j = 0; j < path.getLength(); j += 1) bounds.extend(path.getAt(j));
       }
       window.__fakeMap.emit('click', {latLng: bounds.getCenter(), domEvent: new Event('click')});
+    });
+    document.getElementById('simulate-group-drag').addEventListener('click', (event) => {
+      const first = window.__fakePolygons[0];
+      const second = window.__fakePolygons[1];
+      const center = (polygon) => {
+        const bounds = new google.maps.LatLngBounds();
+        const paths = polygon.getPaths();
+        for (let i = 0; i < paths.getLength(); i += 1) {
+          const path = paths.getAt(i);
+          for (let j = 0; j < path.getLength(); j += 1) bounds.extend(path.getAt(j));
+        }
+        const value = bounds.getCenter();
+        return [value.lng(), value.lat()];
+      };
+      const before = center(second);
+      first.emit('dragstart');
+      const shifted = first.getPaths().values.map((path) => path.values.map((point) => ({
+        lng: point.lng() + 0.0001,
+        lat: point.lat() + 0.0001,
+      })));
+      first.setPaths(shifted);
+      first.emit('dragend');
+      window.setTimeout(() => {
+        const after = center(second);
+        event.currentTarget.dataset.secondDeltaLng = String(after[0] - before[0]);
+        event.currentTarget.dataset.secondDeltaLat = String(after[1] - before[1]);
+      }, 40);
     });
   </script>
 </body>

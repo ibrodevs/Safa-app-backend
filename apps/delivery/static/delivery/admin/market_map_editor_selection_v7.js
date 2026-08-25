@@ -1393,8 +1393,13 @@
     const strokeColor = highlighted
       ? (isMain ? GROUP_MAIN_COLOR : GROUP_HIGHLIGHT_COLOR)
       : '';
+    // Пока пользователь набирает состав группы, контейнеры не двигаются от
+    // случайного жеста. Сразу после «Группировать»/«Готово» любой выделенный
+    // участник становится draggable и тянет за собой остальных.
+    const groupMovable = highlighted && !state.pickMode;
     item.overlays.forEach((overlay) => {
       if (overlay instanceof google.maps.Marker) {
+        overlay.setDraggable(groupMovable);
         overlay.setIcon(markerIcon(item.feature.properties, highlighted, fillColor, strokeColor));
         return;
       }
@@ -1402,7 +1407,7 @@
       overlay.setOptions({
         ...style,
         editable: false,
-        draggable: false,
+        draggable: groupMovable,
         strokeColor: highlighted
           ? strokeColor
           : (item.feature.properties.stroke_color || style.strokeColor),
