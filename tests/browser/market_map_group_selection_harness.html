@@ -11,7 +11,7 @@
   </style>
 </head>
 <body>
-  <div id="market-map-editor" data-bazar-name="Тестовый базар" data-focus-kind="container">
+  <div id="market-map-editor" data-bazar-name="Тестовый базар" data-focus-kind="">
     <button type="button" id="market-group-pick">Выбрать элементы</button>
     <button type="button" id="market-group-create" disabled>Группировать</button>
     <button type="button" id="market-group-duplicate" disabled>Дублировать группу</button>
@@ -24,6 +24,15 @@
     <div id="market-map-canvas"></div>
     <div id="market-feature-list"></div>
     <select id="market-feature-passage"><option value="">Выберите проход</option></select>
+    <select id="market-feature-kind"><option value="bazar">Граница базара</option><option value="district">Район</option><option value="passage">Проход</option><option value="container">Контейнер</option></select>
+    <input id="market-feature-name" type="text">
+    <input id="market-feature-number" type="text">
+    <select id="market-feature-container"><option value="">Новый контейнер</option></select>
+    <input id="market-feature-title" type="text">
+    <input id="market-feature-min-zoom" type="number" value="14">
+    <input id="market-feature-stroke-width" type="number" value="2">
+    <input id="market-feature-stroke" type="color" value="#e47f26">
+    <input id="market-feature-fill" type="color" value="#ff8656">
     <input id="market-feature-width-m" type="number" value="4">
     <input id="market-feature-height-m" type="number" value="2.5">
     <input id="market-feature-rotation-deg" type="number" value="0">
@@ -45,6 +54,12 @@
         "id": "container-second",
         "properties": {"kind": "container", "name": "A-2", "number": "A-2", "fill_color": "#ef4444", "stroke_color": "#dc2626"},
         "geometry": {"type": "Polygon", "coordinates": [[[74.60008,42.87000],[74.60013,42.87000],[74.60013,42.87003],[74.60008,42.87003],[74.60008,42.87000]]]}
+      },
+      {
+        "type": "Feature",
+        "id": "passage-crossing-container",
+        "properties": {"kind": "passage", "name": "Проход 1", "number": "Проход 1", "stroke_color": "#d97706", "fill_color": "#fbbf24"},
+        "geometry": {"type": "LineString", "coordinates": [[74.59998,42.870015],[74.60007,42.870015]]}
       }
     ]
   }
@@ -139,7 +154,21 @@
       }
 
       class FakePolyline extends FakeOverlay {
-        constructor(options = {}) { super(options); this.setPath(options.path || []); }
+        constructor(options = {}) {
+          super(options);
+          this.setPath(options.path || []);
+          this.button = document.createElement('button');
+          this.button.type = 'button';
+          this.button.className = 'fake-map-passage';
+          this.button.textContent = 'Проход рядом с контейнером';
+          this.button.addEventListener('click', (domEvent) => {
+            const bounds = new FakeLatLngBounds();
+            for (let i = 0; i < this.path.getLength(); i += 1) bounds.extend(this.path.getAt(i));
+            this.emit('click', {domEvent, latLng: bounds.getCenter()});
+          });
+          document.getElementById('market-map-canvas').append(this.button);
+          window.__fakePolylines.push(this);
+        }
         setPath(path) { this.path = new FakeMVCArray(path.map(asLatLng)); }
         getPath() { return this.path; }
       }
@@ -171,6 +200,7 @@
       }
 
       window.__fakePolygons = [];
+      window.__fakePolylines = [];
       window.google = {maps: {
         Map: FakeMap,
         Marker: FakeMarker,
@@ -184,10 +214,10 @@
       }};
     })();
   </script>
-  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v7.js"></script>
+  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v8.js"></script>
   <!-- Намеренно загружаем второй раз: singleton обязан не дать повесить
        дублирующий обработчик на кнопку группировки. -->
-  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v7.js"></script>
+  <script src="/apps/delivery/static/delivery/admin/market_map_editor_selection_v8.js"></script>
   <script src="/apps/delivery/static/delivery/admin/market_map_editor_perf.js"></script>
   <script>
     window.initMarketMapEditor();

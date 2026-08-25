@@ -1295,8 +1295,15 @@
     // the first nearby container in state.items won instead, so tightly packed
     // containers could make their neighbours impossible to select.
     const preferred = state.items.get(preferredId);
+    const preferredKind = (preferred?.feature.properties || {}).kind;
+    // Если Google Maps сообщил, что клик пришёл непосредственно от узкой линии
+    // прохода, это точнее геометрического поиска по соседству. Раньше любой
+    // контейнер в радиусе допуска перезаписывал passage и делал сам проход
+    // практически невыбираемым. Большие фоновые полигоны (район/базар) всё ещё
+    // проходят через поиск, чтобы не перекрывать вложенные объекты.
+    if (preferredKind === 'passage') return preferredId;
     const preferredRank = preferred
-      ? KIND_ORDER.indexOf((preferred.feature.properties || {}).kind)
+      ? KIND_ORDER.indexOf(preferredKind)
       : -1;
     let bestId = preferredRank >= 0 ? preferredId : null;
     let bestRank = preferredRank >= 0 ? preferredRank : Number.MAX_SAFE_INTEGER;
