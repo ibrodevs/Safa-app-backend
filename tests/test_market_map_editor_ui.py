@@ -6,7 +6,7 @@ TEMPLATE = ROOT / "apps/delivery/templates/admin/delivery/marketmaprevision/map_
 CSS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor.css"
 COMPACT_CSS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor_compact.css"
 UI_JS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor_ui.js"
-EDITOR_JS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor_selection_v8.js"
+EDITOR_JS = ROOT / "apps/delivery/static/delivery/admin/market_map_editor_selection_v9.js"
 
 
 def test_map_editor_uses_compact_creation_controls():
@@ -67,7 +67,7 @@ def test_container_size_can_be_reduced_in_both_admin_editors():
         assert 'data-container-size-step="width" data-delta="-0.5"' in template
         assert 'data-container-size-step="height" data-delta="-0.5"' in template
         assert 'min="0.2" max="100" step="0.1"' in template
-        assert "market_map_editor_selection_v8.js' %}" in template
+        assert "market_map_editor_selection_v9.js' %}" in template
 
     assert "resizeSelectedContainer('width', 0)" in javascript
     assert "resizeSelectedContainer('height', 0)" in javascript
@@ -378,5 +378,15 @@ def test_passage_label_color_can_be_changed():
 
     assert "function labelColorFor(" in javascript
     assert "properties.label_color = labelColorField.value;" in javascript
+
+
+def test_container_number_and_passage_are_applied_automatically():
+    javascript = EDITOR_JS.read_text(encoding="utf-8")
+
+    assert "function scheduleContainerAutoApply(delay = 350)" in javascript
+    assert "state.selectedId !== selectedId" in javascript
+    assert "scheduleContainerAutoApply(350);" in javascript
+    assert "byId('market-feature-passage')?.addEventListener('change', () => scheduleContainerAutoApply(0));" in javascript
+    assert "Номер и проход контейнера применены автоматически" in javascript
     # Подпись красится своим цветом, а не цветом линии.
     assert "const color = labelColorFor(item.feature.properties);" in javascript

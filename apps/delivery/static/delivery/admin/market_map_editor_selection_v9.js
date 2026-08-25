@@ -25,6 +25,7 @@
     groupDrag: null,
     pickMode: false,
     lastOverlayPickAt: 0,
+    containerAutoApplyTimer: 0,
     controlsBound: false,
   };
 
@@ -1731,6 +1732,27 @@
     recordHistory();
   }
 
+  // Номер/название и проход контейнера — частые быстрые правки. Применяем их
+  // автоматически, чтобы после каждого изменения не нажимать отдельную кнопку.
+  // Сохранение всего черновика и публикация по-прежнему остаются явными
+  // действиями верхней панели.
+  function scheduleContainerAutoApply(delay = 350) {
+    if (state.containerAutoApplyTimer) {
+      window.clearTimeout(state.containerAutoApplyTimer);
+    }
+    const selectedId = state.selectedId;
+    state.containerAutoApplyTimer = window.setTimeout(() => {
+      state.containerAutoApplyTimer = 0;
+      if (!selectedId || state.selectedId !== selectedId) return;
+      const item = state.items.get(selectedId);
+      if (!item || (item.feature.properties || {}).kind !== 'container') return;
+      // Не показываем ошибку посреди ввода, когда поле временно пустое.
+      if (!byId('market-feature-number')?.value.trim()) return;
+      applyForm();
+      setStatus('Номер и проход контейнера применены автоматически. Сохраните карту.', 'success');
+    }, Math.max(0, Number(delay) || 0));
+  }
+
   // Номера контейнеров группы идут подряд от главного: главный 101 — дальше
   // 102, 103… Занятые чужими контейнерами номера пропускаются.
   function renumberGroupMembers(members, mainNumber) {
@@ -2855,7 +2877,9 @@
       const item = state.items.get(state.selectedId);
       if (!item || (item.feature.properties || {}).kind !== 'container') return;
       byId('market-feature-name').value = event.target.value;
+      scheduleContainerAutoApply(350);
     });
+    byId('market-feature-passage')?.addEventListener('change', () => scheduleContainerAutoApply(0));
     byId('market-map-save')?.addEventListener('click', () => persist(root().dataset.saveUrl, false));
     byId('market-map-publish')?.addEventListener('click', () => {
       if (window.confirm('Опубликовать эту версию карты для мобильного приложения?')) {
