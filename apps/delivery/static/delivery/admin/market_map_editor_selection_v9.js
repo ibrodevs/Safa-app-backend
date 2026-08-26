@@ -1892,12 +1892,15 @@
 
   function nextContainerNumber(value) {
     const raw = String(value || '').trim();
-    const match = raw.match(/^(.*?)(\d+)$/);
-    if (!match) return raw ? `${raw}-copy` : '';
+    // Increase only the last numeric part and preserve every letter/suffix:
+    // 12A -> 13A, A-012Б -> A-013Б, row-7-left -> row-8-left.
+    const match = raw.match(/^(.*?)(\d+)(\D*)$/);
+    if (!match) return raw;
     const prefix = match[1];
     const digits = match[2];
+    const suffix = match[3];
     const next = String(Number(digits) + 1).padStart(digits.length, '0');
-    return `${prefix}${next}`;
+    return `${prefix}${next}${suffix}`;
   }
 
   function suggestedContainerNumber() {
@@ -2120,7 +2123,6 @@
     // Копия повторяет порядок оригинала: главный остаётся главным, номера
     // контейнеров идут подряд от него.
     sources.sort((a, b) => groupIndex(a) - groupIndex(b));
-    let previousNumber = null;
     const copies = sources.map((source, index) => {
       const copy = JSON.parse(JSON.stringify(source));
       copy.id = makeId(copy.properties.kind || 'feature');
@@ -2134,11 +2136,12 @@
       };
 
       if (copy.properties.kind === 'container') {
-        const base = previousNumber || source.properties.number || source.properties.name;
+        // Each copied container keeps its own letters/suffix. Only its numeric
+        // part advances, even when a group contains 12A, 12B, 12C.
+        const base = source.properties.number || source.properties.name;
         const number = freeContainerNumber(base, used);
         if (number) {
           used.add(number);
-          previousNumber = number;
         }
         copy.properties.number = number || copy.properties.number;
         copy.properties.name = number || copy.properties.name;

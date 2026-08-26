@@ -399,3 +399,12 @@ def test_container_number_and_passage_are_applied_automatically():
     assert "Номер и проход контейнера применены автоматически" in javascript
     # Подпись красится своим цветом, а не цветом линии.
     assert "const color = labelColorFor(item.feature.properties);" in javascript
+
+
+def test_container_duplication_changes_only_digits_and_keeps_letters():
+    javascript = EDITOR_JS.read_text(encoding="utf-8")
+
+    assert r"raw.match(/^(.*?)(\d+)(\D*)$/)" in javascript
+    assert "return `${prefix}${next}${suffix}`;" in javascript
+    assert "const base = source.properties.number || source.properties.name;" in javascript
+    assert "previousNumber || source.properties.number" not in javascript
