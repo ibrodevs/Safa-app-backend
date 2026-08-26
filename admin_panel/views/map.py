@@ -13,9 +13,12 @@ from apps.delivery.map_cleanup import (
     describe_map_purge,
     purge_bazar_map,
 )
+from apps.delivery.map_collaboration import (
+    MapEditConflict,
+    publish_collaborative_map,
+    save_collaborative_map,
+)
 from apps.delivery.map_models import MarketMapRevision
-from apps.delivery.map_tariff_sync import attach_district_tariff_ids
-from apps.delivery.map_validation import validate_feature_collection
 from apps.delivery.models import Bazar, Container, DeliveryDistrict, Passage
 
 from admin_panel.access import staff_required
@@ -118,18 +121,24 @@ def _read_geojson(request):
         payload = json.loads(request.body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValidationError("Не удалось прочитать данные карты") from exc
-    return attach_district_tariff_ids(validate_feature_collection(payload.get("geojson")))
+    return payload.get("geojson"), payload.get("base_geojson")
 
 
 @staff_required
 @require_POST
 def map_save(request, pk):
     bazar = get_object_or_404(Bazar, pk=pk)
-    revision, _ = MarketMapRevision.get_or_create_draft(bazar=bazar, user=request.user)
     try:
-        revision.geojson = _read_geojson(request)
-        revision.full_clean()
-        revision.save(update_fields=("geojson", "updated_at"))
+        submitted, base = _read_geojson(request)
+        result = save_collaborative_map(
+            bazar=bazar,
+            submitted_geojson=submitted,
+            base_geojson=base,
+            user=request.user,
+        )
+        revision = result.revision
+    except MapEditConflict as exc:
+        return JsonResponse({"ok": False, "errors": exc.messages}, status=409)
     except ValidationError as exc:
         return JsonResponse({"ok": False, "errors": exc.messages}, status=400)
     return JsonResponse(
@@ -138,6 +147,7 @@ def map_save(request, pk):
             "version": revision.version,
             "status": revision.status,
             "updated_at": revision.updated_at.isoformat(),
+            "merged": result.merged,
             # Синхронизация проставила фигурам passage_id/container_id. Без этого
             # ответа редактор не знает о созданных записях, и следующее
             # переименование прохода завело бы новый проход вместо переименования.
@@ -150,12 +160,17 @@ def map_save(request, pk):
 @require_POST
 def map_publish(request, pk):
     bazar = get_object_or_404(Bazar, pk=pk)
-    revision, _ = MarketMapRevision.get_or_create_draft(bazar=bazar, user=request.user)
     try:
-        revision.geojson = _read_geojson(request)
-        revision.full_clean()
-        revision.save(update_fields=("geojson", "updated_at"))
-        published = revision.publish(user=request.user)
+        submitted, base = _read_geojson(request)
+        result = publish_collaborative_map(
+            bazar=bazar,
+            submitted_geojson=submitted,
+            base_geojson=base,
+            user=request.user,
+        )
+        published = result.revision
+    except MapEditConflict as exc:
+        return JsonResponse({"ok": False, "errors": exc.messages}, status=409)
     except ValidationError as exc:
         return JsonResponse({"ok": False, "errors": exc.messages}, status=400)
     messages.success(request, f"Карта «{bazar.name}», версия {published.version}, опубликована.")
@@ -164,6 +179,7 @@ def map_publish(request, pk):
             "ok": True,
             "version": published.version,
             "status": published.status,
+            "merged": result.merged,
             "published_at": published.published_at.isoformat(),
             "geojson": published.geojson,
         }

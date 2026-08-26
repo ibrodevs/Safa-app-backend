@@ -13,6 +13,11 @@ from django.utils.html import format_html
 from django.views.decorators.http import require_POST
 
 from .map_cleanup import describe_map_purge, purge_bazar_map
+from .map_collaboration import (
+    MapEditConflict,
+    publish_collaborative_map,
+    save_collaborative_map,
+)
 from .map_models import (
     MarketBoundaryMapSection,
     MarketContainerMapSection,
@@ -20,8 +25,6 @@ from .map_models import (
     MarketMapRevision,
     MarketPassageMapSection,
 )
-from .map_tariff_sync import attach_district_tariff_ids
-from .map_validation import validate_feature_collection
 from .models import Bazar, Container, DeliveryDistrict, Passage
 
 
@@ -210,16 +213,21 @@ class MarketMapRevisionAdmin(admin.ModelAdmin):
             payload = json.loads(request.body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValidationError("Не удалось прочитать JSON") from exc
-        validated = validate_feature_collection(payload.get("geojson"))
-        return attach_district_tariff_ids(validated)
+        return payload.get("geojson"), payload.get("base_geojson")
 
     def save_view(self, request, bazar_id: int):
         bazar = self._bazar(request, bazar_id)
-        revision, _ = MarketMapRevision.get_or_create_draft(bazar=bazar, user=request.user)
         try:
-            revision.geojson = self._read_geojson(request)
-            revision.full_clean()
-            revision.save(update_fields=("geojson", "updated_at"))
+            submitted, base = self._read_geojson(request)
+            result = save_collaborative_map(
+                bazar=bazar,
+                submitted_geojson=submitted,
+                base_geojson=base,
+                user=request.user,
+            )
+            revision = result.revision
+        except MapEditConflict as exc:
+            return JsonResponse({"ok": False, "errors": exc.messages}, status=409)
         except ValidationError as exc:
             return JsonResponse({"ok": False, "errors": exc.messages}, status=400)
         return JsonResponse(
@@ -229,6 +237,7 @@ class MarketMapRevisionAdmin(admin.ModelAdmin):
                 "version": revision.version,
                 "status": revision.status,
                 "updated_at": revision.updated_at.isoformat(),
+                "merged": result.merged,
                 # Редактор подхватывает проставленные синхронизацией id фигур.
                 "geojson": revision.geojson,
             }
@@ -236,12 +245,17 @@ class MarketMapRevisionAdmin(admin.ModelAdmin):
 
     def publish_view(self, request, bazar_id: int):
         bazar = self._bazar(request, bazar_id)
-        revision, _ = MarketMapRevision.get_or_create_draft(bazar=bazar, user=request.user)
         try:
-            revision.geojson = self._read_geojson(request)
-            revision.full_clean()
-            revision.save(update_fields=("geojson", "updated_at"))
-            revision = revision.publish(user=request.user)
+            submitted, base = self._read_geojson(request)
+            result = publish_collaborative_map(
+                bazar=bazar,
+                submitted_geojson=submitted,
+                base_geojson=base,
+                user=request.user,
+            )
+            revision = result.revision
+        except MapEditConflict as exc:
+            return JsonResponse({"ok": False, "errors": exc.messages}, status=409)
         except ValidationError as exc:
             return JsonResponse({"ok": False, "errors": exc.messages}, status=400)
         messages.success(request, f"Карта {bazar.name}, версия {revision.version}, опубликована")
@@ -251,6 +265,7 @@ class MarketMapRevisionAdmin(admin.ModelAdmin):
                 "revision_id": revision.id,
                 "version": revision.version,
                 "status": revision.status,
+                "merged": result.merged,
                 "published_at": revision.published_at.isoformat() if revision.published_at else None,
                 "geojson": revision.geojson,
             }

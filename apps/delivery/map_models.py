@@ -124,7 +124,11 @@ class MarketMapRevision(models.Model):
         return int(current or 0) + 1
 
     @classmethod
+    @transaction.atomic
     def get_or_create_draft(cls, *, bazar: Bazar, user=None) -> tuple["MarketMapRevision", bool]:
+        # One bazar row is the coordination lock for draft creation/versioning.
+        # Without it, two first-time editors can both calculate the same version.
+        bazar = Bazar.objects.select_for_update().get(pk=bazar.pk)
         draft = cls.objects.filter(bazar=bazar, status=cls.Status.DRAFT).order_by("-version").first()
         if draft:
             return draft, False

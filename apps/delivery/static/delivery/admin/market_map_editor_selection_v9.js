@@ -27,6 +27,7 @@
     lastOverlayPickAt: 0,
     containerAutoApplyTimer: 0,
     controlsBound: false,
+    baseGeojson: { type: 'FeatureCollection', features: [] },
   };
 
   // Выбранный контейнер должен резко отличаться от обычного красного. Раньше
@@ -422,7 +423,10 @@
 
   function makeId(kind) {
     state.counter += 1;
-    return `${kind}-${Date.now()}-${state.counter}`;
+    const unique = window.crypto?.randomUUID
+      ? window.crypto.randomUUID()
+      : `${Date.now()}-${state.counter}-${Math.random().toString(36).slice(2)}`;
+    return `${kind}-${unique}`;
   }
 
   function normalizeFeature(raw) {
@@ -2757,6 +2761,27 @@
     }
   }
 
+  function loadServerCollection(geojson) {
+    if (!Array.isArray(geojson?.features)) return;
+    const selectedId = state.selectedId;
+    state.restoringHistory = true;
+    selectFeature(null);
+    state.items.forEach((item) => {
+      item.overlays.forEach((overlay) => overlay.setMap(null));
+      if (item.label) item.label.setMap(null);
+      clearContainerResizeHandles(item);
+    });
+    state.items.clear();
+    geojson.features.forEach((feature) => addFeature(feature));
+    state.restoringHistory = false;
+    if (selectedId && state.items.has(selectedId)) selectFeature(selectedId);
+    refreshList();
+    state.baseGeojson = JSON.parse(JSON.stringify(geojson));
+    state.history = [];
+    state.historyIndex = -1;
+    recordHistory(true);
+  }
+
   async function persist(url, publish = false) {
     const button = publish ? byId('market-map-publish') : byId('market-map-save');
     if (!url || !button) return;
@@ -2776,7 +2801,10 @@
           'X-CSRFToken': csrfToken(),
           'X-Requested-With': 'XMLHttpRequest',
         },
-        body: JSON.stringify({ geojson: snapshot }),
+        body: JSON.stringify({
+          geojson: snapshot,
+          base_geojson: state.baseGeojson,
+        }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.ok) {
@@ -2784,10 +2812,13 @@
         throw new Error(errors);
       }
       mergeServerIdentity(data.geojson);
+      loadServerCollection(data.geojson || snapshot);
       setStatus(
         publish
           ? `Карта опубликована: версия ${data.version}`
-          : `Черновик версии ${data.version} сохранён`,
+          : data.merged
+            ? `Черновик версии ${data.version} сохранён и объединён с изменениями коллег`
+            : `Черновик версии ${data.version} сохранён`,
         'success',
       );
     } catch (error) {
@@ -2940,6 +2971,7 @@
     const canvas = byId('market-map-canvas');
     if (!canvas || !window.google?.maps || state.map) return;
     const initial = readJsonScript('market-map-initial-geojson', { type: 'FeatureCollection', features: [] });
+    state.baseGeojson = JSON.parse(JSON.stringify(initial));
     const context = readJsonScript('market-map-context-geojson', { type: 'FeatureCollection', features: [] });
     state.map = new google.maps.Map(canvas, {
       center: { lat: 42.8746, lng: 74.6122 },

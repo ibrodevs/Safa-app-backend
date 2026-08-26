@@ -340,6 +340,15 @@ def test_editor_picks_up_ids_assigned_by_the_server():
         assert source.count('"geojson":') >= 2
 
 
+def test_editor_sends_base_snapshot_and_loads_merged_server_map():
+    javascript = EDITOR_JS.read_text(encoding="utf-8")
+
+    assert "base_geojson: state.baseGeojson" in javascript
+    assert "function loadServerCollection(" in javascript
+    assert "loadServerCollection(data.geojson || snapshot);" in javascript
+    assert "window.crypto?.randomUUID" in javascript
+
+
 def test_group_has_a_main_object_that_drives_the_rest():
     """Первый выбранный — главный: от него идут свойства и нумерация."""
     javascript = EDITOR_JS.read_text(encoding="utf-8")
