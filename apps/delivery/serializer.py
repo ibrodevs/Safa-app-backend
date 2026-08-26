@@ -10,6 +10,8 @@ from rest_framework import serializers
 from apps.delivery.geo import haversine_m
 from apps.payments.models import CarrierSettlement
 from apps.payments.amounts import (
+    commission_for_payment_amount,
+    effective_safa_test_price,
     carrier_income_for_shipment,
     payment_amount_for_shipment,
 )
@@ -464,7 +466,22 @@ class ShipmentStopReadSerializer(serializers.ModelSerializer):
 MAX_SHIPMENT_STOPS = 30
 
 
-class ShipmentCreateSerializer(serializers.ModelSerializer):
+class ShipmentTestPriceRepresentationMixin:
+    """Expose the temporary test price without destroying real stored fares."""
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        test_price = effective_safa_test_price()
+        if test_price is None:
+            return data
+        if "estimated_fare" in data:
+            data["estimated_fare"] = int(test_price)
+        if "final_fare" in data and int(getattr(instance, "final_fare", 0) or 0) > 0:
+            data["final_fare"] = int(test_price)
+        return data
+
+
+class ShipmentCreateSerializer(ShipmentTestPriceRepresentationMixin, serializers.ModelSerializer):
     stops = serializers.ListField(
         child=ShipmentStopInSerializer(),
         min_length=2,
@@ -653,7 +670,7 @@ class ShipmentCreateSerializer(serializers.ModelSerializer):
         return shipment
 
 
-class ShipmentDetailSerializer(serializers.ModelSerializer):
+class ShipmentDetailSerializer(ShipmentTestPriceRepresentationMixin, serializers.ModelSerializer):
     stops = ShipmentStopReadSerializer(many=True, read_only=True)
     stops_count = serializers.SerializerMethodField()
     public_code = serializers.CharField(read_only=True)
@@ -698,10 +715,10 @@ class ShipmentDetailSerializer(serializers.ModelSerializer):
         return obj.stops.count()
 
     def get_commission(self, obj):
-        return obj.commission_amount
+        return commission_for_payment_amount(payment_amount_for_shipment(obj))
 
     def get_courier_income(self, obj):
-        return obj.courier_income
+        return carrier_income_for_shipment(obj)
 
     def get_settlement_status(self, obj):
         try:
@@ -754,7 +771,7 @@ class QuoteOutSerializer(serializers.Serializer):
     estimated_fare = serializers.IntegerField()
 
 
-class ShipmentCardSerializer(serializers.ModelSerializer):
+class ShipmentCardSerializer(ShipmentTestPriceRepresentationMixin, serializers.ModelSerializer):
     stops_count = serializers.SerializerMethodField()
     public_code = serializers.CharField(read_only=True)
 
@@ -777,7 +794,7 @@ class ShipmentCardSerializer(serializers.ModelSerializer):
         return obj.stops.count()
 
 
-class ShipmentNearbySerializer(serializers.ModelSerializer):
+class ShipmentNearbySerializer(ShipmentTestPriceRepresentationMixin, serializers.ModelSerializer):
     distance_m = serializers.SerializerMethodField()
     stops = ShipmentStopReadSerializer(many=True, read_only=True)
     stops_count = serializers.SerializerMethodField()
@@ -810,10 +827,10 @@ class ShipmentNearbySerializer(serializers.ModelSerializer):
         return obj.stops.count()
 
     def get_commission(self, obj) -> int:
-        return obj.commission_amount
+        return commission_for_payment_amount(payment_amount_for_shipment(obj))
 
     def get_courier_income(self, obj) -> int:
-        return obj.courier_income
+        return carrier_income_for_shipment(obj)
 
     def get_distance_m(self, obj) -> int | None:
         lat = self.context.get("user_lat")

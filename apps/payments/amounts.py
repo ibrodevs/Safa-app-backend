@@ -3,7 +3,19 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.conf import settings
 
 
+def effective_safa_test_price() -> int | None:
+    """Return the global API/Finik test price when explicitly enabled."""
+
+    if bool(getattr(settings, "SAFA_TEST_PRICING", False)):
+        return int(getattr(settings, "SAFA_TEST_PRICE", 1))
+    return None
+
+
 def effective_finik_test_amount() -> int | None:
+    safa_test_price = effective_safa_test_price()
+    if safa_test_price is not None:
+        return safa_test_price
+
     test_amount = getattr(settings, "FINIK_TEST_AMOUNT", None)
     if test_amount is None:
         return None

@@ -115,9 +115,16 @@ Production safety values must remain:
 DEMO_OTP_CODE=
 STATIC_OTP=
 ALLOW_STATIC_OTP_IN_PRODUCTION=0
+SAFA_TEST_PRICING=0
+SAFA_TEST_PRICE=1
 FINIK_TEST_AMOUNT=false
 FINIK_CALLBACK_URL=https://api.example.com/api/payments/finik/callback/
 ```
+
+For a controlled end-to-end Finik test, temporarily set
+`SAFA_TEST_PRICING=1` and recreate `web` so Docker reloads `.env`. The API and Finik will use
+`SAFA_TEST_PRICE` (normally 1 KGS), while real calculated fares remain stored.
+Set `SAFA_TEST_PRICING=0` and recreate `web` to restore real prices.
 
 ## 3. Firebase credentials
 

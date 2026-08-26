@@ -29,7 +29,11 @@ from rest_framework.views import APIView
 
 from apps.notification.events import notify_shipment_offer_for_carrier, notify_shipment_status
 from apps.payments.models import AmanatPaymentAttempt, PaymentAttempt
-from apps.payments.amounts import payment_amount_for_shipment
+from apps.payments.amounts import (
+    effective_finik_test_amount,
+    effective_safa_test_price,
+    payment_amount_for_shipment,
+)
 from apps.payments.settlement import complete_paid_shipment
 from apps.users.models import User
 from .geocoding import twogis_autocomplete
@@ -318,7 +322,10 @@ class AmanatCampaignViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         requested_amount = int(serializer.validated_data["amount"])
-        test_amount = getattr(settings, "FINIK_TEST_AMOUNT", None)
+        test_amount = effective_finik_test_amount()
+        # Preserve the legacy donation-only override for existing deployments.
+        if test_amount is None:
+            test_amount = getattr(settings, "FINIK_TEST_AMOUNT", None)
         amount = int(test_amount if test_amount is not None else requested_amount)
         finik_request_id = uuid.uuid4().hex
         with transaction.atomic():
@@ -668,6 +675,26 @@ class ShipmentViewSet(viewsets.ModelViewSet):
 
         geoms = [(p["lat"], p["lon"]) for p in stops]
         dist_km = Decimal(str(polyline_len_km(geoms))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+        test_price = effective_safa_test_price()
+        if test_price is not None:
+            logger.warning(
+                "quote_test_pricing",
+                extra={
+                    "request_id": rid,
+                    "user_id": request.user.id,
+                    "distance_km": str(dist_km),
+                    "estimated_fare": int(test_price),
+                },
+            )
+            return response.Response(
+                QuoteOutSerializer(
+                    {
+                        "distance_km": dist_km,
+                        "estimated_fare": int(test_price),
+                    }
+                ).data
+            )
 
         fixed_fare = _quote_fixed_bazar_fare(stops)
         if fixed_fare is not None:

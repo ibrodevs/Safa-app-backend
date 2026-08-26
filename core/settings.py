@@ -288,6 +288,19 @@ SPECIALIST_OFFER_RADIUS_M = int(os.getenv("SPECIALIST_OFFER_RADIUS_M", "2500"))
 SPECIALIST_OFFER_MAX_CANDIDATES = int(os.getenv("SPECIALIST_OFFER_MAX_CANDIDATES", "20"))
 SPECIALIST_POSITION_STALE_MINUTES = int(os.getenv("SPECIALIST_POSITION_STALE_MINUTES", "30"))
 
+# Explicit end-to-end pricing mode. Real calculated fares stay in the database,
+# while API responses and Finik use the small override. Turning the flag off
+# immediately restores real prices, including for already-created orders.
+SAFA_TEST_PRICING = os.getenv("SAFA_TEST_PRICING", "0").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+SAFA_TEST_PRICE = int(os.getenv("SAFA_TEST_PRICE", "1"))
+if SAFA_TEST_PRICE <= 0:
+    raise ValueError("SAFA_TEST_PRICE must be a positive integer")
+
 FINIK_CURRENCY = os.getenv("FINIK_CURRENCY", "KGS")
 FINIK_ACCOUNT_ID = os.getenv("FINIK_ACCOUNT_ID", "").strip()
 FINIK_API_KEY = os.getenv("FINIK_API_KEY", "").strip()
