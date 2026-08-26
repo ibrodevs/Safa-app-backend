@@ -517,6 +517,9 @@ class ShipmentCreateSerializer(serializers.ModelSerializer):
 
         stops_data = list(validated_data.pop("stops"))
         return_to_start = validated_data.pop("return_to_start", False)
+        service_type = validated_data.get(
+            "service_type", Shipment.ServiceType.DELIVERY
+        )
 
         resolved: list[dict] = []
         stop_errors: dict[int, str] = {}
@@ -607,14 +610,18 @@ class ShipmentCreateSerializer(serializers.ModelSerializer):
         if return_to_start and resolved:
             resolved.append(dict(resolved[0]))
 
-        outside_bazar: dict[int, str] = {}
-        for idx, stop in enumerate(resolved):
-            if stop["kind"] == "container":
-                continue
-            if not point_inside_bazar(stop.get("lat"), stop.get("lon")):
-                outside_bazar[idx] = "Точка должна быть внутри базара"
-        if outside_bazar:
-            raise serializers.ValidationError({"stops": outside_bazar})
+        # Delivery and cart routes are normal city addresses and must not be
+        # tied to polygons drawn in the admin map. Amanat keeps its bazaar-only
+        # constraint because it is the dedicated market donation flow.
+        if service_type == Shipment.ServiceType.AMANAT:
+            outside_bazar: dict[int, str] = {}
+            for idx, stop in enumerate(resolved):
+                if stop["kind"] == "container":
+                    continue
+                if not point_inside_bazar(stop.get("lat"), stop.get("lon")):
+                    outside_bazar[idx] = "Точка должна быть внутри базара"
+            if outside_bazar:
+                raise serializers.ValidationError({"stops": outside_bazar})
 
         with transaction.atomic():
             shipment = Shipment(client=request.user, **validated_data)

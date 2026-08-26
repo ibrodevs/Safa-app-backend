@@ -499,8 +499,13 @@ class ShipmentViewSet(viewsets.ModelViewSet):
 
         with transaction.atomic():
             shipment = (
-                Shipment.objects.select_for_update()
-                .select_related("client", "carrier")
+                Shipment.objects.select_for_update(of=("self",))
+                # `carrier` is nullable. PostgreSQL rejects FOR UPDATE when a
+                # nullable relation is pulled in through LEFT OUTER JOIN:
+                # "FOR UPDATE cannot be applied to the nullable side...".
+                # Lock the shipment row itself and load the optional carrier
+                # separately when the serializer needs it.
+                .select_related("client")
                 .prefetch_related("stops")
                 .filter(pk=pk)
                 .first()
@@ -514,6 +519,20 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                     {"detail": "client_cannot_accept_own_shipment"},
                     status=status.HTTP_403_FORBIDDEN,
                 )
+            # Mobile networks may retry the request, and a user can tap twice
+            # before the first response arrives. Accepting the same shipment
+            # again by its assigned carrier is a successful idempotent action.
+            if (
+                shipment.carrier_id == user.id
+                and shipment.status
+                in {
+                    Shipment.Status.ASSIGNED,
+                    Shipment.Status.IN_TRANSIT,
+                    Shipment.Status.AWAITING_PAYMENT,
+                    Shipment.Status.COMPLETED,
+                }
+            ):
+                return response.Response(ShipmentDetailSerializer(shipment).data)
             if shipment.status != Shipment.Status.PENDING or shipment.carrier_id is not None:
                 return response.Response({"detail": "already_accepted"}, status=status.HTTP_409_CONFLICT)
             # Лента показывает специалисту все свободные заказы, поэтому

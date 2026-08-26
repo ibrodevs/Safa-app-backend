@@ -101,6 +101,36 @@ def test_cars_shipment_accepts_long_route():
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    "service_type,phone",
+    [
+        (Shipment.ServiceType.DELIVERY, "996700555221"),
+        (Shipment.ServiceType.CARS, "996700555222"),
+    ],
+)
+def test_address_services_can_create_route_outside_bazar(service_type, phone):
+    user = _user(phone)
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    response = client.post(
+        "/api/delivery/shipments/",
+        {
+            "title": "Городской адресный маршрут",
+            "service_type": service_type,
+            "stops": [
+                {"title": "Улица А", "lat": 43.40, "lon": 75.90},
+                {"title": "Улица Б", "lat": 43.41, "lon": 75.91},
+            ],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data["service_type"] == service_type
+
+
+@pytest.mark.django_db
 def test_nearby_shows_free_order_to_every_specialist_type():
     """Лента специалиста не должна фильтровать заказ по типу специализации."""
 
@@ -201,3 +231,24 @@ def test_specialist_can_accept_order_of_another_service_type():
     shipment.refresh_from_db()
     assert shipment.carrier_id == cart_carrier.id
     assert shipment.status == Shipment.Status.ASSIGNED
+
+
+@pytest.mark.django_db
+def test_accept_is_idempotent_for_the_assigned_specialist():
+    order_client = _user("996700555219")
+    carrier = _user(
+        "996700555220",
+        role=User.Roles.CARRIER,
+        specialist_type=User.SpecialistType.DELIVERY,
+    )
+    shipment = _shipment(order_client, "Повторное принятие")
+
+    client = APIClient()
+    client.force_authenticate(user=carrier)
+    first = client.post(f"/api/delivery/shipments/{shipment.id}/accept/")
+    second = client.post(f"/api/delivery/shipments/{shipment.id}/accept/")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.data["carrier_id"] == carrier.id
+    assert second.data["status"] == Shipment.Status.ASSIGNED
