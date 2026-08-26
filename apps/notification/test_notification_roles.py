@@ -81,7 +81,7 @@ def _shipment(client: User, *, service_type: str) -> Shipment:
 
 
 @pytest.mark.django_db
-def test_cart_offer_is_sent_only_to_cart_specialists():
+def test_cart_offer_is_sent_to_every_active_specialist():
     _bazar()
     client = _user("996700881001")
     cart = _user(
@@ -110,11 +110,11 @@ def test_cart_offer_is_sent_only_to_cart_specialists():
             "user_id", flat=True
         )
     )
-    assert recipients == {cart.id}
+    assert recipients == {cart.id, delivery.id}
 
 
 @pytest.mark.django_db
-def test_delivery_offer_is_sent_only_to_delivery_specialists():
+def test_delivery_offer_is_sent_to_every_active_specialist():
     _bazar()
     client = _user("996700881011")
     cart = _user(
@@ -142,7 +142,7 @@ def test_delivery_offer_is_sent_only_to_delivery_specialists():
             "user_id", flat=True
         )
     )
-    assert recipients == {delivery.id}
+    assert recipients == {cart.id, delivery.id}
 
 
 @pytest.mark.django_db

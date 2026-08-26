@@ -6,7 +6,6 @@ from typing import Any, Iterable
 
 from django.utils import timezone
 
-from apps.delivery.specialists import shipment_matches_specialist
 from apps.users.models import CourierKYC, User
 from .fcm_client import send_data_message
 from .models import FCMToken, Notification
@@ -151,9 +150,9 @@ def notify_shipment_offer_for_carrier(shipment) -> None:
     data = {**base, **extra}
     collapse_key = f"shipment_offer_{shipment.id}"
 
-    # Push visibility must match the actual order-feed eligibility. Previously
-    # every carrier with a token received every offer, including a cart
-    # specialist receiving courier-only jobs (and vice versa).
+    # Каждый свободный заказ должен появляться у каждого активного
+    # специалиста. Push и `shipments/nearby/` используют одну и ту же широкую
+    # аудиторию: специализация и геометрия базара не скрывают заявку.
     carrier_ids = (
         FCMToken.objects.filter(
             user__role=User.Roles.CARRIER,
@@ -170,8 +169,6 @@ def notify_shipment_offer_for_carrier(shipment) -> None:
     )
     for carrier in carriers:
         if carrier.id == shipment.client_id:
-            continue
-        if not shipment_matches_specialist(shipment, carrier):
             continue
         _send_to_user(
             carrier.id,

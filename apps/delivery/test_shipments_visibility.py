@@ -98,3 +98,106 @@ def test_cars_shipment_accepts_long_route():
 
     assert response.status_code == 201
     assert Shipment.objects.get(id=response.data["id"]).stops.count() == 30
+
+
+@pytest.mark.django_db
+def test_nearby_shows_free_order_to_every_specialist_type():
+    """Лента специалиста не должна фильтровать заказ по типу специализации."""
+
+    _bazar()
+    order_client = _user("996700555210")
+    cart_carrier = _user(
+        "996700555211",
+        role=User.Roles.CARRIER,
+        specialist_type=User.SpecialistType.CART,
+    )
+    delivery = _shipment(order_client, "Доставка для любого специалиста")
+
+    client = APIClient()
+    client.force_authenticate(user=cart_carrier)
+    response = client.get("/api/delivery/shipments/nearby/?lat=42.87&lon=74.60")
+
+    assert response.status_code == 200
+    assert delivery.id in {item["id"] for item in response.data["results"]}
+
+
+@pytest.mark.django_db
+def test_nearby_shows_order_with_stops_outside_any_bazar():
+    """Точка вне границ базара больше не прячет заказ из ленты."""
+
+    order_client = _user("996700555212")
+    carrier = _user(
+        "996700555213",
+        role=User.Roles.CARRIER,
+        specialist_type=User.SpecialistType.DELIVERY,
+    )
+    shipment = Shipment.objects.create(
+        client=order_client,
+        title="Заказ вне базара",
+        status=Shipment.Status.PENDING,
+        service_type=Shipment.ServiceType.DELIVERY,
+    )
+    ShipmentStop.objects.create(shipment=shipment, position=0, title="A", lat=43.40, lon=75.90)
+    ShipmentStop.objects.create(shipment=shipment, position=1, title="B", lat=43.41, lon=75.91)
+
+    client = APIClient()
+    client.force_authenticate(user=carrier)
+    response = client.get("/api/delivery/shipments/nearby/?lat=42.87&lon=74.60")
+
+    assert response.status_code == 200
+    assert shipment.id in {item["id"] for item in response.data["results"]}
+
+
+@pytest.mark.django_db
+def test_nearby_hides_taken_and_own_orders():
+    _bazar()
+    order_client = _user("996700555214")
+    carrier = _user(
+        "996700555215",
+        role=User.Roles.CARRIER,
+        specialist_type=User.SpecialistType.DELIVERY,
+    )
+    other_carrier = _user(
+        "996700555216",
+        role=User.Roles.CARRIER,
+        specialist_type=User.SpecialistType.DELIVERY,
+    )
+    free = _shipment(order_client, "Свободный заказ")
+    taken = _shipment(order_client, "Уже занятый заказ")
+    taken.carrier = other_carrier
+    taken.status = Shipment.Status.ASSIGNED
+    taken.save(update_fields=["carrier", "status"])
+    own = _shipment(carrier, "Собственный заказ специалиста")
+
+    client = APIClient()
+    client.force_authenticate(user=carrier)
+    response = client.get("/api/delivery/shipments/nearby/?lat=42.87&lon=74.60")
+
+    assert response.status_code == 200
+    ids = {item["id"] for item in response.data["results"]}
+    assert free.id in ids
+    assert taken.id not in ids
+    assert own.id not in ids
+
+
+@pytest.mark.django_db
+def test_specialist_can_accept_order_of_another_service_type():
+    """Карточка видна — значит и кнопка «Принять» не должна отвечать 403."""
+
+    _bazar()
+    order_client = _user("996700555217")
+    cart_carrier = _user(
+        "996700555218",
+        role=User.Roles.CARRIER,
+        specialist_type=User.SpecialistType.CART,
+    )
+    shipment = _shipment(order_client, "Доставка, которую берёт тележечник")
+
+    client = APIClient()
+    client.force_authenticate(user=cart_carrier)
+    response = client.post(f"/api/delivery/shipments/{shipment.id}/accept/")
+
+    assert response.status_code == 200
+    shipment.refresh_from_db()
+    assert shipment.carrier_id == cart_carrier.id
+    assert shipment.status == Shipment.Status.ASSIGNED

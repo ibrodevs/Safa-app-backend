@@ -122,7 +122,14 @@ def test_reverse_geocode_uses_openstreetmap_without_yandex_key(
     response_mock = Mock()
     response_mock.raise_for_status.return_value = None
     response_mock.json.return_value = {
-        "display_name": "улица Токтогула, Бишкек, Кыргызстан"
+        "display_name": "12, улица Токтогула, Бишкек, 720000, Кыргызстан",
+        "address": {
+            "house_number": "12",
+            "road": "улица Токтогула",
+            "city": "Бишкек",
+            "postcode": "720000",
+            "country": "Кыргызстан",
+        },
     }
     request_get.return_value = response_mock
 
@@ -132,13 +139,15 @@ def test_reverse_geocode_uses_openstreetmap_without_yandex_key(
     )
 
     assert response.status_code == 200
+    # Подпись точки — читаемый адрес без почтового индекса и страны.
     assert response.json() == {
-        "address": "улица Токтогула, Бишкек, Кыргызстан",
+        "address": "Бишкек, улица Токтогула, 12",
         "source": "openstreetmap",
     }
     assert request_get.call_args.args[0] == (
         "https://nominatim.openstreetmap.org/reverse"
     )
+    assert request_get.call_args.kwargs["params"]["addressdetails"] == 1
 
 
 @pytest.mark.django_db

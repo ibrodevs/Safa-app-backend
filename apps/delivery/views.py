@@ -34,12 +34,11 @@ from apps.payments.settlement import complete_paid_shipment
 from apps.users.models import User
 from .geocoding import twogis_autocomplete
 from .lifecycle import ShipmentFareUnavailable, mark_shipment_awaiting_payment
-from .map_pricing import MapPricingResolver
 from .rating import apply_rating_for_completed_shipment
 from .realtime import broadcast_courier_position, broadcast_shipment
 from .reverse_geocoding import reverse_geocode_address
 from .operations import cancel_shipment
-from .geo import haversine_m, polyline_len_km, is_in_bishkek
+from .geo import haversine_m, polyline_len_km
 from .models import AmanatCampaign, AmanatCategory, AmanatDonation, Bazar, Container, CourierPosition, GlobalDeliveryConfig, Passage, Shipment, ShipmentStop
 from .pagination import StandardResultsSetPagination
 from .serializer import (
@@ -57,7 +56,6 @@ from .serializer import (
     ShipmentDetailSerializer,
     ShipmentNearbySerializer,
 )
-from .specialists import shipment_matches_specialist
 from .stats import carrier_daily_stats_with_change
 
 logger = logging.getLogger(__name__)
@@ -518,8 +516,14 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 )
             if shipment.status != Shipment.Status.PENDING or shipment.carrier_id is not None:
                 return response.Response({"detail": "already_accepted"}, status=status.HTTP_409_CONFLICT)
-            if not shipment_matches_specialist(shipment, user):
-                return response.Response({"detail": "unsupported_specialist_type"}, status=status.HTTP_403_FORBIDDEN)
+            # Лента показывает специалисту все свободные заказы, поэтому
+            # приём не должен отказывать по типу специализации — иначе
+            # карточка видна, а кнопка «Принять» отвечает 403.
+            if not user.is_active:
+                return response.Response(
+                    {"detail": "specialist_not_approved"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
             shipment.carrier = user
             shipment.status = Shipment.Status.ASSIGNED
@@ -733,11 +737,18 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         except (ValueError):
             lat, lon = 0.0, 0.0
 
-        # Поиск завершенных заказов или тех, что в ожидании.
-        # Теперь фильтруем по Бишкеку и показываем всем онлайн курьерам.
+        # Лента специалиста показывает каждый свободный заказ.
+        #
+        # Раньше сюда добавлялись три отсева — граница Бишкека, вхождение всех
+        # точек в опубликованный базар и совпадение specialist_type с типом
+        # услуги. Любой из них молча прятал только что созданный клиентом
+        # заказ, и специалист вообще не понимал, что заявка есть. Теперь
+        # отсеиваются только заказы, которые специалист физически не может
+        # взять: демо, уже занятые и собственные.
         qs = (
             Shipment.objects.filter(status=Shipment.Status.PENDING, carrier__isnull=True)
             .exclude(_demo_shipment_q())
+            .exclude(client_id=request.user.id)
             .prefetch_related(
                 Prefetch(
                     "stops",
@@ -751,31 +762,25 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             .order_by("created_at")
         )
 
-        # Оставляем только заказы, где первая точка (забор) в Бишкеке
-        filtered_shipments = []
-        map_resolver = MapPricingResolver()
-        for s in qs:
+        # Расстояние влияет только на порядок: заказ без координат первой точки
+        # уходит в конец списка, но из ленты не исчезает.
+        far_away = float("inf")
+        ordered_pairs = []
+        for index, s in enumerate(qs):
             # `stops` is already ordered and prefetched above. Calling
             # `.order_by().first()` here used to bypass that cache and issue one
             # SQL query per shipment.
             stops = list(s.stops.all())
             first_stop = stops[0] if stops else None
-            if first_stop and first_stop.lat and first_stop.lon:
-                if is_in_bishkek(float(first_stop.lat), float(first_stop.lon)) and shipment_matches_specialist(
-                    s,
-                    request.user,
-                    resolver=map_resolver,
-                ):
-                    filtered_shipments.append(
-                        (
-                            haversine_m(lat, lon, float(first_stop.lat), float(first_stop.lon)),
-                            s,
-                        )
-                    )
+            if first_stop is not None and first_stop.lat is not None and first_stop.lon is not None:
+                distance = haversine_m(lat, lon, float(first_stop.lat), float(first_stop.lon))
+            else:
+                distance = far_away
+            # index держит стабильный порядок создания внутри одной дистанции.
+            ordered_pairs.append((distance, index, s))
 
         ordered_shipments = [
-            shipment
-            for _, shipment in sorted(filtered_shipments, key=lambda item: item[0])
+            shipment for _, _, shipment in sorted(ordered_pairs, key=lambda item: (item[0], item[1]))
         ]
 
         page = self.paginate_queryset(ordered_shipments)
