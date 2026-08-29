@@ -21,7 +21,7 @@ from django.http import HttpResponse
 from .health import health
 
 urlpatterns = [
-    path("", lambda request: HttpResponse("DoGO работает 🚀"), name="home"),
+    path("", lambda request: HttpResponse("Safa работает 🚀"), name="home"),
     path("health/", health, name="health"),
     path('admin/', admin.site.urls),
     path('panel/', include('admin_panel.urls')),
