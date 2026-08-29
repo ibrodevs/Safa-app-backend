@@ -110,33 +110,65 @@ def _yandex_address(lat: float, lon: float) -> str:
     geo_object = members[0]["GeoObject"]
     components = _yandex_components(geo_object)
 
-    # Собираем адрес сами: «text» у Яндекса начинается со страны, а у части
-    # объектов содержит и почтовый индекс.
-    locality = components.get("locality") or components.get("area")
-    district = components.get("district")
-    street = components.get("street") or components.get("route")
-    house = components.get("house")
-    landmark = str(geo_object.get("name") or "").strip()
-
-    composed = _join_address(
-        [
-            locality or "",
-            district if not street else "",
-            street or "",
-            house or "",
-        ]
-    )
-    if not composed:
-        composed = _join_address([locality or "", landmark])
-    if composed:
-        return composed
-
-    fallback = (
+    meta = (
         geo_object.get("metaDataProperty", {})
         .get("GeocoderMetaData", {})
-        .get("text", "")
     )
-    return clean_address(fallback)
+    text = clean_address(meta.get("text", ""))
+
+    locality = components.get("locality") or components.get("area") or "Бишкек"
+    district = components.get("district") or ""
+    street = components.get("street") or components.get("route") or ""
+    house = components.get("house") or ""
+    landmark = str(geo_object.get("name") or "").strip()
+
+    is_dordoi = (
+        (42.925 <= lat <= 42.955 and 74.605 <= lon <= 74.650)
+        or "дордой" in text.lower()
+        or "проход" in text.lower()
+        or "дордой" in district.lower()
+        or "проход" in street.lower()
+    )
+
+    if is_dordoi:
+        parts = []
+        p_match = re.search(r"((?:проход\s+[0-9a-zA-Zа-яА-Я]+|\d+[-–—]?(?:й|ой|ий|ый)?\s*проход|проход\s*Центральный))", text, re.IGNORECASE)
+        passage = p_match.group(1) if p_match else (street if "проход" in street.lower() else "")
+        if not passage and "проход" in landmark.lower():
+            passage = landmark
+
+        h_match = re.search(r"\b(\d+(?:[/-]\d+)?)\b", house or landmark or text)
+        house_num = house or (h_match.group(1) if h_match else "")
+
+        if passage:
+            parts.append(passage)
+        elif street:
+            parts.append(street)
+
+        if house_num and house_num not in (parts[0] if parts else ""):
+            parts.append(house_num)
+
+        for sm in ["Мурас-Спорт", "Алкан", "Европа", "Оберон", "Джунхай", "Кербен", "Ак-Суу", "Север", "Восток"]:
+            if sm.lower() in text.lower() and not any(sm.lower() in p.lower() for p in parts):
+                parts.append(f"рынок {sm}")
+                break
+
+        parts.append("рынок Дордой")
+        parts.append("Бишкек")
+        return ", ".join([p for p in parts if p])
+
+    parts = []
+    if street and house:
+        parts.append(f"{street}, {house}")
+    elif street:
+        parts.append(street)
+    elif district:
+        parts.append(district)
+    elif landmark:
+        parts.append(landmark)
+
+    parts.append("Бишкек")
+    return ", ".join([p for p in parts if p])
 
 
 def _nominatim_compose(payload: dict, lat: float = 0.0, lon: float = 0.0) -> str:
@@ -187,10 +219,9 @@ def _nominatim_compose(payload: dict, lat: float = 0.0, lon: float = 0.0) -> str
         elif suburb and "дордой" not in suburb.lower():
             parts.append(suburb)
 
-        if house:
+        if house and not any(house in p for p in parts):
             parts.append(house)
 
-        # Check sub-market (Мурас-Спорт, Алкан, Европа, Оберон, etc.)
         submarket = ""
         for cand in [place, suburb]:
             c_low = cand.lower()
@@ -206,7 +237,6 @@ def _nominatim_compose(payload: dict, lat: float = 0.0, lon: float = 0.0) -> str
         parts.append("Бишкек")
         return ", ".join([p for p in parts if p])
 
-    # Standard City format
     parts = []
     if road and house:
         parts.append(f"{road}, {house}")
