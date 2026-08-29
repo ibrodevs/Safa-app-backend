@@ -179,6 +179,7 @@ def _parse_dordoi_query(q: str) -> Dict | None:
     for s in [
         "мурас-спорт",
         "мурас спорт",
+        "китай",
         "алкан",
         "алканов",
         "европа",
@@ -191,7 +192,14 @@ def _parse_dordoi_query(q: str) -> Dict | None:
         "автозапчасти",
     ]:
         if s in q_clean.lower():
-            s_title = s.replace("мурас спорт", "Мурас-Спорт").capitalize()
+            if "мурас" in s:
+                s_title = "Мурас-Спорт"
+            elif "алкан" in s:
+                s_title = "Алкан"
+            elif "ак-суу" in s:
+                s_title = "Ак-Суу"
+            else:
+                s_title = s.capitalize()
             sector = f"рынок {s_title}"
             break
 

@@ -20,13 +20,11 @@ _COUNTRY_NAMES = {
     "российская федерация",
     "узбекистан",
     "таджикистан",
-    "китай",
     "kyrgyzstan",
     "kazakhstan",
     "russia",
     "uzbekistan",
     "tajikistan",
-    "china",
 }
 
 _POSTAL_CODE = re.compile(r"^\d{5,6}$")
@@ -279,6 +277,31 @@ def _nominatim_address(lat: float, lon: float) -> str:
     return _nominatim_compose(payload, lat=lat, lon=lon).strip()
 
 
+def _yandex_web_address(lat: float, lon: float) -> str:
+    url = f"https://yandex.ru/maps/?ll={lon}%2C{lat}&mode=search&sll={lon}%2C{lat}&text={lat}%2C{lon}&z=19"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "ru-RU,ru;q=0.9",
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=5)
+        if response.status_code == 200:
+            html = response.text
+            m = re.search(r'<meta\s+itemProp="description"\s+content="([^"]+)"', html)
+            if m:
+                val = m.group(1).strip()
+                if val:
+                    return val
+            m2 = re.search(r'class="toponym-card-title-view__description">([^<]+)</div>', html)
+            if m2:
+                val = m2.group(1).strip()
+                if val:
+                    return val
+    except Exception as e:
+        logger.warning("yandex_web_reverse_failed", extra={"error": str(e)})
+    return ""
+
+
 def reverse_geocode_address(lat: float, lon: float) -> tuple[str, str] | None:
     """Resolve a readable address with cache and provider failover."""
 
@@ -288,6 +311,7 @@ def reverse_geocode_address(lat: float, lon: float) -> tuple[str, str] | None:
         return str(cached["address"]), str(cached.get("source") or "cache")
 
     providers = (
+        ("yandex_web", _yandex_web_address),
         ("yandex", _yandex_address),
         ("openstreetmap", _nominatim_address),
     )
