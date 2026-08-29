@@ -282,7 +282,8 @@ class AmanatCampaignViewSet(viewsets.ReadOnlyModelViewSet):
                 .select_related("donor")
                 .order_by("-created_at")[:20],
                 to_attr="_latest_paid_donations",
-            )
+            ),
+            "documents",
         )
         .filter(status=AmanatCampaign.Status.ACTIVE)
         .order_by("sort_order", "-created_at")

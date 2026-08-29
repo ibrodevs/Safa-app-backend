@@ -311,6 +311,31 @@ class AmanatDonation(models.Model):
         return f"{self.campaign} · {self.amount} сом"
 
 
+class AmanatDocument(models.Model):
+    campaign = models.ForeignKey(
+        AmanatCampaign,
+        on_delete=models.CASCADE,
+        related_name="documents",
+        verbose_name="Сбор",
+    )
+    title = models.CharField(max_length=200, verbose_name="Название документа")
+    file = models.FileField(
+        upload_to="amanat/documents/",
+        verbose_name="Файл документа (PDF, изображение, скан)",
+    )
+    description = models.TextField(blank=True, verbose_name="Описание / примечание")
+    sort_order = models.PositiveSmallIntegerField(default=0, verbose_name="Порядок")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата добавления")
+
+    class Meta:
+        ordering = ("sort_order", "-created_at")
+        verbose_name = "Отчётный документ"
+        verbose_name_plural = "Отчётные документы"
+
+    def __str__(self) -> str:
+        return f"{self.campaign} · {self.title}"
+
+
 class GlobalDeliveryConfig(models.Model):
     """Глобальные настройки доставки (Одиночка)"""
     base_price = models.DecimalField(max_digits=10, decimal_places=2, default=50, verbose_name="Базовая стоимость")

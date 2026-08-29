@@ -6,6 +6,7 @@ from .models import (
     AmanatCampaign,
     AmanatCategory,
     AmanatDonation,
+    AmanatDocument,
     GlobalDeliveryConfig,
     Shipment,
     ShipmentStop,
@@ -181,6 +182,14 @@ class AmanatCategoryAdmin(admin.ModelAdmin):
     ordering = ("sort_order", "name")
 
 
+class AmanatDocumentInline(admin.TabularInline):
+    model = AmanatDocument
+    extra = 1
+    fields = ("title", "file", "description", "sort_order", "created_at")
+    readonly_fields = ("created_at",)
+    ordering = ("sort_order", "-created_at")
+
+
 class AmanatDonationInline(admin.TabularInline):
     model = AmanatDonation
     extra = 0
@@ -208,7 +217,7 @@ class AmanatCampaignAdmin(admin.ModelAdmin):
     search_fields = ("title", "short_title", "description")
     autocomplete_fields = ("category",)
     readonly_fields = ("created_at", "updated_at", "collected_amount_display", "helpers_count_display")
-    inlines = (AmanatDonationInline,)
+    inlines = (AmanatDocumentInline, AmanatDonationInline)
     ordering = ("sort_order", "-created_at")
     fieldsets = (
         ("Основное", {"fields": ("category", "title", "short_title", "description", "goal", "cover_image")}),
@@ -224,6 +233,16 @@ class AmanatCampaignAdmin(admin.ModelAdmin):
     @admin.display(description="Помогли")
     def helpers_count_display(self, obj: AmanatCampaign) -> int:
         return obj.helpers_count
+
+
+@admin.register(AmanatDocument)
+class AmanatDocumentAdmin(admin.ModelAdmin):
+    list_display = ("id", "title", "campaign", "file", "sort_order", "created_at")
+    list_filter = ("campaign",)
+    search_fields = ("title", "description", "campaign__title")
+    autocomplete_fields = ("campaign",)
+    readonly_fields = ("created_at",)
+    ordering = ("campaign", "sort_order", "-created_at")
 
 
 @admin.register(AmanatDonation)

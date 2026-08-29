@@ -20,6 +20,7 @@ from .models import (
     AmanatCampaign,
     AmanatCategory,
     AmanatDonation,
+    AmanatDocument,
     Bazar,
     Container,
     Passage,
@@ -290,6 +291,47 @@ class AmanatDonationSerializer(serializers.ModelSerializer):
         return mask_amanat_donor_label(phone)
 
 
+class AmanatDocumentSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+    file_name = serializers.SerializerMethodField()
+    file_type = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AmanatDocument
+        fields = [
+            "id",
+            "title",
+            "file_url",
+            "file_name",
+            "file_type",
+            "description",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_file_url(self, obj: AmanatDocument) -> str:
+        if not obj.file:
+            return ""
+        request = self.context.get("request")
+        url = obj.file.url
+        return request.build_absolute_uri(url) if request else url
+
+    def get_file_name(self, obj: AmanatDocument) -> str:
+        if not obj.file:
+            return ""
+        return obj.file.name.split("/")[-1]
+
+    def get_file_type(self, obj: AmanatDocument) -> str:
+        if not obj.file:
+            return "document"
+        name = obj.file.name.lower()
+        if name.endswith(".pdf"):
+            return "pdf"
+        if name.endswith((".jpg", ".jpeg", ".png", ".webp")):
+            return "image"
+        return "document"
+
+
 class AmanatCampaignSerializer(serializers.ModelSerializer):
     category_id = serializers.IntegerField(source="category.id", read_only=True)
     category_name = serializers.CharField(source="category.name", read_only=True)
@@ -301,6 +343,7 @@ class AmanatCampaignSerializer(serializers.ModelSerializer):
     helpers_count = serializers.IntegerField(read_only=True)
     progress = serializers.SerializerMethodField()
     latest_donations = serializers.SerializerMethodField()
+    documents = AmanatDocumentSerializer(many=True, read_only=True)
 
     class Meta:
         model = AmanatCampaign
@@ -325,6 +368,7 @@ class AmanatCampaignSerializer(serializers.ModelSerializer):
             "is_featured",
             "progress",
             "latest_donations",
+            "documents",
         ]
         read_only_fields = fields
 
