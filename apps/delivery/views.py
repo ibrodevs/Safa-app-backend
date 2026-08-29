@@ -381,6 +381,32 @@ class AmanatCampaignViewSet(viewsets.ReadOnlyModelViewSet):
             donation = campaign.donations.get(id=donation_id, donor=request.user)
         except AmanatDonation.DoesNotExist:
             return Response({"detail": "not_found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if donation.status == AmanatDonation.Status.PENDING:
+            from apps.payments.models import AmanatPaymentAttempt, PaymentAttempt
+            from apps.payments.finik import find_finik_item_by_request_id, finik_item_matches_attempt
+
+            attempt = AmanatPaymentAttempt.objects.filter(donation=donation).first()
+            if attempt and attempt.status == PaymentAttempt.Status.SUCCEEDED:
+                donation.status = AmanatDonation.Status.PAID
+                donation.paid_at = donation.paid_at or timezone.now()
+                donation.save(update_fields=["status", "paid_at"])
+            elif attempt:
+                try:
+                    candidate = find_finik_item_by_request_id(attempt)
+                    if candidate and finik_item_matches_attempt(candidate, attempt):
+                        attempt.status = PaymentAttempt.Status.SUCCEEDED
+                        attempt.finik_item_id = str(candidate.get("id") or "")[:128] or None
+                        attempt.finik_transaction_id = str(candidate.get("transactionId") or "")[:128] or None
+                        attempt.save(
+                            update_fields=["status", "finik_item_id", "finik_transaction_id", "updated_at"]
+                        )
+                        donation.status = AmanatDonation.Status.PAID
+                        donation.paid_at = donation.paid_at or timezone.now()
+                        donation.save(update_fields=["status", "paid_at"])
+                except Exception:
+                    pass
+
         return Response(
             AmanatDonationSerializer(
                 donation,

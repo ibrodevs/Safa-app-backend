@@ -178,16 +178,97 @@ class FinikReconcileView(APIView):
         serializer.is_valid(raise_exception=True)
         payload = serializer.validated_data
 
-        try:
-            attempt = PaymentAttempt.objects.select_related("shipment").get(
-                id=payload["paymentId"]
+        payment_id = payload["paymentId"]
+        attempt = PaymentAttempt.objects.select_related("shipment").filter(id=payment_id).first()
+        amanat_attempt = None
+        if attempt is None:
+            amanat_attempt = (
+                AmanatPaymentAttempt.objects.select_related("donation", "donation__campaign")
+                .filter(id=payment_id)
+                .first()
             )
-        except PaymentAttempt.DoesNotExist:
+
+        if attempt is None and amanat_attempt is None:
             return Response(
                 {"detail": "payment_not_found"},
                 status=drf_status.HTTP_404_NOT_FOUND,
             )
 
+        # Handle Amanat donation payment attempt
+        if amanat_attempt is not None:
+            donation = amanat_attempt.donation
+            if donation.donor_id and donation.donor_id != request.user.id:
+                return Response(
+                    {"detail": "payment_not_found"},
+                    status=drf_status.HTTP_404_NOT_FOUND,
+                )
+            if amanat_attempt.status == PaymentAttempt.Status.SUCCEEDED or donation.status == AmanatDonation.Status.PAID:
+                return Response({"paid": True, "status": "paid"})
+            if amanat_attempt.status == PaymentAttempt.Status.FAILED:
+                return Response(
+                    {"paid": False, "status": "failed"},
+                    status=drf_status.HTTP_409_CONFLICT,
+                )
+
+            transaction_id = str(payload.get("transactionId") or "").strip()
+            item_id = str(payload.get("itemId") or amanat_attempt.finik_item_id or "").strip()
+            if item_id and not amanat_attempt.finik_item_id:
+                amanat_attempt.finik_item_id = item_id[:128]
+                amanat_attempt.save(update_fields=["finik_item_id", "updated_at"])
+
+            identifier = transaction_id or item_id
+            key_type = "TRANSACTION_ID" if transaction_id else "ID"
+            try:
+                if identifier:
+                    verified_item = verify_finik_payment(
+                        identifier,
+                        amanat_attempt,
+                        key_type=key_type,
+                    )
+                else:
+                    candidate = find_finik_item_by_request_id(amanat_attempt)
+                    if candidate and not amanat_attempt.finik_item_id:
+                        amanat_attempt.finik_item_id = str(candidate.get("id") or "")[:128] or None
+                        amanat_attempt.save(update_fields=["finik_item_id", "updated_at"])
+                    verified_item = (
+                        candidate
+                        if candidate and finik_item_matches_attempt(candidate, amanat_attempt)
+                        else None
+                    )
+            except FinikVerificationUnavailable:
+                logger.exception(
+                    "finik_reconcile_unavailable",
+                    extra={"attempt_id": str(amanat_attempt.id)},
+                )
+                return Response(
+                    {"detail": "finik_verification_unavailable"},
+                    status=drf_status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+
+            if verified_item is None:
+                return Response(
+                    {"paid": False, "status": donation.status},
+                    status=drf_status.HTTP_202_ACCEPTED,
+                )
+
+            verified_transaction_id = transaction_id or str(
+                verified_item.get("transactionId") or ""
+            )
+            verified_item_id = item_id or str(verified_item.get("id") or "")
+            with transaction.atomic():
+                amanat_attempt.status = PaymentAttempt.Status.SUCCEEDED
+                amanat_attempt.finik_transaction_id = str(verified_transaction_id)[:128] or None
+                amanat_attempt.finik_item_id = str(verified_item_id)[:128] or None
+                amanat_attempt.save(
+                    update_fields=["status", "finik_transaction_id", "finik_item_id", "updated_at"]
+                )
+                donation.status = AmanatDonation.Status.PAID
+                donation.paid_at = donation.paid_at or timezone.now()
+                donation.save(update_fields=["status", "paid_at"])
+
+            return Response({"paid": True, "status": "paid"})
+
+        # Handle Shipment payment attempt
         if attempt.shipment.client_id != request.user.id:
             return Response(
                 {"detail": "payment_not_found"},
@@ -221,9 +302,6 @@ class FinikReconcileView(APIView):
         transaction_id = str(payload.get("transactionId") or "").strip()
         item_id = str(payload.get("itemId") or attempt.finik_item_id or "").strip()
         if item_id and not attempt.finik_item_id:
-            # The authenticated client receives this ID as soon as Finik creates
-            # the item. Saving it now lets the server recover if the callback is
-            # delayed and the payment screen is closed.
             attempt.finik_item_id = item_id[:128]
             attempt.save(update_fields=["finik_item_id", "updated_at"])
         identifier = transaction_id or item_id
@@ -255,8 +333,6 @@ class FinikReconcileView(APIView):
                 status=drf_status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         if verified_item is None:
-            # A newly created item legitimately has paymentCount=0 until Finik
-            # finishes processing. The app retries this response briefly.
             return Response(
                 {"paid": False, "status": attempt.shipment.status},
                 status=drf_status.HTTP_202_ACCEPTED,
