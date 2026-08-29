@@ -15,11 +15,25 @@ phone_re = RegexValidator(
     message="Формат телефона: 996XXXXXXXXX (Кыргызстан)."
 )
 
+def _abs_url(request, field):
+    if not field:
+        return None
+    url = field.url
+    if request:
+        return request.build_absolute_uri(url)
+    return url
+
+
 class UserSerializer(serializers.ModelSerializer):
+    avatar_url = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ('id', 'role', 'specialist_type', 'first_name', 'phone_number', 'city')
-        read_only_fields = ('id', 'role', 'phone_number')
+        fields = ('id', 'role', 'specialist_type', 'first_name', 'phone_number', 'city', 'avatar', 'avatar_url')
+        read_only_fields = ('id', 'role', 'phone_number', 'avatar_url')
+
+    def get_avatar_url(self, obj):
+        return _abs_url(self.context.get("request"), getattr(obj, "avatar", None))
 
     def get_kyc(self, obj):
         if obj.role != User.Roles.CARRIER:
@@ -227,6 +241,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     phone_number = serializers.CharField(source='user.phone_number', read_only=True)
     first_name = serializers.CharField(source='user.first_name', required=False)
     avatar = serializers.ImageField(source='user.avatar', required=False, allow_null=True)
+    avatar_url = serializers.SerializerMethodField()
     city = serializers.CharField(source='user.city', required=False)
 
     class Meta:
@@ -238,11 +253,16 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'first_name',
             'city',
             'avatar',
+            'avatar_url',
             'rate',
             'client_rate_count',
             'created_at',
         )
-        read_only_fields = ('created_at',)
+        read_only_fields = ('created_at', 'avatar_url')
+
+    def get_avatar_url(self, obj):
+        user = getattr(obj, "user", None)
+        return _abs_url(self.context.get("request"), getattr(user, "avatar", None)) if user else None
 
     def update(self, instance, validated_data):
         user_data = validated_data.pop('user', {})

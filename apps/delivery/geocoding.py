@@ -92,6 +92,101 @@ def _build_query_text(
     return None
 
 
+def _search_safa_containers(q: str, limit: int = 5) -> List[Dict]:
+    """Search internal Safa containers and passages."""
+    query = (q or "").strip()
+    if not query:
+        return []
+    try:
+        from django.db.models import Q
+        from .models import Container
+
+        qs = (
+            Container.objects.filter(is_active=True)
+            .select_related("passage", "passage__bazar")
+            .filter(
+                Q(number__icontains=query)
+                | Q(title__icontains=query)
+                | Q(passage__number__icontains=query)
+                | Q(passage__bazar__name__icontains=query)
+            )[:limit]
+        )
+        results = []
+        for cont in qs:
+            bazar_name = cont.passage.bazar.name
+            passage_num = cont.passage.number
+            cont_num = cont.number
+            title = f"Контейнер {cont_num}, {bazar_name}"
+            address = f"Базар: {bazar_name} · Проход: {passage_num} · Контейнер: {cont_num}"
+            results.append(
+                {
+                    "title": title,
+                    "address": address,
+                    "market": bazar_name,
+                    "container": cont_num,
+                    "passage": passage_num,
+                    "lat": float(cont.lat),
+                    "lon": float(cont.lon),
+                }
+            )
+        return results
+    except Exception:
+        return []
+
+
+def _search_nominatim_bishkek(q: str, limit: int = 8) -> List[Dict]:
+    """Search Bishkek addresses via Nominatim in Russian."""
+    query = (q or "").strip()
+    if not query:
+        return []
+    # If query does not mention Bishkek, prepend it for exact city relevance
+    search_q = query if "бишкек" in query.lower() else f"Бишкек {query}"
+    url = "https://nominatim.openstreetmap.org/search"
+    params = {
+        "q": search_q,
+        "format": "jsonv2",
+        "accept-language": "ru",
+        "addressdetails": 1,
+        "countrycodes": "kg",
+        "viewbox": "74.45,42.99,74.75,42.75",
+        "limit": limit,
+        "email": "senya.kalchoroev@gmail.com",
+    }
+    try:
+        r = requests.get(url, params=params, headers=UA, timeout=5)
+        if r.status_code != 200:
+            return []
+        items = r.json()
+        if not isinstance(items, list):
+            return []
+        results = []
+        for item in items:
+            addr = item.get("address", {})
+            road = addr.get("road") or addr.get("pedestrian") or ""
+            house = addr.get("house_number") or ""
+            city = addr.get("city") or addr.get("town") or "Бишкек"
+            name = item.get("name") or road
+
+            parts = [p for p in [road, house, city] if p]
+            title = f"{road} {house}".strip() if road else (name or item.get("display_name", ""))
+            full_addr = ", ".join(parts) if parts else item.get("display_name", "")
+
+            results.append(
+                {
+                    "title": title or full_addr,
+                    "address": full_addr,
+                    "market": None,
+                    "container": None,
+                    "passage": None,
+                    "lat": float(item["lat"]),
+                    "lon": float(item["lon"]),
+                }
+            )
+        return results
+    except Exception:
+        return []
+
+
 def twogis_autocomplete(
     *,
     market: str | None = None,
@@ -101,61 +196,34 @@ def twogis_autocomplete(
     page_size: int = 5,
     timeout_s: int = 5,
 ) -> List[Dict]:
-    """Автодополнение по 2ГИС в районе Дордоя."""
+    """Автодополнение адресов и контейнеров по Бишкеку и рынкам Safa."""
     query_text = _build_query_text(market, container, passage, q)
     if not query_text:
         return []
 
-    # защита от слишком больших page_size
     page_size = max(1, min(int(page_size or 5), 20))
-
-    url = "https://catalog.api.2gis.com/3.0/items/geocode"
-    params = {
-        "key": TWOGIS_API_KEY,
-        "q": query_text,
-        "fields": "items.point,items.full_address_name",
-        "page_size": page_size,
-        "point": f"{DORDOI_LON},{DORDOI_LAT}",
-        "radius": DORDOI_RADIUS,
-        "sort": "distance",
-        "search_nearby": "true",
-        "locale": "ru_KG",
-    }
-
-    try:
-        r = requests.get(url, params=params, headers=UA, timeout=timeout_s)
-    except requests.RequestException:
-        logger.exception("2gis_request_failed")
-        raise
-
-    r.raise_for_status()
-    data = r.json()
-
-    items = (data.get("result") or {}).get("items") or []
     results: List[Dict] = []
+    seen_coords = set()
 
-    for item in items:
-        name = item.get("name") or ""
-        addr = item.get("full_address_name") or ""
-        point = item.get("point") or {}
-        lon = point.get("lon")
-        lat = point.get("lat")
+    # 1. Поиск по внутренним контейнерам Safa
+    safa_results = _search_safa_containers(q or query_text, limit=page_size)
+    for res in safa_results:
+        key = (round(res["lat"], 5), round(res["lon"], 5))
+        if key not in seen_coords:
+            seen_coords.add(key)
+            results.append(res)
 
-        mkt, cont, pas = _split_market_container_passage(name, addr)
+    # 2. Поиск по адресам города Бишкек
+    city_results = _search_nominatim_bishkek(q or query_text, limit=page_size)
+    for res in city_results:
+        key = (round(res["lat"], 5), round(res["lon"], 5))
+        if key not in seen_coords:
+            seen_coords.add(key)
+            results.append(res)
+        if len(results) >= page_size:
+            break
 
-        results.append(
-            {
-                "title": name or addr,
-                "address": addr,
-                "market": mkt,
-                "container": cont,
-                "passage": pas,
-                "lat": lat,
-                "lon": lon,
-            }
-        )
-
-    return results
+    return results[:page_size]
 
 
 class GeocodeNotFound(Exception):

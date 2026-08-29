@@ -158,4 +158,42 @@ def resolve_market_point(lat: float, lon: float) -> ResolvedMarketPoint | None:
                 passage_number=container.passage.number,
             )
 
+    # Fallback: if point is not inside polygon but within 35 meters of an active container
+    try:
+        from .geo import haversine_m
+
+        containers = Container.objects.filter(is_active=True).select_related(
+            "passage", "passage__bazar"
+        )
+        best_container = None
+        best_distance = 35.0
+
+        for cont in containers:
+            d = haversine_m(lat_value, lon_value, float(cont.lat), float(cont.lon))
+            if d < best_distance:
+                best_distance = d
+                best_container = cont
+
+        if best_container is not None:
+            district_name = ""
+            for revision in _latest_published_revisions():
+                if revision.bazar_id == best_container.passage.bazar_id:
+                    district_name = _district_name_at(
+                        _features(revision),
+                        lat=float(best_container.lat),
+                        lon=float(best_container.lon),
+                    )
+                    break
+
+            return ResolvedMarketPoint(
+                container=best_container,
+                bazar_name=best_container.passage.bazar.name,
+                district_name=district_name
+                or getattr(best_container.passage, "district", "")
+                or "",
+                passage_number=best_container.passage.number,
+            )
+    except Exception:
+        pass
+
     return None

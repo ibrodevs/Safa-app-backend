@@ -727,6 +727,12 @@ class ShipmentDetailSerializer(ShipmentTestPriceRepresentationMixin, serializers
     settled_amount = serializers.SerializerMethodField()
     payment_due_amount = serializers.SerializerMethodField()
     payment_due_income = serializers.SerializerMethodField()
+    carrier_first_name = serializers.SerializerMethodField()
+    carrier_phone = serializers.SerializerMethodField()
+    carrier_avatar_url = serializers.SerializerMethodField()
+    carrier_specialist_type = serializers.SerializerMethodField()
+    client_first_name = serializers.SerializerMethodField()
+    client_phone = serializers.SerializerMethodField()
 
     class Meta:
         model = Shipment
@@ -738,7 +744,13 @@ class ShipmentDetailSerializer(ShipmentTestPriceRepresentationMixin, serializers
             "service_type",
             "description",
             "client_id",
+            "client_first_name",
+            "client_phone",
             "carrier_id",
+            "carrier_first_name",
+            "carrier_phone",
+            "carrier_avatar_url",
+            "carrier_specialist_type",
             "current_stop_index",
             "stops",
             "stops_count",
@@ -784,6 +796,28 @@ class ShipmentDetailSerializer(ShipmentTestPriceRepresentationMixin, serializers
 
     def get_payment_due_income(self, obj):
         return carrier_income_for_shipment(obj)
+
+    def get_carrier_first_name(self, obj):
+        return getattr(obj.carrier, "first_name", None) if obj.carrier else None
+
+    def get_carrier_phone(self, obj):
+        return getattr(obj.carrier, "phone_number", None) if obj.carrier else None
+
+    def get_carrier_avatar_url(self, obj):
+        if not obj.carrier or not getattr(obj.carrier, "avatar", None):
+            return None
+        request = self.context.get("request")
+        url = obj.carrier.avatar.url
+        return request.build_absolute_uri(url) if request else url
+
+    def get_carrier_specialist_type(self, obj):
+        return getattr(obj.carrier, "specialist_type", None) if obj.carrier else None
+
+    def get_client_first_name(self, obj):
+        return getattr(obj.client, "first_name", None) if obj.client else None
+
+    def get_client_phone(self, obj):
+        return getattr(obj.client, "phone_number", None) if obj.client else None
 
 
 class ShipmentStatusSerializer(serializers.ModelSerializer):
