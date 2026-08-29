@@ -149,7 +149,7 @@ def _nominatim_compose(payload: dict) -> str:
         or address.get("town")
         or address.get("village")
         or address.get("municipality")
-        or ""
+        or "город Бишкек"
     )
     street = address.get("road") or address.get("pedestrian") or ""
     house = address.get("house_number") or ""
@@ -157,14 +157,20 @@ def _nominatim_compose(payload: dict) -> str:
         address.get("shop")
         or address.get("amenity")
         or address.get("marketplace")
-        or address.get("neighbourhood")
         or address.get("suburb")
+        or address.get("neighbourhood")
         or ""
     )
 
-    composed = _join_address([city, street, house]) if street else ""
-    if not composed:
-        composed = _join_address([city, place])
+    if street and house:
+        composed = _join_address([f"{street}, {house}", city])
+    elif street:
+        composed = _join_address([street, city])
+    elif place:
+        composed = _join_address([place, city])
+    else:
+        composed = _join_address([city])
+
     if composed:
         return composed
     return clean_address(str(payload.get("display_name") or ""))

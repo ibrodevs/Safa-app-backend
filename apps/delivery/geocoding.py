@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 # NOTE: This module is intentionally importable from serializers (no DRF/Django imports)
 
-UA = {"User-Agent": "dordoi-go/1.0 (+contact@example.com)"}
+UA = {"User-Agent": "SAFA-App/1.0 (contact: senya.kalchoroev@gmail.com)"}
 
 # TODO: move to env/config when project wiring allows.
 TWOGIS_API_KEY = "c65e5972-5592-4197-9dd2-e43bdcfd83fd"
@@ -92,49 +92,7 @@ def _build_query_text(
     return None
 
 
-def _search_safa_containers(q: str, limit: int = 5) -> List[Dict]:
-    """Search internal Safa containers and passages."""
-    query = (q or "").strip()
-    if not query:
-        return []
-    try:
-        from django.db.models import Q
-        from .models import Container
-
-        qs = (
-            Container.objects.filter(is_active=True)
-            .select_related("passage", "passage__bazar")
-            .filter(
-                Q(number__icontains=query)
-                | Q(title__icontains=query)
-                | Q(passage__number__icontains=query)
-                | Q(passage__bazar__name__icontains=query)
-            )[:limit]
-        )
-        results = []
-        for cont in qs:
-            bazar_name = cont.passage.bazar.name
-            passage_num = cont.passage.number
-            cont_num = cont.number
-            title = f"Контейнер {cont_num}, {bazar_name}"
-            address = f"Базар: {bazar_name} · Проход: {passage_num} · Контейнер: {cont_num}"
-            results.append(
-                {
-                    "title": title,
-                    "address": address,
-                    "market": bazar_name,
-                    "container": cont_num,
-                    "passage": passage_num,
-                    "lat": float(cont.lat),
-                    "lon": float(cont.lon),
-                }
-            )
-        return results
-    except Exception:
-        return []
-
-
-def _search_nominatim_bishkek(q: str, limit: int = 8) -> List[Dict]:
+def _search_nominatim_bishkek(q: str, limit: int = 10) -> List[Dict]:
     """Search Bishkek addresses via Nominatim in Russian."""
     query = (q or "").strip()
     if not query:
@@ -162,22 +120,20 @@ def _search_nominatim_bishkek(q: str, limit: int = 8) -> List[Dict]:
         results = []
         for item in items:
             addr = item.get("address", {})
-            road = addr.get("road") or addr.get("pedestrian") or ""
-            house = addr.get("house_number") or ""
-            city = addr.get("city") or addr.get("town") or "Бишкек"
-            name = item.get("name") or road
+            road = (addr.get("road") or addr.get("pedestrian") or "").strip()
+            house = (addr.get("house_number") or "").strip()
+            city = (addr.get("city") or addr.get("town") or "Бишкек").strip()
+            name = (item.get("name") or road).strip()
+            place = (addr.get("shop") or addr.get("amenity") or addr.get("marketplace") or addr.get("suburb") or "").strip()
 
-            parts = [p for p in [road, house, city] if p]
-            title = f"{road} {house}".strip() if road else (name or item.get("display_name", ""))
+            parts = [p for p in [road or place, house, city] if p]
+            title = f"{road} {house}".strip() if (road and house) else (road or name or place or item.get("display_name", ""))
             full_addr = ", ".join(parts) if parts else item.get("display_name", "")
 
             results.append(
                 {
                     "title": title or full_addr,
                     "address": full_addr,
-                    "market": None,
-                    "container": None,
-                    "passage": None,
                     "lat": float(item["lat"]),
                     "lon": float(item["lon"]),
                 }
@@ -193,30 +149,22 @@ def twogis_autocomplete(
     container: str | None = None,
     passage: str | None = None,
     q: str | None = None,
-    page_size: int = 5,
+    page_size: int = 10,
     timeout_s: int = 5,
 ) -> List[Dict]:
-    """Автодополнение адресов и контейнеров по Бишкеку и рынкам Safa."""
-    query_text = _build_query_text(market, container, passage, q)
+    """Автодополнение адресов по городу Бишкек и карте."""
+    query_text = (q or _build_query_text(market, container, passage, q) or "").strip()
     if not query_text:
         return []
 
-    page_size = max(1, min(int(page_size or 5), 20))
+    page_size = max(1, min(int(page_size or 10), 20))
     results: List[Dict] = []
     seen_coords = set()
 
-    # 1. Поиск по внутренним контейнерам Safa
-    safa_results = _search_safa_containers(q or query_text, limit=page_size)
-    for res in safa_results:
-        key = (round(res["lat"], 5), round(res["lon"], 5))
-        if key not in seen_coords:
-            seen_coords.add(key)
-            results.append(res)
-
-    # 2. Поиск по адресам города Бишкек
-    city_results = _search_nominatim_bishkek(q or query_text, limit=page_size)
+    # Поиск по реальным адресам города Бишкек
+    city_results = _search_nominatim_bishkek(query_text, limit=page_size)
     for res in city_results:
-        key = (round(res["lat"], 5), round(res["lon"], 5))
+        key = (round(res["lat"], 4), round(res["lon"], 4))
         if key not in seen_coords:
             seen_coords.add(key)
             results.append(res)

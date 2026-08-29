@@ -1173,16 +1173,6 @@ class ReverseGeocodeView(APIView):
         except (ValueError, TypeError):
             return Response({"error": "invalid coordinates"}, status=400)
 
-        # 1. Exact market container and passage resolution
-        market_point = resolve_market_point(lat_f, lon_f)
-        if market_point is not None:
-            logger.info(
-                "reverse_geocode_safa_map_ok",
-                extra={"request_id": rid, "provider": "safa_map"},
-            )
-            return Response(market_point.as_response())
-
-        # 2. General address resolution
         resolved = reverse_geocode_address(lat_f, lon_f)
         if resolved is None:
             logger.warning("reverse_geocode_unavailable", extra={"request_id": rid})
