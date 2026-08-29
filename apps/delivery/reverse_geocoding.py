@@ -139,7 +139,7 @@ def _yandex_address(lat: float, lon: float) -> str:
     return clean_address(fallback)
 
 
-def _nominatim_compose(payload: dict) -> str:
+def _nominatim_compose(payload: dict, lat: float = 0.0, lon: float = 0.0) -> str:
     address = payload.get("address")
     if not isinstance(address, dict):
         return clean_address(str(payload.get("display_name") or ""))
@@ -149,38 +149,83 @@ def _nominatim_compose(payload: dict) -> str:
         or address.get("town")
         or address.get("village")
         or address.get("municipality")
-        or "город Бишкек"
+        or "Бишкек"
     )
-    street = address.get("road") or address.get("pedestrian") or ""
-    house = address.get("house_number") or ""
+    if "бишкек" in city.lower():
+        city = "Бишкек"
+
+    road = (address.get("road") or address.get("pedestrian") or "").strip()
+    house = (address.get("house_number") or "").strip()
+    suburb = (
+        address.get("suburb")
+        or address.get("neighbourhood")
+        or address.get("residential")
+        or address.get("quarter")
+        or ""
+    ).strip()
     place = (
         address.get("shop")
         or address.get("amenity")
         or address.get("marketplace")
-        or address.get("suburb")
-        or address.get("neighbourhood")
+        or address.get("commercial")
         or ""
+    ).strip()
+
+    is_dordoi = (
+        (42.925 <= lat <= 42.955 and 74.605 <= lon <= 74.650)
+        or "дордой" in suburb.lower()
+        or "проход" in road.lower()
+        or "дордой" in place.lower()
     )
 
-    if street and house:
-        composed = _join_address([f"{street}, {house}", city])
-    elif street:
-        composed = _join_address([street, city])
-    elif place:
-        composed = _join_address([place, city])
-    else:
-        composed = _join_address([city])
+    if is_dordoi:
+        parts = []
+        if road:
+            parts.append(road)
+        elif place and "дордой" not in place.lower():
+            parts.append(place)
+        elif suburb and "дордой" not in suburb.lower():
+            parts.append(suburb)
 
-    if composed:
-        return composed
-    return clean_address(str(payload.get("display_name") or ""))
+        if house:
+            parts.append(house)
+
+        # Check sub-market (Мурас-Спорт, Алкан, Европа, Оберон, etc.)
+        submarket = ""
+        for cand in [place, suburb]:
+            c_low = cand.lower()
+            if cand and "дордой" not in c_low and "бишкек" not in c_low and cand != road:
+                submarket = cand
+                break
+        if submarket:
+            sub_clean = submarket if submarket.lower().startswith("рынок") else f"рынок {submarket}"
+            if sub_clean not in parts:
+                parts.append(sub_clean)
+
+        parts.append("рынок Дордой")
+        parts.append("Бишкек")
+        return ", ".join([p for p in parts if p])
+
+    # Standard City format
+    parts = []
+    if road and house:
+        parts.append(f"{road}, {house}")
+    elif road:
+        parts.append(road)
+    elif place:
+        parts.append(place)
+    elif suburb:
+        parts.append(suburb)
+
+    parts.append(city)
+    return ", ".join([p for p in parts if p])
 
 
 def _nominatim_address(lat: float, lon: float) -> str:
     user_agent = str(
-        getattr(settings, "GEOCODER_USER_AGENT", "SAFA/1.0") or "SAFA/1.0"
+        getattr(settings, "GEOCODER_USER_AGENT", "SAFA-App/1.0 (contact: senya.kalchoroev@gmail.com)") or "SAFA-App/1.0"
     ).strip()
-    contact_email = str(getattr(settings, "GEOCODER_CONTACT_EMAIL", "") or "").strip()
+    contact_email = str(getattr(settings, "GEOCODER_CONTACT_EMAIL", "senya.kalchoroev@gmail.com") or "senya.kalchoroev@gmail.com").strip()
     params = {
         "lat": lat,
         "lon": lon,
@@ -201,7 +246,7 @@ def _nominatim_address(lat: float, lon: float) -> str:
     payload = response.json()
     if not isinstance(payload, dict):
         return ""
-    return _nominatim_compose(payload).strip()
+    return _nominatim_compose(payload, lat=lat, lon=lon).strip()
 
 
 def reverse_geocode_address(lat: float, lon: float) -> tuple[str, str] | None:

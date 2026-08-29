@@ -143,6 +143,120 @@ def _search_nominatim_bishkek(q: str, limit: int = 10) -> List[Dict]:
         return []
 
 
+def _parse_dordoi_query(q: str) -> Dict | None:
+    q_clean = q.strip()
+    dordoi_keywords = [
+        "проход",
+        "ряд",
+        "контейнер",
+        "дордой",
+        "мурас",
+        "алкан",
+        "европа",
+        "оберон",
+        "джунхай",
+        "кербен",
+        "ак-суу",
+        "север",
+        "восток",
+        "центральный",
+        "кишка",
+    ]
+    is_dordoi = any(kw in q_clean.lower() for kw in dordoi_keywords) or bool(
+        re.search(r"\b\d+\s*[-/]?\s*проход\b|\bпроход\s*\d+\b", q_clean, re.I)
+    )
+
+    if not is_dordoi:
+        m = re.match(r"^(\d+)\s*[,/ -]\s*(\d+)(?:[/ -](\d+))?$", q_clean)
+        if m:
+            is_dordoi = True
+
+    if not is_dordoi:
+        return None
+
+    # Extract sector if mentioned
+    sector = ""
+    for s in [
+        "мурас-спорт",
+        "мурас спорт",
+        "алкан",
+        "алканов",
+        "европа",
+        "оберон",
+        "джунхай",
+        "кербен",
+        "ак-суу",
+        "восток",
+        "север",
+        "автозапчасти",
+    ]:
+        if s in q_clean.lower():
+            s_title = s.replace("мурас спорт", "Мурас-Спорт").capitalize()
+            sector = f"рынок {s_title}"
+            break
+
+    # Extract passage
+    passage = ""
+    m_pass = re.search(
+        r"(\d+)(?:[-–—]?(?:й|ой|ий|ый))?\s*проход|проход\s*(?:№\s*)?([0-9a-zA-Zа-яА-Я]+)",
+        q_clean,
+        re.I,
+    )
+    if m_pass:
+        p_num = m_pass.group(1) or m_pass.group(2)
+        passage = f"{p_num}-й проход" if p_num.isdigit() else f"проход {p_num}"
+    elif "центральный" in q_clean.lower():
+        passage = "проход Центральный"
+
+    # Extract container number
+    rem = q_clean
+    if passage:
+        rem = re.sub(
+            r"(?:\d+[-–—]?(?:й|ой|ий|ый)?\s*проход|проход\s*[0-9a-zA-Zа-яА-Я]+|проход|центральный)",
+            "",
+            rem,
+            flags=re.I,
+        )
+    if sector:
+        rem = re.sub(
+            r"мурас[- ]?спорт|алкан(?:ов)?|европа|оберон|джунхай|кербен|ак-суу|восток|север|автозапчасти",
+            "",
+            rem,
+            flags=re.I,
+        )
+    rem = re.sub(r"контейнер|дордой|рынок", "", rem, flags=re.I).strip(" ,.-/")
+    container = rem.strip() if rem else ""
+
+    if not passage and not container:
+        m = re.match(r"^(\d+)\s*[,/ -]\s*(\d+)(?:[/ -](\d+))?$", q_clean)
+        if m:
+            container = m.group(1)
+            passage = f"{m.group(2)}-й проход"
+            if m.group(3):
+                container = f"{container}/{m.group(3)}"
+
+    parts = []
+    if passage:
+        parts.append(passage)
+    if container:
+        parts.append(container)
+    if sector:
+        parts.append(sector)
+    parts.append("рынок Дордой")
+    parts.append("Бишкек")
+
+    title_parts = [p for p in [passage, container, sector] if p]
+    title = ", ".join(title_parts) if title_parts else "рынок Дордой"
+    full_addr = ", ".join(parts)
+
+    return {
+        "title": title,
+        "address": full_addr,
+        "lat": 42.9367,
+        "lon": 74.6217,
+    }
+
+
 def twogis_autocomplete(
     *,
     market: str | None = None,
@@ -152,21 +266,28 @@ def twogis_autocomplete(
     page_size: int = 10,
     timeout_s: int = 5,
 ) -> List[Dict]:
-    """Автодополнение адресов по городу Бишкек и карте."""
+    """Автодополнение адресов по рынку Дордой и городу Бишкек."""
     query_text = (q or _build_query_text(market, container, passage, q) or "").strip()
     if not query_text:
         return []
 
     page_size = max(1, min(int(page_size or 10), 20))
     results: List[Dict] = []
-    seen_coords = set()
+    seen_addresses = set()
 
-    # Поиск по реальным адресам города Бишкек
+    # 1. Если это запрос по Дордою (проход/контейнер/сектор) — сразу формируем точный адрес
+    dordoi_res = _parse_dordoi_query(query_text)
+    if dordoi_res is not None:
+        seen_addresses.add(dordoi_res["address"])
+        results.append(dordoi_res)
+
+    # 2. Поиск по реальным адресам города Бишкек
     city_results = _search_nominatim_bishkek(query_text, limit=page_size)
     for res in city_results:
-        key = (round(res["lat"], 4), round(res["lon"], 4))
-        if key not in seen_coords:
-            seen_coords.add(key)
+        # Убираем дублирование слова Бишкек в конце
+        addr = res["address"]
+        if addr not in seen_addresses:
+            seen_addresses.add(addr)
             results.append(res)
         if len(results) >= page_size:
             break
