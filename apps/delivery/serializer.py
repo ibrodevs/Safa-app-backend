@@ -273,18 +273,21 @@ class AmanatDonationSerializer(serializers.ModelSerializer):
     def get_donor_label(self, obj: AmanatDonation) -> str:
         if obj.is_anonymous:
             return "Анонимный пользователь"
+        if obj.donor_id:
+            name = " ".join(
+                part
+                for part in (
+                    getattr(obj.donor, "first_name", "") or "",
+                    getattr(obj.donor, "last_name", "") or "",
+                )
+                if part
+            ).strip()
+            if name:
+                return name
         if obj.donor_label:
             return mask_amanat_donor_label(obj.donor_label)
         phone = getattr(obj.donor, "phone_number", "") if obj.donor_id else ""
-        name = " ".join(
-            part
-            for part in (
-                getattr(obj.donor, "first_name", "") if obj.donor_id else "",
-                getattr(obj.donor, "last_name", "") if obj.donor_id else "",
-            )
-            if part
-        )
-        return name or mask_amanat_donor_label(phone)
+        return mask_amanat_donor_label(phone)
 
 
 class AmanatCampaignSerializer(serializers.ModelSerializer):
