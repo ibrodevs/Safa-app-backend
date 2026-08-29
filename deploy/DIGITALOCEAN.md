@@ -4,7 +4,7 @@ Production layout:
 
 ```text
 Internet -> Nginx (HTTPS/WSS) -> 127.0.0.1:8001
-                                  -> Daphne / Django ASGI
+                                  -> Gunicorn + Uvicorn workers / Django ASGI
                                      -> PostgreSQL (private Docker network)
                                      -> Redis Channels layer (private Docker network)
 ```
@@ -169,7 +169,7 @@ The web entrypoint waits for PostgreSQL, applies migrations, runs
 `collectstatic --noinput`, and then starts:
 
 ```text
-daphne -b 0.0.0.0 -p 8001 --proxy-headers core.asgi:application
+gunicorn core.asgi:application -k uvicorn.workers.UvicornWorker -w 4 --bind 0.0.0.0:8001
 ```
 
 PostgreSQL and Redis have no host port. Daphne is bound only to
@@ -250,7 +250,7 @@ docker compose -f docker-compose.prod.yml logs --tail=200 web
 Expected health response:
 
 ```json
-{"status":"ok","database":"ok"}
+{"status":"ok","database":"ok","channels":"ok"}
 ```
 
 WebSocket endpoint format is:

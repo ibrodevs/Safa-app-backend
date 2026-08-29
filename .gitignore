@@ -145,6 +145,11 @@ secrets/*
 !secrets/.gitkeep
 *.pem
 
+# Uploaded user data (never commit to repo)
+kyc/
+avatars/
+static_root/
+
 # Docker production bind mounts
 var/*
 !var/.gitkeep

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from apps.users.models import *
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -37,11 +37,26 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class RegisterSerializer(serializers.ModelSerializer):
+    MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB
+
     kyc_token = serializers.SerializerMethodField(read_only=True)
     id_front = serializers.ImageField(write_only=True, required=False, allow_null=True)
     id_back  = serializers.ImageField(write_only=True, required=False, allow_null=True)
     password = serializers.CharField(write_only=True, min_length=6, required=True)
     password_confirm = serializers.CharField(write_only=True, required=True)
+
+    def _validate_image_size(self, image, field_name):
+        if image and hasattr(image, "size") and image.size > self.MAX_IMAGE_SIZE:
+            raise serializers.ValidationError(
+                f"Размер файла {field_name} не должен превышать 10 МБ."
+            )
+        return image
+
+    def validate_id_front(self, value):
+        return self._validate_image_size(value, "id_front")
+
+    def validate_id_back(self, value):
+        return self._validate_image_size(value, "id_back")
 
     class Meta:
         model = User
@@ -80,43 +95,44 @@ class RegisterSerializer(serializers.ModelSerializer):
         id_back  = validated_data.pop("id_back", None)
         password = validated_data.pop("password")
 
-        user = User(**validated_data)
-        user.set_password(password)
+        with transaction.atomic():
+            user = User(**validated_data)
+            user.set_password(password)
 
-        from apps.users.utlis import is_static_otp_phone
-        if is_static_otp_phone(user.phone_number):
-            user.is_verify = True
-        if user.role == User.Roles.CARRIER:
-            user.is_active = False
-        
-        try:
-            user.save()
-        except IntegrityError:
-            raise serializers.ValidationError(
-                {"phone_number": "Пользователь с таким номером уже зарегистрирован."}
-            )
+            from apps.users.utlis import is_static_otp_phone
+            if is_static_otp_phone(user.phone_number):
+                user.is_verify = True
+            if user.role == User.Roles.CARRIER:
+                user.is_active = False
+            
+            try:
+                user.save()
+            except IntegrityError:
+                raise serializers.ValidationError(
+                    {"phone_number": "Пользователь с таким номером уже зарегистрирован."}
+                )
 
-        if user.role == User.Roles.CARRIER:
-            kyc, _ = CourierKYC.objects.get_or_create(user=user)
-            changed = []
+            if user.role == User.Roles.CARRIER:
+                kyc, _ = CourierKYC.objects.get_or_create(user=user)
+                changed = []
 
-            if id_front is not None:
-                kyc.id_front = id_front
-                changed.append("id_front")
+                if id_front is not None:
+                    kyc.id_front = id_front
+                    changed.append("id_front")
 
-            if id_back is not None:
-                kyc.id_back = id_back
-                changed.append("id_back")
+                if id_back is not None:
+                    kyc.id_back = id_back
+                    changed.append("id_back")
 
-            if kyc.status != CourierKYC.Status.PENDING:
-                kyc.status = CourierKYC.Status.PENDING
-                changed.append("status")
-            if kyc.checked_at is not None:
-                kyc.checked_at = None
-                changed.append("checked_at")
+                if kyc.status != CourierKYC.Status.PENDING:
+                    kyc.status = CourierKYC.Status.PENDING
+                    changed.append("status")
+                if kyc.checked_at is not None:
+                    kyc.checked_at = None
+                    changed.append("checked_at")
 
-            if changed:
-                kyc.save(update_fields=changed)
+                if changed:
+                    kyc.save(update_fields=changed)
 
         return user
 

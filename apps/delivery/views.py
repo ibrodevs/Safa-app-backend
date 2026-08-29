@@ -618,7 +618,8 @@ class ShipmentViewSet(viewsets.ModelViewSet):
 
         if new_status == Shipment.Status.AWAITING_PAYMENT:
             try:
-                _mark_work_done(s)
+                with transaction.atomic():
+                    _mark_work_done(s)
             except ValueError as exc:
                 return response.Response(
                     {"detail": str(exc)},

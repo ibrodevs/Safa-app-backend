@@ -712,7 +712,7 @@ class ShipmentDetailSerializer(ShipmentTestPriceRepresentationMixin, serializers
         read_only_fields = fields
 
     def get_stops_count(self, obj):
-        return obj.stops.count()
+        return len(obj.stops.all())
 
     def get_commission(self, obj):
         return commission_for_payment_amount(payment_amount_for_shipment(obj))
@@ -791,7 +791,7 @@ class ShipmentCardSerializer(ShipmentTestPriceRepresentationMixin, serializers.M
         ]
 
     def get_stops_count(self, obj):
-        return obj.stops.count()
+        return len(obj.stops.all())
 
 
 class ShipmentNearbySerializer(ShipmentTestPriceRepresentationMixin, serializers.ModelSerializer):
@@ -824,7 +824,7 @@ class ShipmentNearbySerializer(ShipmentTestPriceRepresentationMixin, serializers
         )
 
     def get_stops_count(self, obj) -> int:
-        return obj.stops.count()
+        return len(obj.stops.all())
 
     def get_commission(self, obj) -> int:
         return commission_for_payment_amount(payment_amount_for_shipment(obj))
