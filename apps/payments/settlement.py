@@ -51,6 +51,24 @@ def complete_paid_shipment(
             currency=payment_attempt.currency,
         )
 
+        if commission > 0:
+            from django.db.models import F
+            from apps.delivery.models import AmanatCampaign
+
+            active_campaign = (
+                AmanatCampaign.objects.filter(
+                    status=AmanatCampaign.Status.ACTIVE,
+                    is_featured=True,
+                ).first()
+                or AmanatCampaign.objects.filter(
+                    status=AmanatCampaign.Status.ACTIVE,
+                ).first()
+            )
+            if active_campaign:
+                AmanatCampaign.objects.filter(pk=active_campaign.pk).update(
+                    safa_amount=F("safa_amount") + commission
+                )
+
     shipment.status = Shipment.Status.COMPLETED
     shipment.finished_at = locked.finished_at
     return settlement

@@ -342,7 +342,7 @@ class AmanatCampaignSerializer(serializers.ModelSerializer):
         if qs is None:
             qs = obj.donations.filter(
                 status=AmanatDonation.Status.PAID,
-            ).select_related("donor")[:5]
+            ).select_related("donor").order_by("-created_at")[:20]
         return AmanatDonationSerializer(qs, many=True, context=self.context).data
 
 

@@ -280,7 +280,7 @@ class AmanatCampaignViewSet(viewsets.ReadOnlyModelViewSet):
                     status=AmanatDonation.Status.PAID,
                 )
                 .select_related("donor")
-                .order_by("-created_at")[:5],
+                .order_by("-created_at")[:20],
                 to_attr="_latest_paid_donations",
             )
         )
