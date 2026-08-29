@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 import re
 from typing import Dict, List, Tuple
+import urllib.parse
+import urllib.request
 
 import requests
 
@@ -265,6 +267,53 @@ def _parse_dordoi_query(q: str) -> Dict | None:
     }
 
 
+def _search_yandex_web(query: str) -> List[Dict]:
+    clean = query.strip()
+    if not clean:
+        return []
+
+    search_terms = []
+    if "ряд" in clean.lower() and "китай" not in clean.lower():
+        search_terms.append(f"Дордой Китай {clean}")
+        search_terms.append(f"Дордой {clean}")
+    elif "дордой" not in clean.lower():
+        search_terms.append(f"Дордой {clean}")
+    else:
+        search_terms.append(clean)
+
+    results = []
+    for term in search_terms:
+        encoded = urllib.parse.quote(term)
+        url = f"https://yandex.ru/maps/?text={encoded}&z=19"
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept-Language": "ru-RU,ru;q=0.9",
+            },
+        )
+        try:
+            html = urllib.request.urlopen(req, timeout=4).read().decode("utf-8")
+            coords_match = re.search(r'\"coordinates\":\[([0-9.]+),([0-9.]+)\]', html)
+            item_match = re.search(r'\"title\":\"([^\"]+)\",\"description\":\"([^\"]+)\"', html)
+            if coords_match and item_match:
+                lon = float(coords_match.group(1))
+                lat = float(coords_match.group(2))
+                title = item_match.group(1)
+                desc = item_match.group(2)
+                full_address = f"{title}, {desc}"
+                results.append({
+                    "title": title,
+                    "address": full_address,
+                    "lat": lat,
+                    "lon": lon,
+                })
+                break
+        except Exception as e:
+            logger.warning("yandex_web_search_error", extra={"error": str(e)})
+    return results
+
+
 def twogis_autocomplete(
     *,
     market: str | None = None,
@@ -283,16 +332,24 @@ def twogis_autocomplete(
     results: List[Dict] = []
     seen_addresses = set()
 
-    # 1. Если это запрос по Дордою (проход/контейнер/сектор) — сразу формируем точный адрес
-    dordoi_res = _parse_dordoi_query(query_text)
-    if dordoi_res is not None:
-        seen_addresses.add(dordoi_res["address"])
-        results.append(dordoi_res)
+    # 1. Поиск по Дордою через Яндекс (находит точные координаты рядов и контейнеров)
+    is_dordoi = any(kw in query_text.lower() for kw in ["проход", "ряд", "контейнер", "дордой", "мурас", "алкан", "европа", "китай"]) or bool(re.search(r"\b\d+\s*[-/]?\s*(?:проход|ряд)\b", query_text, re.I))
+    if is_dordoi:
+        yandex_matches = _search_yandex_web(query_text)
+        for ym in yandex_matches:
+            if ym["address"] not in seen_addresses:
+                seen_addresses.add(ym["address"])
+                results.append(ym)
+
+        if not results:
+            dordoi_res = _parse_dordoi_query(query_text)
+            if dordoi_res is not None and dordoi_res["address"] not in seen_addresses:
+                seen_addresses.add(dordoi_res["address"])
+                results.append(dordoi_res)
 
     # 2. Поиск по реальным адресам города Бишкек
     city_results = _search_nominatim_bishkek(query_text, limit=page_size)
     for res in city_results:
-        # Убираем дублирование слова Бишкек в конце
         addr = res["address"]
         if addr not in seen_addresses:
             seen_addresses.add(addr)
