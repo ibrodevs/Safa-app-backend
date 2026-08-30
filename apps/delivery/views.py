@@ -1010,19 +1010,19 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         prev_status = s.status
 
         try:
-            nxt = s.next_stop()
-            if not nxt:
-                _mark_work_done(s)
+            total_stops = s.stops.count()
+            if s.status == Shipment.Status.ASSIGNED:
+                s.status = Shipment.Status.IN_TRANSIT
+                s.current_stop_index = 1 if total_stops > 1 else 0
+                s.save(update_fields=["status", "current_stop_index"])
                 notify_shipment_status(s)
-            else:
-                if s.status == Shipment.Status.ASSIGNED:
-                    s.status = Shipment.Status.IN_TRANSIT
-                s.current_stop_index += 1
-                if s.current_stop_index >= s.stops.count():
-                    _mark_work_done(s)
+            elif s.status == Shipment.Status.IN_TRANSIT:
+                if s.current_stop_index < total_stops - 1:
+                    s.current_stop_index += 1
+                    s.save(update_fields=["current_stop_index"])
                     notify_shipment_status(s)
                 else:
-                    s.save(update_fields=["current_stop_index", "status"])
+                    _mark_work_done(s)
                     notify_shipment_status(s)
         except ShipmentFareUnavailable:
             logger.warning(

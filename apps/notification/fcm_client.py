@@ -216,7 +216,7 @@ def send_data_message(
     *,
     token: str,
     data: Mapping[str, Any],
-    ttl: str = "15s",
+    ttl: str = "86400s",
     collapse_key: str | None = None,
     platform: str = "android",
 ) -> FCMSendResult:

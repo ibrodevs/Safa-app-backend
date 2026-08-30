@@ -55,7 +55,7 @@ def _send_to_user(
     user_id: int | None,
     data: dict,
     *,
-    ttl: str = "300s",
+    ttl: str = "86400s",
     collapse_key: str | None = None,
 ) -> bool:
     """Persist the in-app notification and try every active device token.
@@ -232,7 +232,7 @@ def notify_shipment_status(shipment) -> None:
     _send_to_user(
         shipment.client_id,
         client_data,
-        ttl="600s",
+        ttl="86400s",
         collapse_key=f"shipment_{shipment.id}",
     )
 
@@ -250,7 +250,7 @@ def notify_shipment_status(shipment) -> None:
     _send_to_user(
         shipment.carrier_id,
         carrier_data,
-        ttl="600s",
+        ttl="86400s",
         collapse_key=f"shipment_{shipment.id}",
     )
 
@@ -276,7 +276,7 @@ def notify_shipment_canceled(shipment, *, reason: str = "") -> None:
     _send_to_user(
         shipment.client_id,
         client_data,
-        ttl="600s",
+        ttl="86400s",
         collapse_key=f"shipment_cancel_{shipment.id}",
     )
 

@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
-from django.db.models import Sum, Count
+from django.db.models import Sum, Count, Q
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.conf import settings
@@ -16,12 +16,14 @@ def carrier_daily_stats(*, carrier_id: int, day: date) -> dict:
     qs = Shipment.objects.filter(
         carrier_id=carrier_id,
         status=Shipment.Status.COMPLETED,
-        finished_at__gte=start,
-        finished_at__lt=end,
+    ).filter(
+        Q(finished_at__gte=start, finished_at__lt=end)
+        | Q(finished_at__isnull=True, paid_at__gte=start, paid_at__lt=end)
+        | Q(finished_at__isnull=True, paid_at__isnull=True, created_at__gte=start, created_at__lt=end)
     )
 
     agg = qs.aggregate(
-        gross_total=Coalesce(Sum("final_fare"), 0),
+        gross_total=Coalesce(Sum(Coalesce("final_fare", "estimated_fare", 0)), 0),
         clients_count=Count("client", distinct=True),
     )
 

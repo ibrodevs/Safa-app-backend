@@ -864,6 +864,9 @@ class QuoteOutSerializer(serializers.Serializer):
 class ShipmentCardSerializer(ShipmentTestPriceRepresentationMixin, serializers.ModelSerializer):
     stops_count = serializers.SerializerMethodField()
     public_code = serializers.CharField(read_only=True)
+    client_first_name = serializers.SerializerMethodField()
+    client_phone = serializers.SerializerMethodField()
+    client_avatar_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Shipment
@@ -872,6 +875,9 @@ class ShipmentCardSerializer(ShipmentTestPriceRepresentationMixin, serializers.M
             "public_code",
             "title",
             "service_type",
+            "client_first_name",
+            "client_phone",
+            "client_avatar_url",
             "estimated_fare",
             "is_paid",
             "paid_at",
@@ -879,6 +885,19 @@ class ShipmentCardSerializer(ShipmentTestPriceRepresentationMixin, serializers.M
             "status",
             "created_at",
         ]
+
+    def get_client_first_name(self, obj):
+        return getattr(obj.client, "first_name", None) if obj.client else None
+
+    def get_client_phone(self, obj):
+        return getattr(obj.client, "phone_number", None) if obj.client else None
+
+    def get_client_avatar_url(self, obj):
+        if not obj.client or not getattr(obj.client, "avatar", None):
+            return None
+        request = self.context.get("request")
+        url = obj.client.avatar.url
+        return request.build_absolute_uri(url) if request else url
 
     def get_stops_count(self, obj):
         return len(obj.stops.all())
