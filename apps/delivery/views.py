@@ -1122,17 +1122,18 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                     s.save(update_fields=["current_stop_index"])
                 else:
                     _mark_work_done(s)
-        except ShipmentFareUnavailable:
+        except (ShipmentFareUnavailable, ValueError) as exc:
             logger.warning(
-                "shipment_advance_missing_fare",
+                "shipment_advance_failed",
                 extra={
                     "request_id": rid,
                     "user_id": request.user.id,
-                    "shipment_id": s.id,
+                    "shipment_id": getattr(visible_shipment, "id", None),
+                    "error": str(exc),
                 },
             )
             return response.Response(
-                {"detail": "shipment_has_no_final_fare"},
+                {"detail": str(exc)},
                 status=status.HTTP_409_CONFLICT,
             )
 

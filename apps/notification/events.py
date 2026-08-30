@@ -192,80 +192,83 @@ def notify_shipment_offer_for_carrier(shipment) -> None:
 
 
 def notify_shipment_status(shipment) -> None:
-    status = shipment.status
+    try:
+        status = shipment.status
 
-    title_map = {
-        shipment.Status.PENDING: "Новая заявка создана",
-        shipment.Status.ASSIGNED: "Курьер назначен",
-        shipment.Status.IN_TRANSIT: "Посылка в пути",
-        shipment.Status.AWAITING_PAYMENT: "Ожидается оплата",
-        shipment.Status.COMPLETED: "Доставка завершена",
-        shipment.Status.CANCELED: "Доставка отменена",
-    }
-    client_body_map = {
-        shipment.Status.PENDING: f"Заявка №{shipment.public_code} создана.",
-        shipment.Status.ASSIGNED: f"Заказ №{shipment.public_code}: курьер назначен.",
-        shipment.Status.IN_TRANSIT: f"Заказ №{shipment.public_code}: курьер в пути.",
-        shipment.Status.AWAITING_PAYMENT: f"Заказ №{shipment.public_code} выполнен. Оплатите заказ, чтобы завершить его.",
-        shipment.Status.COMPLETED: f"Заказ №{shipment.public_code} успешно доставлен.",
-        shipment.Status.CANCELED: f"Заказ №{shipment.public_code} отменён.",
-    }
-    carrier_body_map = {
-        shipment.Status.PENDING: f"Заявка №{shipment.public_code} создана.",
-        shipment.Status.ASSIGNED: f"Вы назначены на заказ №{shipment.public_code}.",
-        shipment.Status.IN_TRANSIT: f"Заказ №{shipment.public_code}: в пути.",
-        shipment.Status.AWAITING_PAYMENT: f"Заказ №{shipment.public_code}: ожидаем оплату клиента.",
-        shipment.Status.COMPLETED: f"Заказ №{shipment.public_code} завершён.",
-        shipment.Status.CANCELED: f"Заказ №{shipment.public_code} отменён.",
-    }
+        title_map = {
+            shipment.Status.PENDING: "Новая заявка создана",
+            shipment.Status.ASSIGNED: "Курьер назначен",
+            shipment.Status.IN_TRANSIT: "Посылка в пути",
+            shipment.Status.AWAITING_PAYMENT: "Ожидается оплата",
+            shipment.Status.COMPLETED: "Доставка завершена",
+            shipment.Status.CANCELED: "Доставка отменена",
+        }
+        client_body_map = {
+            shipment.Status.PENDING: f"Заявка №{shipment.public_code} создана.",
+            shipment.Status.ASSIGNED: f"Заказ №{shipment.public_code}: курьер назначен.",
+            shipment.Status.IN_TRANSIT: f"Заказ №{shipment.public_code}: курьер в пути.",
+            shipment.Status.AWAITING_PAYMENT: f"Заказ №{shipment.public_code} выполнен. Оплатите заказ, чтобы завершить его.",
+            shipment.Status.COMPLETED: f"Заказ №{shipment.public_code} успешно доставлен.",
+            shipment.Status.CANCELED: f"Заказ №{shipment.public_code} отменён.",
+        }
+        carrier_body_map = {
+            shipment.Status.PENDING: f"Заявка №{shipment.public_code} создана.",
+            shipment.Status.ASSIGNED: f"Вы назначены на заказ №{shipment.public_code}.",
+            shipment.Status.IN_TRANSIT: f"Заказ №{shipment.public_code}: в пути.",
+            shipment.Status.AWAITING_PAYMENT: f"Заказ №{shipment.public_code}: ожидаем оплату клиента.",
+            shipment.Status.COMPLETED: f"Заказ №{shipment.public_code} завершён.",
+            shipment.Status.CANCELED: f"Заказ №{shipment.public_code} отменён.",
+        }
 
-    title = title_map.get(status, "Статус доставки обновлён")
+        title = title_map.get(status, "Статус доставки обновлён")
 
-    stops_cnt = shipment.stops.count()
-    extra_common = {
-        "shipment_id": str(shipment.id),
-        "public_code": shipment.public_code,
-        "status": shipment.status,
-        "stops_count": str(stops_cnt),
-        "eta_min": str(shipment.eta_to_next_min) if shipment.eta_to_next_min else "",
-        "final_fare": str(shipment.final_fare or shipment.estimated_fare),
-    }
+        stops_cnt = shipment.stops.count()
+        extra_common = {
+            "shipment_id": str(shipment.id),
+            "public_code": shipment.public_code,
+            "status": shipment.status,
+            "stops_count": str(stops_cnt),
+            "eta_min": str(shipment.eta_to_next_min) if shipment.eta_to_next_min else "",
+            "final_fare": str(shipment.final_fare or shipment.estimated_fare),
+        }
 
-    client_data = {
-        **_base_data(
-            app="client",
-            type_="shipment_status",
-            title=title,
-            body=client_body_map.get(status, ""),
-            channel="orders",
-            deep_link=f"app://client/shipment/{shipment.id}",
-        ),
-        **extra_common,
-    }
-    _send_to_user(
-        shipment.client_id,
-        client_data,
-        ttl="86400s",
-        collapse_key=f"shipment_{shipment.id}",
-    )
+        client_data = {
+            **_base_data(
+                app="client",
+                type_="shipment_status",
+                title=title,
+                body=client_body_map.get(status, ""),
+                channel="orders",
+                deep_link=f"app://client/shipment/{shipment.id}",
+            ),
+            **extra_common,
+        }
+        _send_to_user(
+            shipment.client_id,
+            client_data,
+            ttl="86400s",
+            collapse_key=f"shipment_{shipment.id}",
+        )
 
-    carrier_data = {
-        **_base_data(
-            app="carrier",
-            type_="shipment_status",
-            title=title,
-            body=carrier_body_map.get(status, ""),
-            channel="orders",
-            deep_link=f"app://carrier/shipment/{shipment.id}",
-        ),
-        **extra_common,
-    }
-    _send_to_user(
-        shipment.carrier_id,
-        carrier_data,
-        ttl="86400s",
-        collapse_key=f"shipment_{shipment.id}",
-    )
+        carrier_data = {
+            **_base_data(
+                app="carrier",
+                type_="shipment_status",
+                title=title,
+                body=carrier_body_map.get(status, ""),
+                channel="orders",
+                deep_link=f"app://carrier/shipment/{shipment.id}",
+            ),
+            **extra_common,
+        }
+        _send_to_user(
+            shipment.carrier_id,
+            carrier_data,
+            ttl="86400s",
+            collapse_key=f"shipment_{shipment.id}",
+        )
+    except Exception as exc:
+        logger.exception("notify_shipment_status_error shipment=%s: %s", getattr(shipment, "id", None), exc)
 
 
 def notify_shipment_canceled(shipment, *, reason: str = "") -> None:
