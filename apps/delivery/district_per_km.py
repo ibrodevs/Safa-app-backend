@@ -48,16 +48,21 @@ class DistrictPerKmAdminForm(forms.ModelForm):
         if "is_active" in self.fields:
             self.fields["is_active"].label = "Тариф активен"
 
+        if "min_fare" in self.fields:
+            self.fields["min_fare"].label = "Минимальная стоимость, сом"
+            self.fields["min_fare"].help_text = "Необязательно"
+            self.fields["min_fare"].required = False
+
 
 def _district_per_km_fieldsets(self, request, obj=None):
     return (
         (
             "Тариф района",
             {
-                "fields": ("name", "per_km_price", "is_active"),
+                "fields": ("name", "per_km_price", "min_fare", "is_active"),
                 "description": (
                     "Выберите район с карты и укажите стоимость 1 км в сомах. "
-                    "Цена заказа рассчитывается по длине маршрута."
+                    "При необходимости задайте минимальную стоимость заказа."
                 ),
             },
         ),
@@ -87,7 +92,6 @@ def enable_district_per_km_admin() -> None:
         # сохранении тарифа очищаем их, чтобы источником цены был только сом/км.
         obj.fixed_price = None
         obj.base_price = None
-        obj.min_fare = None
         return current_save_model(self, request, obj, form, change)
 
     save_model._safa_per_km_only = True
@@ -105,6 +109,8 @@ def per_km_tariff_price(
 
     distance = Decimal(str(distance_km or 0))
     cost = Decimal(tariff.per_km_price) * distance
+    if tariff.min_fare is not None:
+        cost = max(cost, Decimal(tariff.min_fare))
     rounded = int(cost.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     # Finik не принимает нулевые платежи. Даже совпадающие/очень близкие точки
     # должны образовывать положительную стоимость заказа.

@@ -1,0 +1,11 @@
+{% extends "admin_panel/base.html" %}
+{% block content %}
+<header class="page-header"><div><p class="eyebrow">Доставка</p><h1>Глобальные цены</h1><p>Этот тариф применяется к маршрутам в местах, где нет активного района.</p></div></header>
+<section class="card">
+  <div class="card-header"><div><h2>Тариф вне районов</h2><p>Базовая стоимость плюс цена за каждый километр, но не меньше указанной минимальной стоимости.</p></div></div>
+  <form class="card-body" method="post" action="{% url 'admin_panel:global_tariff_save' %}">{% csrf_token %}
+    <div class="form-grid">{% for field in global_form %}<div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}</div>
+    <div class="action-row" style="margin-top:18px"><button class="btn btn-primary" type="submit">Сохранить глобальные цены</button></div>
+  </form>
+</section>
+{% endblock %}

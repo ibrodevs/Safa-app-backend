@@ -50,6 +50,7 @@ class PanelAccessTests(TestCase):
             reverse("admin_panel:passages"),
             reverse("admin_panel:containers"),
             reverse("admin_panel:tariffs"),
+            reverse("admin_panel:global_prices"),
             reverse("admin_panel:finance"),
             reverse("admin_panel:amanat"),
             reverse("admin_panel:amanat_create"),
@@ -151,11 +152,11 @@ class PanelWorkflowTests(TestCase):
         map_response = self.client.get(
             reverse("admin_panel:map_editor", args=(bazar.pk,))
         )
-        self.assertContains(map_response, 'id="market-map-undo"')
-        self.assertContains(map_response, "Ctrl+Z")
-        self.assertContains(map_response, "Что нужно создать?")
-        self.assertNotContains(map_response, 'id="market-feature-list"')
-        self.assertContains(map_response, 'data-container-size-step="width"')
+        self.assertContains(map_response, 'id="district-map-select"')
+        self.assertContains(map_response, "Карта районов")
+        self.assertContains(map_response, "Yandex Maps")
+        self.assertNotContains(map_response, "Контейнер")
+        self.assertNotContains(map_response, "Проход")
 
     def test_staff_can_manage_delivery_catalogs(self):
         district_response = self.client.post(

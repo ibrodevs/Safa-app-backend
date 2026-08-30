@@ -45,10 +45,11 @@ class GlobalTariffForm(StyledModelForm):
 class DistrictTariffForm(StyledModelForm):
     class Meta:
         model = DeliveryDistrict
-        fields = ("name", "per_km_price", "is_active")
+        fields = ("name", "per_km_price", "min_fare", "is_active")
         labels = {
             "name": "Район с карты",
             "per_km_price": "Стоимость за км, сом",
+            "min_fare": "Минимальная стоимость, сом",
             "is_active": "Тариф активен",
         }
 
@@ -64,12 +65,13 @@ class DistrictTariffForm(StyledModelForm):
             widget=forms.Select(attrs={"class": "select"}),
         )
         self.fields["per_km_price"].required = True
+        self.fields["min_fare"].required = False
+        self.fields["min_fare"].help_text = "Необязательно"
 
     def save(self, commit=True):
         instance = super().save(commit=False)
         instance.fixed_price = None
         instance.base_price = None
-        instance.min_fare = None
         if commit:
             instance.save()
         return instance
@@ -115,22 +117,27 @@ class BazarPanelForm(StyledModelForm):
 class DistrictPanelForm(StyledModelForm):
     class Meta:
         model = DeliveryDistrict
-        fields = (
-            "name",
-            "fixed_price",
-            "base_price",
-            "per_km_price",
-            "min_fare",
-            "is_active",
-        )
+        fields = ("name", "per_km_price", "min_fare", "is_active")
         labels = {
             "name": "Название района",
-            "fixed_price": "Фиксированная цена",
-            "base_price": "Базовая стоимость",
-            "per_km_price": "Стоимость за км",
-            "min_fare": "Минимальная стоимость",
+            "per_km_price": "Стоимость за км, сом",
+            "min_fare": "Минимальная стоимость, сом",
             "is_active": "Район активен",
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["per_km_price"].required = True
+        self.fields["min_fare"].required = False
+        self.fields["min_fare"].help_text = "Необязательно"
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.fixed_price = None
+        instance.base_price = None
+        if commit:
+            instance.save()
+        return instance
 
 
 class PassagePanelForm(StyledModelForm):

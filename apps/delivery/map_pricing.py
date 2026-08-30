@@ -211,6 +211,34 @@ class MapPricingResolver:
                     return tariff
         return None
 
+    def district_tariff_for_point(
+        self,
+        lat: float,
+        lon: float,
+    ) -> DeliveryDistrict | None:
+        """Find an active tariff directly from published district polygons.
+
+        Districts are global delivery zones now, so a legacy bazar boundary is
+        not required for price resolution.
+        """
+
+        for revision in self.revisions_by_bazar_id.values():
+            for feature in self._features(revision):
+                props = feature.get("properties") or {}
+                if props.get("kind") != "district" or not self._contains(feature, lat, lon):
+                    continue
+                raw_tariff_id = props.get("district_tariff_id")
+                try:
+                    tariff_id = int(raw_tariff_id) if raw_tariff_id not in (None, "") else None
+                except (TypeError, ValueError):
+                    tariff_id = None
+                if tariff_id is not None and tariff_id in self.tariffs_by_id:
+                    return self.tariffs_by_id[tariff_id]
+                name = str(props.get("name") or "").strip().casefold()
+                if name and name in self.tariffs_by_name:
+                    return self.tariffs_by_name[name]
+        return None
+
     def local_price(
         self,
         *,
@@ -219,12 +247,19 @@ class MapPricingResolver:
         preferred_bazar: Bazar | None = None,
     ) -> int | None:
         bazar = self.find_bazar(lat, lon, preferred_bazar=preferred_bazar)
+        # Legacy fixed prices remain compatible for already-published market
+        # maps, but they are no longer configurable in the custom panel.
+        if bazar is not None and bazar.fixed_price is not None:
+            return int(bazar.fixed_price)
+
+        district_tariff = self.district_tariff_for_point(lat, lon)
+        if district_tariff is not None:
+            price = tariff_price(district_tariff, self.distance_km)
+            if price is not None:
+                return price
+
         if bazar is None:
             return None
-
-        # Явная цена конкретного базара всегда сильнее цены района.
-        if bazar.fixed_price is not None:
-            return int(bazar.fixed_price)
 
         district_tariff = self._district_tariff_for_point(bazar, lat, lon)
         if district_tariff is not None:
@@ -275,28 +310,28 @@ def estimate_route_fare(stops: Iterable[Any], distance_km: Any) -> int:
 
     distance = Decimal(str(distance_km or 0))
     resolver = MapPricingResolver(distance)
-    local_prices: list[int] = []
+    prices: list[int] = []
     has_stops = False
+    fallback_price = global_route_price(distance)
 
     for stop in stops:
         has_stops = True
         lat, lon, preferred_bazar = _stop_values(stop)
         if lat is None or lon is None:
-            return global_route_price(distance)
+            prices.append(fallback_price)
+            continue
         price = resolver.local_price(
             lat=lat,
             lon=lon,
             preferred_bazar=preferred_bazar,
         )
-        if price is None:
-            return global_route_price(distance)
-        local_prices.append(price)
+        prices.append(price if price is not None else fallback_price)
 
-    if has_stops and local_prices:
-        # Сохраняем действующее правило для маршрута через несколько зон:
-        # применяется самый высокий тариф среди точек маршрута.
-        return max(local_prices)
-    return global_route_price(distance)
+    if has_stops and prices:
+        # Для маршрута через несколько районов или через район и внешнюю
+        # территорию применяется самый высокий из подходящих тарифов.
+        return max(prices)
+    return fallback_price
 
 
 def point_inside_published_or_legacy_bazar(lat: Any, lon: Any) -> bool:

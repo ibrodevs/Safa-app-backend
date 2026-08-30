@@ -1,83 +1,49 @@
 {% extends "admin_panel/base.html" %}{% load static %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'admin_panel/css/map.css' %}?v=20260825-10">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'admin_panel/css/map.css' %}?v=20260830-1">{% endblock %}
 {% block page_class %}page--map{% endblock %}
 {% block content %}
-<div id="market-map-editor" data-save-url="{{ save_url }}" data-publish-url="{{ publish_url }}" data-bazar-id="{{ bazar.id }}" data-bazar-name="{{ bazar.name }}" data-focus-kind="">
-  <header class="market-map-header">
-    <div class="market-map-heading">
-      <span class="market-map-eyebrow">Редактор территории</span>
-      <div class="map-title-row"><select class="map-bazar-select" id="map-bazar-select" aria-label="Выберите базар">{% for item in all_bazars %}<option value="{% url 'admin_panel:map_editor' item.pk %}" {% if item.pk == bazar.pk %}selected{% endif %}>{{ item.name }}</option>{% endfor %}</select><span class="badge badge--warning">Черновик · v{{ revision.version }}</span></div>
-      <p id="market-map-dirty-label" hidden>● Несохранённые изменения</p>
-    </div>
-    <div class="market-map-actions">
-      <div class="map-history" aria-label="История изменений"><button class="button map-icon-button" type="button" id="market-map-undo" disabled title="Отменить · Ctrl+Z" aria-label="Отменить">↶</button><button class="button map-icon-button" type="button" id="market-map-redo" disabled title="Повторить · Ctrl+Shift+Z" aria-label="Повторить">↷</button></div>
-      <a class="button" href="{% url 'admin_panel:bazar_edit' bazar.pk %}">Настройки базара</a><a class="button" href="{% url 'admin_panel:map_list' %}">Все карты</a>
-      <form method="post" data-map-discard action="{% url 'admin_panel:map_delete' bazar.pk %}" data-confirm="Удалить карту базара «{{ bazar.name }}»? Вместе с ней будут удалены районы, проходы и контейнеры этого базара. Сам базар останется.">{% csrf_token %}<button type="submit" class="button danger">Удалить карту</button></form>
-      <button type="button" class="button" id="market-map-save">Сохранить</button><button type="button" class="button default" id="market-map-publish">Опубликовать</button>
-    </div>
-  </header>
+<header class="page-header district-map-heading">
+  <div><p class="eyebrow">Доставка</p><h1>Карта районов</h1><p>Выберите район, нарисуйте или измените его границы и сохраните карту.</p></div>
+  <div class="district-map-save-state"><span class="badge badge--warning" id="district-map-version">Версия {{ revision.version }}</span><span id="district-map-dirty" hidden>● Есть изменения</span></div>
+</header>
 
-  <aside class="market-map-create-panel" aria-label="Слои и объекты">
-    <div class="map-panel-title"><div><span>Объекты карты</span><small>Создание и навигация</small></div><button type="button" class="map-add-button" id="map-add-toggle">+ Добавить</button></div>
-    <button type="button" class="map-select-tool active" data-map-tool="select"><span>↖</span><div><strong>Выбор и редактирование</strong><small>Перемещайте точки и границы</small></div></button>
-    <div class="market-map-create-tools" id="map-create-menu" hidden>
-      <p>Что нужно создать?</p>
-      <button type="button" class="market-kind-section market-tool-bazar" data-map-tool="draw" data-map-kind="bazar"><span class="map-kind-dot map-kind-dot--bazar"></span><div><strong>Граница базара</strong><small>Нарисуйте внешний контур</small></div><span>→</span></button>
-      <button type="button" class="market-kind-section market-tool-district" data-map-tool="draw" data-map-kind="district"><span class="map-kind-dot map-kind-dot--district"></span><div><strong>Район</strong><small>Создайте тарифную область</small></div><span>→</span></button>
-      <button type="button" class="market-kind-section market-tool-passage" data-map-tool="draw" data-map-kind="passage"><span class="map-kind-dot map-kind-dot--passage"></span><div><strong>Проход</strong><small>Проведите линию движения</small></div><span>→</span></button>
-      <button type="button" class="market-kind-section market-tool-container" data-map-tool="draw" data-map-kind="container"><span class="map-kind-dot map-kind-dot--container"></span><div><strong>Контейнер</strong><small>Поставьте точку на карту</small></div><span>→</span></button>
-    </div>
-    <div class="market-map-group-card">
-      <div class="map-panel-title"><div><span>Группы</span><small id="market-group-counter">Нажмите «Выбрать элементы» и отметьте объекты</small></div></div>
-      <div class="market-map-group-actions">
-        <button type="button" class="button map-group-pick" id="market-group-pick">Выбрать элементы</button>
-        <button type="button" class="button" id="market-group-create" disabled>Группировать</button>
-        <button type="button" class="button default" id="market-group-duplicate" disabled>Дублировать группу</button>
-        <select id="market-group-direction" aria-label="Куда поставить копию группы"><option value="right">Справа</option><option value="left">Слева</option><option value="down">Снизу</option><option value="up">Сверху</option></select>
-        <button type="button" class="button" id="market-group-ungroup" disabled>Разгруппировать</button>
-        <button type="button" class="button" id="market-group-clear">Снять выделение</button>
+<div id="district-map-editor" class="district-map-layout" data-publish-url="{{ publish_url }}">
+  <aside class="card district-map-panel">
+    <div class="card-body district-map-controls">
+      <div class="form-field">
+        <label for="district-map-select">Район</label>
+        <select class="select" id="district-map-select">
+          <option value="">Выберите район</option>
+          {% for district in districts %}<option value="{{ district.id }}">{{ district.name }}{% if not district.is_active %} · отключён{% endif %}</option>{% endfor %}
+        </select>
       </div>
-      <p class="map-panel-note">Первый выбранный объект — главный: его проход, цвет, размер и номер расходятся на всю группу, номера идут подряд. Группа копируется и двигается целиком.</p>
+      {% if districts %}
+        <button class="btn btn-primary" type="button" id="district-map-draw" disabled>Нарисовать границы</button>
+        <button class="btn btn-secondary" type="button" id="district-map-edit" disabled>Редактировать границы</button>
+        <button class="btn btn-danger-outline" type="button" id="district-map-delete" disabled>Удалить границы</button>
+        <div class="district-map-divider"></div>
+        <button class="btn btn-primary district-map-save" type="button" id="district-map-save">Сохранить</button>
+      {% else %}
+        <p class="district-map-note">Сначала создайте район и задайте его тариф.</p>
+        <a class="btn btn-primary" href="{% url 'admin_panel:district_create' %}">Создать район</a>
+      {% endif %}
+      <p class="district-map-note">Районы не могут пересекаться или находиться друг внутри друга. После сохранения границы сразу публикуются для приложения.</p>
+      <div id="district-map-status" class="district-map-status" role="status" aria-live="polite">Загрузка Yandex Maps…</div>
     </div>
-    <div class="map-mode-card"><strong>Текущий режим</strong><p id="market-map-mode-help">Выберите объект прямо на карте или нажмите «Добавить».</p></div>
-    <p class="map-panel-note">Границы, районы, проходы и контейнеры больше не дублируются длинным списком слева — нажмите нужный объект на карте.</p>
   </aside>
 
-  <main class="market-map-main">
-    {% if not google_maps_api_key %}<div class="market-map-key-warning" role="alert"><strong>Карта недоступна.</strong> Добавьте Google Maps API key.</div>{% endif %}
-    <section class="market-map-stage-card">
-      <div class="market-map-stage-header"><div><span class="market-map-stage-step">Рабочая область</span><strong>Клик — точка · двойной клик — завершить</strong></div><span class="market-map-stage-hint">Ctrl+Z — отменить</span></div>
-      <div class="market-map-stage"><div id="market-map-canvas" aria-label="Редактор карты базара"></div><div id="market-map-status" role="status" aria-live="polite">Загрузка карты…</div></div>
-      <div class="market-map-draw-actions" hidden><span>Рисование объекта</span><button type="button" class="button default" id="market-map-finish">Завершить</button><button type="button" class="button" id="market-map-cancel">Отменить</button></div>
-    </section>
-  </main>
-
-  <aside class="market-map-properties">
-    <section class="market-map-properties-card">
-      <div class="market-map-properties-header"><div><span class="market-map-eyebrow">Инспектор</span><h2>Свойства объекта</h2><p>Выберите объект слева или на карте.</p></div></div>
-      <div class="market-map-quick-actions" data-kind-scope="container"><button type="button" class="button default" id="market-feature-duplicate" title="Дублировать · Ctrl+D">Дублировать</button><select id="market-feature-duplicate-direction" aria-label="Куда поставить копию"><option value="right">Справа</option><option value="left">Слева</option><option value="down">Снизу</option><option value="up">Сверху</option></select></div>
-      <div class="form-row map-readonly-field"><label for="market-feature-kind">Тип объекта</label><select id="market-feature-kind" disabled><option value="bazar">Граница базара</option><option value="district">Район</option><option value="passage">Проход</option><option value="container">Контейнер</option></select></div>
-      <div class="form-row" data-kind-scope="not-container"><label for="market-feature-name">Название</label><input id="market-feature-name" type="text" maxlength="160" placeholder="Например: Проход 7"></div>
-      <div class="form-row" data-kind-scope="passage" hidden><label for="market-feature-label-color">Цвет подписи прохода</label><input id="market-feature-label-color" type="color" value="#d97706"><small>Цвет номера прохода — отдельно от цвета самой линии.</small></div>
-      <div class="form-row" data-kind-scope="passage" hidden><p class="map-inline-note" id="market-feature-district-note"></p></div>
-      <div class="form-row market-map-district-tariff-help" data-kind-scope="district" hidden><p class="map-inline-note">Цена района настраивается в разделе «Тарифы» после сохранения карты.</p></div>
-      <div class="form-row" data-kind-scope="container"><label for="market-feature-number">Номер контейнера</label><input id="market-feature-number" type="text" maxlength="50" placeholder="Например: A-101"></div>
-      <div class="form-row" data-kind-scope="container"><label for="market-feature-passage">Проход</label><select id="market-feature-passage"><option value="">Выберите проход</option>{% for passage in passages %}<option value="{{ passage.id }}">{{ passage.number }}{% if passage.district %} · {{ passage.district }}{% endif %}</option>{% endfor %}</select><small>Новый проход появляется здесь сразу — сохранять карту заранее не нужно.</small></div>
-      <div class="market-map-grid-fields" data-kind-scope="container"><div class="form-row"><label for="market-feature-width-m">Ширина, м</label><div class="map-size-stepper"><button type="button" data-container-size-step="width" data-delta="-0.5" aria-label="Уменьшить ширину">−</button><input id="market-feature-width-m" type="number" min="0.2" max="100" step="0.1" value="4"><button type="button" data-container-size-step="width" data-delta="0.5" aria-label="Увеличить ширину">+</button></div></div><div class="form-row"><label for="market-feature-height-m">Длина, м</label><div class="map-size-stepper"><button type="button" data-container-size-step="height" data-delta="-0.5" aria-label="Уменьшить длину">−</button><input id="market-feature-height-m" type="number" min="0.2" max="100" step="0.1" value="2.5"><button type="button" data-container-size-step="height" data-delta="0.5" aria-label="Увеличить длину">+</button></div></div></div>
-      <div class="form-row map-rotation-row" data-kind-scope="container"><label for="market-feature-rotation-deg">Поворот, °</label><div class="map-size-stepper"><button type="button" data-container-rotate-step="-15" aria-label="Повернуть влево на 15 градусов">↶</button><input id="market-feature-rotation-deg" type="number" min="0" max="359.9" step="1" value="0"><button type="button" data-container-rotate-step="15" aria-label="Повернуть вправо на 15 градусов">↷</button></div><div class="map-rotation-presets"><button type="button" data-container-rotate-passage>По проходу</button><button type="button" data-container-rotate-set="0">0°</button><button type="button" data-container-rotate-set="90">90°</button><button type="button" data-container-rotate-set="180">180°</button><button type="button" data-container-rotate-set="270">270°</button></div><small>Любой угол — тяните круглый маркер ↻ над контейнером, Shift держит шаг 15°.</small></div>
-      <details class="market-map-advanced-fields"><summary>Дополнительные настройки</summary>
-        <div class="form-row" data-kind-scope="container"><label for="market-feature-title">Примечание</label><input id="market-feature-title" type="text" maxlength="150"></div>
-        <div class="form-row" data-kind-scope="advanced-container"><label for="market-feature-container">Связать с существующим</label><select id="market-feature-container"><option value="">Новый контейнер</option>{% for container in containers %}<option value="{{ container.id }}" data-passage-id="{{ container.passage_id }}" data-number="{{ container.number }}">{{ container.number }}{% if container.title %} — {{ container.title }}{% endif %} · {{ container.passage__number }} проход{% if container.passage__district %} · {{ container.passage__district }}{% endif %}</option>{% endfor %}</select></div>
-        <div class="market-map-grid-fields"><div class="form-row" data-kind-scope="not-container"><label for="market-feature-min-zoom">Масштаб</label><input id="market-feature-min-zoom" type="number" min="0" max="22" value="14"></div><div class="form-row" data-kind-scope="not-container"><label for="market-feature-stroke-width">Толщина</label><input id="market-feature-stroke-width" type="number" min="1" max="12" value="2"></div><div class="form-row"><label for="market-feature-stroke">Линия</label><input id="market-feature-stroke" type="color" value="#e47f26"></div><div class="form-row"><label for="market-feature-fill">Заливка</label><input id="market-feature-fill" type="color" value="#ff8656"></div></div>
-        <div class="form-row" data-kind-scope="container"><button type="button" class="button" id="market-feature-color-all">Применить цвет ко всем контейнерам</button><small>Перекрашивает все контейнеры этой карты — по одному менять не нужно.</small></div>
-      </details>
-      <div class="market-map-property-actions"><button type="button" class="button default" id="market-feature-apply">Применить изменения</button><button type="button" class="button market-map-delete-button" id="market-feature-delete">Удалить объект</button></div>
-      <div class="market-map-save-help"><strong>Безопасное редактирование</strong><p>Все изменения остаются в черновике. В приложение они попадут только после публикации.</p></div>
-    </section>
-  </aside>
+  <section class="card district-map-stage">
+    {% if not yandex_maps_api_key %}
+      <div class="district-map-key-warning" role="alert"><strong>Нужен ключ Yandex Maps.</strong><span>Добавьте YANDEX_MAPS_BROWSER_API_KEY в .env backend.</span></div>
+    {% endif %}
+    <div id="district-map-canvas" aria-label="Редактор границ районов"></div>
+  </section>
 </div>
 
-<div id="market-map-error-modal" class="market-map-modal" hidden aria-hidden="true"><div class="market-map-modal-backdrop" data-market-map-error-close></div><div class="market-map-modal-dialog" role="alertdialog" aria-modal="true" aria-labelledby="market-map-error-title"><div class="market-map-modal-icon">!</div><div class="market-map-modal-content"><h2 id="market-map-error-title">Не удалось сохранить</h2><div id="market-map-error-message" class="market-map-modal-message"></div><p class="market-map-modal-hint">Исправьте отмеченную проблему. Объекты останутся на карте.</p></div><div class="market-map-modal-actions"><button type="button" class="button default" id="market-map-error-close">Понятно</button></div></div></div>
-{{ initial_geojson|json_script:"market-map-initial-geojson" }}{{ context_geojson|json_script:"market-map-context-geojson" }}{{ passages|json_script:"market-map-passages" }}{{ containers|json_script:"market-map-containers" }}
+{{ initial_geojson|json_script:"district-map-initial-geojson" }}
+{{ districts|json_script:"district-map-catalog" }}
 {% endblock %}
-{% block extra_js %}<script src="{% static 'delivery/admin/market_map_editor_selection_v9.js' %}?v=20260826-2"></script><script src="{% static 'delivery/admin/market_map_editor_ui.js' %}?v=20260825-10"></script><script src="{% static 'delivery/admin/market_map_editor_perf.js' %}?v=20260825-10"></script><script src="{% static 'admin_panel/js/map_dirty.js' %}?v=20260825-10"></script>{% if google_maps_api_key %}<script async defer src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key|urlencode }}&callback=initMarketMapEditor&v=weekly"></script>{% endif %}{% endblock %}
+{% block extra_js %}
+<script src="{% static 'admin_panel/js/district_map.js' %}?v=20260830-1" defer></script>
+{% if yandex_maps_api_key %}<script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU&amp;apikey={{ yandex_maps_api_key|urlencode }}" defer></script>{% endif %}
+{% endblock %}

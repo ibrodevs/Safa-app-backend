@@ -161,6 +161,63 @@ def test_intersecting_districts_are_rejected():
         validate_feature_collection({"type": "FeatureCollection", "features": [polygon_feature(1), first, second]})
 
 
+def test_district_only_map_rejects_overlapping_zones():
+    first = district_feature("Север")
+    second = district_feature("Юг", [[
+        [74.62, 42.935],
+        [74.64, 42.935],
+        [74.64, 42.915],
+        [74.62, 42.915],
+        [74.62, 42.935],
+    ]])
+
+    with pytest.raises(ValidationError, match="пересекаются"):
+        validate_feature_collection({"type": "FeatureCollection", "features": [first, second]})
+
+
+def test_district_only_map_is_valid_without_legacy_bazar_boundary():
+    result = validate_feature_collection({
+        "type": "FeatureCollection",
+        "features": [district_feature("Центр")],
+    })
+
+    assert [feature["properties"]["kind"] for feature in result["features"]] == ["district"]
+
+
+@pytest.mark.django_db
+def test_district_only_map_can_be_published():
+    bazar = Bazar.objects.create(name="Служебная карта районов")
+    revision = MarketMapRevision.objects.create(
+        bazar=bazar,
+        version=1,
+        geojson={"type": "FeatureCollection", "features": [district_feature("Центр")]},
+    )
+
+    published = revision.publish()
+
+    assert published.status == MarketMapRevision.Status.PUBLISHED
+
+
+@pytest.mark.django_db
+def test_district_cannot_overlap_district_from_another_published_map():
+    published_bazar = Bazar.objects.create(name="Первая карта")
+    MarketMapRevision.objects.create(
+        bazar=published_bazar,
+        version=1,
+        status=MarketMapRevision.Status.PUBLISHED,
+        geojson={"type": "FeatureCollection", "features": [district_feature("Север")]},
+    )
+    draft_bazar = Bazar.objects.create(name="Вторая карта")
+    draft = MarketMapRevision(
+        bazar=draft_bazar,
+        version=1,
+        geojson={"type": "FeatureCollection", "features": [district_feature("Юг")]},
+    )
+
+    with pytest.raises(ValidationError, match="на другой карте"):
+        draft.full_clean()
+
+
 @pytest.mark.django_db
 def test_publish_syncs_container_and_returns_only_published_map():
     user = User.objects.create_user(

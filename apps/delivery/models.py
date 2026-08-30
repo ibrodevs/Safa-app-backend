@@ -33,6 +33,7 @@ class DeliveryDistrict(models.Model):
         decimal_places=2,
         null=True,
         blank=True,
+        validators=[MinValueValidator(0)],
         verbose_name="Стоимость за км в районе",
     )
     min_fare = models.DecimalField(
@@ -40,6 +41,7 @@ class DeliveryDistrict(models.Model):
         decimal_places=2,
         null=True,
         blank=True,
+        validators=[MinValueValidator(0)],
         verbose_name="Минималка района",
     )
     is_active = models.BooleanField(default=True, verbose_name="Активен")
@@ -338,9 +340,27 @@ class AmanatDocument(models.Model):
 
 class GlobalDeliveryConfig(models.Model):
     """Глобальные настройки доставки (Одиночка)"""
-    base_price = models.DecimalField(max_digits=10, decimal_places=2, default=50, verbose_name="Базовая стоимость")
-    per_km_price = models.DecimalField(max_digits=10, decimal_places=2, default=20, verbose_name="Стоимость за км")
-    min_fare = models.DecimalField(max_digits=10, decimal_places=2, default=50, verbose_name="Минималка")
+    base_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=50,
+        validators=[MinValueValidator(0)],
+        verbose_name="Базовая стоимость",
+    )
+    per_km_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=20,
+        validators=[MinValueValidator(0)],
+        verbose_name="Стоимость за км",
+    )
+    min_fare = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=50,
+        validators=[MinValueValidator(0)],
+        verbose_name="Минималка",
+    )
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Изменено")
 
     class Meta:
@@ -738,4 +758,3 @@ class FAQItem(models.Model):
 
     def __str__(self) -> str:
         return self.question
-

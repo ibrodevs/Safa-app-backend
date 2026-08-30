@@ -121,7 +121,7 @@ class MapCleanupTests(TestCase):
             reverse("admin_panel:map_delete", args=(self.bazar.pk,))
         )
 
-        self.assertRedirects(response, reverse("admin_panel:map_list"))
+        self.assertRedirects(response, reverse("admin_panel:districts"))
         self.assertFalse(MarketMapRevision.objects.filter(bazar=self.bazar).exists())
         self.assertFalse(Container.objects.filter(pk=self.container.pk).exists())
         self.assertTrue(Bazar.objects.filter(pk=self.bazar.pk).exists())

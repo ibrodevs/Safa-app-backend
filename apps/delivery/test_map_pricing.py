@@ -6,7 +6,7 @@ from apps.delivery import views
 from apps.delivery.district_per_km import per_km_tariff_price
 from apps.delivery.geo import polyline_len_km
 from apps.delivery.map_models import MarketMapRevision
-from apps.delivery.map_pricing import MapPricingResolver
+from apps.delivery.map_pricing import MapPricingResolver, estimate_route_fare
 from apps.delivery.models import Bazar, DeliveryDistrict, Shipment, ShipmentStop
 from apps.delivery.specialists import point_inside_bazar
 from apps.users.models import User
@@ -53,6 +53,60 @@ def _publish_map(bazar, districts):
 
 @pytest.mark.django_db
 class TestPublishedMapPricing:
+    def test_district_only_map_resolves_tariff_without_bazar_boundary(self):
+        district = DeliveryDistrict.objects.create(
+            name="Глобальная зона",
+            per_km_price=Decimal("70"),
+        )
+        bazar = Bazar.objects.create(name="Служебная карта")
+        MarketMapRevision.objects.create(
+            bazar=bazar,
+            version=1,
+            status=MarketMapRevision.Status.PUBLISHED,
+            geojson={
+                "type": "FeatureCollection",
+                "features": [{
+                    "type": "Feature",
+                    "id": "district-global",
+                    "properties": {
+                        "kind": "district",
+                        "name": district.name,
+                        "district_tariff_id": district.id,
+                    },
+                    "geometry": _polygon(74.52, 42.82, 74.68, 42.95),
+                }],
+            },
+        )
+
+        resolver = MapPricingResolver(Decimal("2"))
+        assert resolver.local_price(lat=42.88, lon=74.60) == 140
+
+    def test_mixed_route_compares_district_and_global_fallback(self):
+        district = DeliveryDistrict.objects.create(
+            name="Дорогая зона",
+            per_km_price=Decimal("100"),
+        )
+        bazar = Bazar.objects.create(name="Карта смешанного маршрута")
+        MarketMapRevision.objects.create(
+            bazar=bazar,
+            version=1,
+            status=MarketMapRevision.Status.PUBLISHED,
+            geojson={
+                "type": "FeatureCollection",
+                "features": [{
+                    "type": "Feature",
+                    "id": "district-mixed",
+                    "properties": {"kind": "district", "name": district.name},
+                    "geometry": _polygon(74.52, 42.82, 74.68, 42.95),
+                }],
+            },
+        )
+
+        assert estimate_route_fare(
+            [{"lat": 42.88, "lon": 74.60}, {"lat": 43.20, "lon": 75.00}],
+            Decimal("2"),
+        ) == 200
+
     def test_different_drawn_districts_use_their_own_price_per_km(self):
         west = DeliveryDistrict.objects.create(
             name="Западный",
@@ -86,7 +140,7 @@ class TestPublishedMapPricing:
         resolver = MapPricingResolver(Decimal("2"))
         assert resolver.local_price(lat=42.88, lon=74.60) == 190
 
-    def test_district_tariff_ignores_all_legacy_price_fields(self):
+    def test_district_tariff_uses_optional_minimum_and_ignores_other_legacy_fields(self):
         tariff = DeliveryDistrict.objects.create(
             name="Только километр",
             fixed_price=999,
@@ -95,8 +149,8 @@ class TestPublishedMapPricing:
             min_fare=Decimal("120"),
         )
 
-        assert per_km_tariff_price(tariff, Decimal("1")) == 10
-        assert per_km_tariff_price(tariff, Decimal("5")) == 50
+        assert per_km_tariff_price(tariff, Decimal("1")) == 120
+        assert per_km_tariff_price(tariff, Decimal("20")) == 200
 
     def test_published_boundary_is_used_even_without_legacy_rectangle(self):
         bazar = Bazar.objects.create(name="Только карта")

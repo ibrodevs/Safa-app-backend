@@ -50,8 +50,8 @@ def _district_feature(name: str):
     }
 
 
-def test_district_add_form_selects_district_and_only_asks_price_per_km():
-    assert _field_names(DeliveryDistrict) == ["name", "per_km_price", "is_active"]
+def test_district_add_form_selects_district_and_asks_optional_minimum():
+    assert _field_names(DeliveryDistrict) == ["name", "per_km_price", "min_fare", "is_active"]
 
     bazar = Bazar.objects.create(name="Дордой")
     MarketMapRevision.objects.create(
@@ -62,7 +62,7 @@ def test_district_add_form_selects_district_and_only_asks_price_per_km():
     )
 
     form = _build_add_form(DeliveryDistrict)
-    assert list(form.fields) == ["name", "per_km_price", "is_active"]
+    assert list(form.fields) == ["name", "per_km_price", "min_fare", "is_active"]
     assert form.fields["name"].widget.__class__.__name__ == "Select"
     assert form.fields["name"].label == "Район с карты"
     assert ("Северный район", "Северный район") in list(form.fields["name"].choices)
@@ -70,7 +70,7 @@ def test_district_add_form_selects_district_and_only_asks_price_per_km():
     assert form.fields["per_km_price"].required is True
     assert "fixed_price" not in form.fields
     assert "base_price" not in form.fields
-    assert "min_fare" not in form.fields
+    assert form.fields["min_fare"].required is False
 
 
 def test_district_with_existing_tariff_is_not_offered_for_duplicate_creation():
@@ -103,7 +103,7 @@ def test_saving_district_tariff_clears_old_price_modes():
     assert district.per_km_price == Decimal("75")
     assert district.fixed_price is None
     assert district.base_price is None
-    assert district.min_fare is None
+    assert district.min_fare == Decimal("120")
 
 
 def test_bazar_add_form_hides_legacy_coordinates_and_prices():

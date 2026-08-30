@@ -490,8 +490,6 @@ def validate_feature_collection(value: Any) -> dict[str, Any]:
 
     if len(bazar_geometries) > 1:
         raise ValidationError("В одной версии карты допускается только одна граница базара")
-    if district_features and not bazar_geometries:
-        raise ValidationError("Сначала создайте границу базара, потом районы внутри неё")
     if bazar_geometries:
         boundary = bazar_geometries[0]
         for feature in district_features:
@@ -500,12 +498,6 @@ def validate_feature_collection(value: Any) -> dict[str, Any]:
                 raise ValidationError(
                     f"Район '{feature['properties']['name']}' выходит за границу базара"
                 )
-        for index, feature in enumerate(district_features):
-            for other in district_features[index + 1 :]:
-                if geometries_intersect(feature["geometry"], other["geometry"]):
-                    raise ValidationError(
-                        f"Районы '{feature['properties']['name']}' и '{other['properties']['name']}' пересекаются"
-                    )
         for feature in passage_features:
             points = list(_iter_points(feature["geometry"]["coordinates"]))
             if not points or any(not point_in_geometry(point, boundary) for point in points):
@@ -517,6 +509,16 @@ def validate_feature_collection(value: Any) -> dict[str, Any]:
             if not points or any(not point_in_geometry(point, boundary) for point in points):
                 raise ValidationError(
                     f"Контейнер '{feature['properties']['name']}' находится за границей базара"
+                )
+
+    # Районы являются самостоятельными тарифными зонами. Они не могут
+    # пересекаться или вкладываться друг в друга даже на карте без старой
+    # сущности «граница базара».
+    for index, feature in enumerate(district_features):
+        for other in district_features[index + 1 :]:
+            if geometries_intersect(feature["geometry"], other["geometry"]):
+                raise ValidationError(
+                    f"Районы '{feature['properties']['name']}' и '{other['properties']['name']}' пересекаются"
                 )
 
     return {

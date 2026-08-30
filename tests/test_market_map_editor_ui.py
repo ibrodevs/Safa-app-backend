@@ -56,18 +56,14 @@ def test_map_editor_keeps_existing_javascript_contract_ids():
         assert f'id="{element_id}"' in content
 
 
-def test_container_size_can_be_reduced_in_both_admin_editors():
+def test_container_size_can_be_reduced_in_legacy_admin_editor():
     standard = TEMPLATE.read_text(encoding="utf-8")
-    panel = (
-        ROOT / "admin_panel/templates/admin_panel/map/editor.html"
-    ).read_text(encoding="utf-8")
     javascript = EDITOR_JS.read_text(encoding="utf-8")
 
-    for template in (standard, panel):
-        assert 'data-container-size-step="width" data-delta="-0.5"' in template
-        assert 'data-container-size-step="height" data-delta="-0.5"' in template
-        assert 'min="0.2" max="100" step="0.1"' in template
-        assert "market_map_editor_selection_v9.js' %}" in template
+    assert 'data-container-size-step="width" data-delta="-0.5"' in standard
+    assert 'data-container-size-step="height" data-delta="-0.5"' in standard
+    assert 'min="0.2" max="100" step="0.1"' in standard
+    assert "market_map_editor_selection_v9.js' %}" in standard
 
     assert "resizeSelectedContainer('width', 0)" in javascript
     assert "resizeSelectedContainer('height', 0)" in javascript
@@ -149,19 +145,15 @@ def test_missing_container_passage_is_blocked_with_modal_warning():
     assert "showError('Для контейнера обязательно выберите проход.')" in ui_js
 
 
-def test_containers_can_be_rotated_from_both_admin_editors():
+def test_containers_can_be_rotated_from_legacy_admin_editor():
     standard = TEMPLATE.read_text(encoding="utf-8")
-    panel = (
-        ROOT / "admin_panel/templates/admin_panel/map/editor.html"
-    ).read_text(encoding="utf-8")
     javascript = EDITOR_JS.read_text(encoding="utf-8")
 
-    for template in (standard, panel):
-        assert 'id="market-feature-rotation-deg"' in template
-        assert 'data-container-rotate-step="-15"' in template
-        assert 'data-container-rotate-step="15"' in template
-        for angle in ("0", "90", "180", "270"):
-            assert f'data-container-rotate-set="{angle}"' in template
+    assert 'id="market-feature-rotation-deg"' in standard
+    assert 'data-container-rotate-step="-15"' in standard
+    assert 'data-container-rotate-step="15"' in standard
+    for angle in ("0", "90", "180", "270"):
+        assert f'data-container-rotate-set="{angle}"' in standard
 
     assert "function containerAxes(rotation)" in javascript
     assert "function ringFromContainerRect(rect)" in javascript
@@ -197,46 +189,37 @@ def test_rotation_is_built_into_editor_without_patch_layer():
 def test_duplicate_button_sits_on_top_of_the_inspector():
     """Дублирование — частое действие: кнопка держится наверху и не прыгает."""
     standard = TEMPLATE.read_text(encoding="utf-8")
-    panel = (
-        ROOT / "admin_panel/templates/admin_panel/map/editor.html"
-    ).read_text(encoding="utf-8")
     javascript = EDITOR_JS.read_text(encoding="utf-8")
 
-    for template in (standard, panel):
-        header = template.index("market-map-properties-header")
-        quick = template.index('class="market-map-quick-actions"')
-        actions = template.index("market-map-property-actions")
-        duplicate = template.index('id="market-feature-duplicate"')
+    header = standard.index("market-map-properties-header")
+    quick = standard.index('class="market-map-quick-actions"')
+    actions = standard.index("market-map-property-actions")
+    duplicate = standard.index('id="market-feature-duplicate"')
 
-        # Кнопка стоит в верхнем блоке действий, а не в нижнем.
-        assert header < quick < actions
-        assert quick < duplicate < actions
-        assert template.count('id="market-feature-duplicate"') == 1
-        assert template.count('id="market-feature-duplicate-direction"') == 1
+    assert header < quick < actions
+    assert quick < duplicate < actions
+    assert standard.count('id="market-feature-duplicate"') == 1
+    assert standard.count('id="market-feature-duplicate-direction"') == 1
 
     assert "focus({ preventScroll: true })" in javascript
     assert "scroller.scrollTop = scrollTop" in javascript
     assert "duplicateSelectedFeature();" in javascript
 
 
-def test_group_and_container_color_controls_exist_in_both_editors():
-    """Группировка и общий цвет контейнеров доступны в обеих админках."""
+def test_group_and_container_color_controls_exist_in_legacy_editor():
+    """Группировка старых объектов остаётся в legacy Django editor."""
     standard = TEMPLATE.read_text(encoding="utf-8")
-    panel = (
-        ROOT / "admin_panel/templates/admin_panel/map/editor.html"
-    ).read_text(encoding="utf-8")
     javascript = EDITOR_JS.read_text(encoding="utf-8")
 
-    for template in (standard, panel):
-        for element_id in (
-            "market-group-create",
-            "market-group-duplicate",
-            "market-group-ungroup",
-            "market-group-direction",
-            "market-group-counter",
-            "market-feature-color-all",
-        ):
-            assert f'id="{element_id}"' in template
+    for element_id in (
+        "market-group-create",
+        "market-group-duplicate",
+        "market-group-ungroup",
+        "market-group-direction",
+        "market-group-counter",
+        "market-feature-color-all",
+    ):
+        assert f'id="{element_id}"' in standard
 
     assert "function groupSelectedFeatures()" in javascript
     assert "function duplicateGroupSelection()" in javascript
@@ -352,13 +335,9 @@ def test_editor_sends_base_snapshot_and_loads_merged_server_map():
 def test_group_has_a_main_object_that_drives_the_rest():
     """Первый выбранный — главный: от него идут свойства и нумерация."""
     javascript = EDITOR_JS.read_text(encoding="utf-8")
-    panel = (
-        ROOT / "admin_panel/templates/admin_panel/map/editor.html"
-    ).read_text(encoding="utf-8")
     standard = TEMPLATE.read_text(encoding="utf-8")
 
-    for template in (standard, panel):
-        assert 'id="market-group-pick"' in template
+    assert 'id="market-group-pick"' in standard
 
     assert "function isGroupMain(" in javascript
     assert "function groupMembersOrdered(" in javascript
@@ -374,19 +353,27 @@ def test_group_has_a_main_object_that_drives_the_rest():
 
 def test_passage_label_color_can_be_changed():
     javascript = EDITOR_JS.read_text(encoding="utf-8")
-    panel = (
-        ROOT / "admin_panel/templates/admin_panel/map/editor.html"
-    ).read_text(encoding="utf-8")
     standard = TEMPLATE.read_text(encoding="utf-8")
 
-    for template in (standard, panel):
-        assert 'id="market-feature-label-color"' in template
-        # Поле показывается только для прохода.
-        index = template.index('id="market-feature-label-color"')
-        assert 'data-kind-scope="passage"' in template[max(0, index - 400):index]
+    assert 'id="market-feature-label-color"' in standard
+    index = standard.index('id="market-feature-label-color"')
+    assert 'data-kind-scope="passage"' in standard[max(0, index - 400):index]
 
     assert "function labelColorFor(" in javascript
     assert "properties.label_color = labelColorField.value;" in javascript
+
+
+def test_custom_panel_map_is_district_only_and_uses_yandex():
+    panel = (ROOT / "admin_panel/templates/admin_panel/map/editor.html").read_text(encoding="utf-8")
+    javascript = (ROOT / "admin_panel/static/admin_panel/js/district_map.js").read_text(encoding="utf-8")
+
+    assert 'id="district-map-select"' in panel
+    assert 'id="district-map-save"' in panel
+    assert "api-maps.yandex.ru/2.1/" in panel
+    assert "container" not in panel.lower()
+    assert "passage" not in panel.lower()
+    assert "ringsIntersect" in javascript
+    assert "base_geojson: null" in javascript
 
 
 def test_container_number_and_passage_are_applied_automatically():

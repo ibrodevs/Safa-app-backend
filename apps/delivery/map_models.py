@@ -78,6 +78,7 @@ class MarketMapRevision(models.Model):
         super().clean()
         self.geojson = validate_feature_collection(self.geojson)
         self._validate_bazar_boundary_does_not_overlap()
+        self._validate_districts_do_not_overlap_other_maps()
 
     def _boundary_feature(self) -> dict[str, Any] | None:
         for feature in self.geojson.get("features", []):
@@ -103,6 +104,26 @@ class MarketMapRevision(models.Model):
                     raise ValidationError(
                         f"Граница базара пересекается с базаром '{revision.bazar.name}'"
                     )
+
+    def _validate_districts_do_not_overlap_other_maps(self) -> None:
+        districts = iter_district_features(self.geojson)
+        if not districts:
+            return
+        published = (
+            MarketMapRevision.objects.filter(status=self.Status.PUBLISHED)
+            .exclude(bazar_id=self.bazar_id)
+            .select_related("bazar")
+        )
+        for revision in published:
+            for district in districts:
+                for other in iter_district_features(revision.geojson):
+                    if geometries_intersect(district["geometry"], other["geometry"]):
+                        current_name = (district.get("properties") or {}).get("name")
+                        other_name = (other.get("properties") or {}).get("name")
+                        raise ValidationError(
+                            f"Район '{current_name}' пересекается с районом "
+                            f"'{other_name}' на другой карте"
+                        )
 
     @classmethod
     def latest_published(cls, bazar: Bazar | int) -> "MarketMapRevision | None":
@@ -153,13 +174,16 @@ class MarketMapRevision(models.Model):
             raise ValidationError("Публиковать можно только черновик")
 
         locked.geojson = validate_feature_collection(locked.geojson)
+        locked.full_clean()
         boundaries = [
             feature
             for feature in locked.geojson.get("features", [])
             if (feature.get("properties") or {}).get("kind") == "bazar"
         ]
-        if len(boundaries) != 1:
-            raise ValidationError("Перед публикацией нарисуйте одну границу базара")
+        if len(boundaries) > 1:
+            raise ValidationError("В карте может быть только одна старая граница базара")
+        if not boundaries and not iter_district_features(locked.geojson):
+            raise ValidationError("Перед сохранением нарисуйте границы хотя бы одного района")
 
         passages_by_feature = locked._sync_passages()
         locked._sync_containers(passages_by_feature=passages_by_feature)

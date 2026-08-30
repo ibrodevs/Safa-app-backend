@@ -4,7 +4,7 @@
   <div>
     <p class="eyebrow">Справочники доставки</p>
     <h1>{% if kind == "bazar" %}Базары{% elif kind == "district" %}Районы{% elif kind == "passage" %}Проходы{% else %}Контейнеры{% endif %}</h1>
-    <p>Создавайте, редактируйте и удаляйте объекты без перехода в старую Django-админку.</p>
+    <p>{% if kind == "district" %}Задайте название, стоимость за километр, необязательную минимальную стоимость и статус района.{% else %}Создавайте, редактируйте и удаляйте объекты без перехода в старую Django-админку.{% endif %}</p>
   </div>
   {% if kind == "bazar" %}<a class="btn btn-primary" href="{% url 'admin_panel:catalog_bazar_create' %}">Создать базар</a>
   {% elif kind == "district" %}<a class="btn btn-primary" href="{% url 'admin_panel:district_create' %}">Создать район</a>
@@ -30,7 +30,7 @@
         <td><strong>{{ item.name }}</strong></td><td>{{ item.district_tariff|default:item.district|default:"—" }}</td><td>{% if item.fixed_price != None %}{{ item.fixed_price }} сом{% else %}<span class="muted">По тарифу района</span>{% endif %}</td>
         <td><div class="action-row"><a class="btn btn-primary btn-sm" href="{% url 'admin_panel:map_editor' item.pk %}">Карта</a><a class="btn btn-secondary btn-sm" href="{% url 'admin_panel:catalog_bazar_edit' item.pk %}">Изменить</a><form method="post" action="{% url 'admin_panel:catalog_bazar_delete' item.pk %}" data-confirm="Удалить базар и его карты?">{% csrf_token %}<button class="btn btn-danger btn-sm" type="submit">Удалить</button></form></div></td>
       {% elif kind == "district" %}
-        <td><strong>{{ item.name }}</strong></td><td>{% if item.fixed_price != None %}{{ item.fixed_price }} сом фикс.{% elif item.per_km_price != None %}{{ item.per_km_price }} сом/км{% else %}<span class="muted">Не задан</span>{% endif %}</td><td>{% if item.is_active %}<span class="badge badge--success">Активен</span>{% else %}<span class="badge">Отключён</span>{% endif %}</td>
+        <td><strong>{{ item.name }}</strong></td><td>{% if item.per_km_price != None %}{{ item.per_km_price }} сом/км{% else %}<span class="muted">Не задан</span>{% endif %}<small>{% if item.min_fare != None %}Минимум {{ item.min_fare }} сом{% else %}Без минимальной стоимости{% endif %}</small></td><td>{% if item.is_active %}<span class="badge badge--success">Активен</span>{% else %}<span class="badge">Отключён</span>{% endif %}</td>
         <td><div class="action-row"><a class="btn btn-secondary btn-sm" href="{% url 'admin_panel:district_edit' item.pk %}">Изменить</a><form method="post" action="{% url 'admin_panel:district_delete' item.pk %}" data-confirm="Удалить район?">{% csrf_token %}<button class="btn btn-danger btn-sm" type="submit">Удалить</button></form></div></td>
       {% elif kind == "passage" %}
         <td><strong>{{ item.number }}</strong></td><td>{{ item.district|default:"—" }}</td><td>{{ item.angle_label }}</td><td>{{ item.bazar.name }}</td><td>{{ item.containers.all|length }}</td>
