@@ -10,7 +10,7 @@
 <div class="dashboard-grid">
   <section class="card"><div class="card-header"><div><h2>Требуют внимания</h2><p>Только реальные незавершённые процессы.</p></div></div>
     <div class="attention-list">
-      <a href="{% url 'admin_panel:kyc_list' %}"><span class="attention-icon attention-icon--violet">✓</span><span><strong>{{ attention.kyc }} заявок KYC</strong><small>ожидают проверки</small></span><span>→</span></a>
+      <a href="{% url 'admin_panel:kyc_list' %}"><span class="attention-icon attention-icon--violet">✓</span><span><strong>{{ attention.kyc }} заявок специалистов</strong><small>ожидают проверки</small></span><span>→</span></a>
       <a href="{% url 'admin_panel:finance' %}?status=FAILED"><span class="attention-icon attention-icon--danger">!</span><span><strong>{{ attention.failed_payments }} платежей</strong><small>завершились ошибкой</small></span><span>→</span></a>
       <a href="{% url 'admin_panel:orders' %}?status=awaiting_payment"><span class="attention-icon attention-icon--warning">₽</span><span><strong>{{ attention.awaiting_payment }} заказов</strong><small>ожидают оплаты</small></span><span>→</span></a>
     </div>

@@ -733,6 +733,7 @@ class ShipmentDetailSerializer(ShipmentTestPriceRepresentationMixin, serializers
     carrier_specialist_type = serializers.SerializerMethodField()
     client_first_name = serializers.SerializerMethodField()
     client_phone = serializers.SerializerMethodField()
+    client_avatar_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Shipment
@@ -746,6 +747,7 @@ class ShipmentDetailSerializer(ShipmentTestPriceRepresentationMixin, serializers
             "client_id",
             "client_first_name",
             "client_phone",
+            "client_avatar_url",
             "carrier_id",
             "carrier_first_name",
             "carrier_phone",
@@ -819,6 +821,13 @@ class ShipmentDetailSerializer(ShipmentTestPriceRepresentationMixin, serializers
     def get_client_phone(self, obj):
         return getattr(obj.client, "phone_number", None) if obj.client else None
 
+    def get_client_avatar_url(self, obj):
+        if not obj.client or not getattr(obj.client, "avatar", None):
+            return None
+        request = self.context.get("request")
+        url = obj.client.avatar.url
+        return request.build_absolute_uri(url) if request else url
+
 
 class ShipmentStatusSerializer(serializers.ModelSerializer):
     class Meta:
@@ -881,6 +890,9 @@ class ShipmentNearbySerializer(ShipmentTestPriceRepresentationMixin, serializers
     stops_count = serializers.SerializerMethodField()
     commission = serializers.SerializerMethodField()
     courier_income = serializers.SerializerMethodField()
+    client_first_name = serializers.SerializerMethodField()
+    client_phone = serializers.SerializerMethodField()
+    client_avatar_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Shipment
@@ -890,6 +902,9 @@ class ShipmentNearbySerializer(ShipmentTestPriceRepresentationMixin, serializers
             "title",
             "service_type",
             "description",
+            "client_first_name",
+            "client_phone",
+            "client_avatar_url",
             "estimated_fare",
             "final_fare",
             "commission",
@@ -903,6 +918,19 @@ class ShipmentNearbySerializer(ShipmentTestPriceRepresentationMixin, serializers
             "stops_count",
             "stops",
         )
+
+    def get_client_first_name(self, obj):
+        return getattr(obj.client, "first_name", None) if obj.client else None
+
+    def get_client_phone(self, obj):
+        return getattr(obj.client, "phone_number", None) if obj.client else None
+
+    def get_client_avatar_url(self, obj):
+        if not obj.client or not getattr(obj.client, "avatar", None):
+            return None
+        request = self.context.get("request")
+        url = obj.client.avatar.url
+        return request.build_absolute_uri(url) if request else url
 
     def get_stops_count(self, obj) -> int:
         return len(obj.stops.all())

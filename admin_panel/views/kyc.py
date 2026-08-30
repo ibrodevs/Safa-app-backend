@@ -32,7 +32,7 @@ def kyc_list(request):
         "admin_panel/kyc/list.html",
         {"page": page, "selected_status": selected, "counts": counts},
         section="kyc",
-        title="Проверка KYC",
+        title="Заявки специалистов",
     )
 
 
