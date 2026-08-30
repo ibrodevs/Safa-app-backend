@@ -1,0 +1,69 @@
+{% extends "admin_panel/base.html" %}
+{% load panel_tags %}
+{% block content %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Система</p>
+    <h1>Политика конфиденциальности</h1>
+    <p>Управление текстом политики конфиденциальности, отображаемым в мобильном приложении.</p>
+  </div>
+</header>
+
+<div class="detail-grid">
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2>Редактирование текста политики</h2>
+        <p>Этот текст автоматически отображается на экране «Политика конфиденциальности» у клиентов и специалистов.</p>
+      </div>
+    </div>
+    <form class="card-body" method="post" action="{% url 'admin_panel:privacy' %}">
+      {% csrf_token %}
+      <div class="form-grid">
+        <div class="form-field form-field--full" style="grid-column: 1 / -1;">
+          <label for="id_content">Полный текст политики *</label>
+          <textarea class="textarea" id="id_content" name="content" rows="18" style="font-family: inherit; line-height: 1.6; font-size: 14px;" required>{{ policy.content }}</textarea>
+          <small class="muted">Текст разделяется на абзацы и пункты переносами строк.</small>
+        </div>
+      </div>
+
+      <div class="action-row" style="margin-top: 24px;">
+        <button class="btn btn-primary" type="submit">Сохранить политику</button>
+      </div>
+    </form>
+  </section>
+
+  <aside class="stack">
+    <section class="card">
+      <div class="card-header">
+        <h2>Информация</h2>
+      </div>
+      <div class="card-body">
+        <dl class="definition-list">
+          <div>
+            <dt>Статус</dt>
+            <dd><span class="badge badge--active">Опубликована</span></dd>
+          </div>
+          <div>
+            <dt>Символов</dt>
+            <dd><strong>{{ policy.content|length }}</strong></dd>
+          </div>
+          <div>
+            <dt>Последнее обновление</dt>
+            <dd>{{ policy.updated_at|panel_datetime }}</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <h2>Предпросмотр в приложении</h2>
+      </div>
+      <div class="card-body" style="background: #F9FAFB; border-radius: 8px; padding: 16px; max-height: 380px; overflow-y: auto; font-size: 13px; line-height: 1.5; white-space: pre-line; color: #374151;">
+{{ policy.content }}
+      </div>
+    </section>
+  </aside>
+</div>
+{% endblock %}

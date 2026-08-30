@@ -43,7 +43,21 @@ from .realtime import broadcast_courier_position, broadcast_shipment
 from .reverse_geocoding import reverse_geocode_address
 from .operations import cancel_shipment
 from .geo import haversine_m, polyline_len_km
-from .models import AmanatCampaign, AmanatCategory, AmanatDonation, Bazar, Container, CourierPosition, GlobalDeliveryConfig, Passage, Shipment, ShipmentStop, SupportContact
+from .models import (
+    AmanatCampaign,
+    AmanatCategory,
+    AmanatDonation,
+    Bazar,
+    Container,
+    CourierPosition,
+    FAQItem,
+    GlobalDeliveryConfig,
+    Passage,
+    PrivacyPolicy,
+    Shipment,
+    ShipmentStop,
+    SupportContact,
+)
 from .pagination import StandardResultsSetPagination
 from .serializer import (
     AmanatCampaignSerializer,
@@ -1325,6 +1339,11 @@ class SupportView(APIView):
 
     def get(self, request):
         contact = SupportContact.get_solo()
+        faqs = list(
+            FAQItem.objects.filter(is_active=True).values(
+                "id", "question", "answer", "sort_order"
+            )
+        )
         return Response({
             "phone": contact.phone,
             "telegram": contact.telegram,
@@ -1332,4 +1351,36 @@ class SupportView(APIView):
             "working_hours": contact.working_hours,
             "message": contact.message,
             "is_active": contact.is_active,
+            "faqs": faqs,
         })
+
+
+@extend_schema(tags=["Политика конфиденциальности"])
+class PrivacyPolicyView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        policy = PrivacyPolicy.get_solo()
+        return Response({
+            "title": "Политика конфиденциальности",
+            "content": policy.content,
+            "updated_at": policy.updated_at.isoformat() if policy.updated_at else None,
+        })
+
+
+@extend_schema(tags=["Частые вопросы"])
+class FAQListView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        items = FAQItem.objects.filter(is_active=True)
+        return Response([
+            {
+                "id": item.id,
+                "question": item.question,
+                "answer": item.answer,
+                "sort_order": item.sort_order,
+            }
+            for item in items
+        ])
+

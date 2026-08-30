@@ -19,5 +19,7 @@ urlpatterns = [
     path("position/", CourierPositionView.as_view(), name="courier-position"),
     path("stats/", CarrierDailyStatsView.as_view(), name="carrier-daily-stats"),
     path("support/", SupportView.as_view(), name="support"),
+    path("privacy/", PrivacyPolicyView.as_view(), name="privacy-policy"),
+    path("faq/", FAQListView.as_view(), name="faq-list"),
     path("", include(router.urls)),
 ]

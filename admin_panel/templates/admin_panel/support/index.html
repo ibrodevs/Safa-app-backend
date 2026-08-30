@@ -59,7 +59,7 @@
       </div>
 
       <div class="action-row" style="margin-top: 24px;">
-        <button class="btn btn-primary" type="submit">Сохранить изменения</button>
+        <button class="btn btn-primary" type="submit">Сохранить изменения контактов</button>
       </div>
     </form>
   </section>
@@ -98,6 +98,10 @@
             <dd>{{ contact.working_hours }}</dd>
           </div>
           <div>
+            <dt>FAQ вопросов</dt>
+            <dd><strong>{{ faqs|length }}</strong></dd>
+          </div>
+          <div>
             <dt>Обновлено</dt>
             <dd>{{ contact.updated_at|panel_datetime }}</dd>
           </div>
@@ -106,4 +110,122 @@
     </section>
   </aside>
 </div>
+
+<section class="card" style="margin-top: 28px;">
+  <div class="card-header">
+    <div>
+      <h2>Частые вопросы (FAQ)</h2>
+      <p>Список вопросов и ответов, отображаемых на странице поддержки в мобильном приложении.</p>
+    </div>
+  </div>
+
+  <div class="card-body">
+    {% if faqs %}
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="width: 60px;">Порядок</th>
+              <th style="width: 30%;">Вопрос</th>
+              <th>Ответ</th>
+              <th style="width: 100px;">Статус</th>
+              <th style="width: 160px; text-align: right;">Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for faq in faqs %}
+              <tr>
+                <td><strong>{{ faq.sort_order }}</strong></td>
+                <td><strong>{{ faq.question }}</strong></td>
+                <td style="white-space: pre-line; color: #4B5563; font-size: 13px;">{{ faq.answer }}</td>
+                <td>
+                  {% if faq.is_active %}
+                    <span class="badge badge--active">Активен</span>
+                  {% else %}
+                    <span class="badge">Скрыт</span>
+                  {% endif %}
+                </td>
+                <td style="text-align: right;">
+                  <details style="display: inline-block; text-align: left;">
+                    <summary class="btn btn-secondary btn-sm" style="cursor: pointer;">Изменить</summary>
+                    <div style="position: absolute; right: 24px; z-index: 100; background: #fff; padding: 18px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.18); width: 380px; border: 1px solid #E5E7EB; margin-top: 6px;">
+                      <form method="post" action="{% url 'admin_panel:support' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="edit_faq">
+                        <input type="hidden" name="faq_id" value="{{ faq.id }}">
+                        <div class="form-field" style="margin-bottom: 12px;">
+                          <label>Вопрос *</label>
+                          <input class="input" type="text" name="question" value="{{ faq.question }}" required>
+                        </div>
+                        <div class="form-field" style="margin-bottom: 12px;">
+                          <label>Ответ *</label>
+                          <textarea class="textarea" name="answer" rows="4" required>{{ faq.answer }}</textarea>
+                        </div>
+                        <div class="form-field" style="margin-bottom: 12px;">
+                          <label>Порядок сортировки</label>
+                          <input class="input" type="number" name="sort_order" value="{{ faq.sort_order }}">
+                        </div>
+                        <div class="form-field" style="margin-bottom: 16px;">
+                          <label style="display: flex; align-items: center; gap: 6px;">
+                            <input type="checkbox" name="is_active" {% if faq.is_active %}checked{% endif %}>
+                            <span>Отображать в приложении</span>
+                          </label>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                          <button class="btn btn-primary btn-sm" type="submit">Сохранить</button>
+                        </div>
+                      </form>
+                    </div>
+                  </details>
+
+                  <form method="post" action="{% url 'admin_panel:support' %}" style="display: inline-block; margin-left: 6px;" onsubmit="return confirm('Удалить этот вопрос?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="delete_faq">
+                    <input type="hidden" name="faq_id" value="{{ faq.id }}">
+                    <button class="btn btn-danger btn-sm" type="submit">Удалить</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state" style="padding: 24px; text-align: center; color: #6B7280;">
+        <p>Пока нет добавленных вопросов. Добавьте первый вопрос ниже.</p>
+      </div>
+    {% endif %}
+
+    <div style="margin-top: 32px; padding-top: 24px; border-top: 1px solid #E5E7EB;">
+      <h3 style="font-size: 16px; margin-bottom: 16px;">Добавить новый частый вопрос</h3>
+      <form method="post" action="{% url 'admin_panel:support' %}">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_faq">
+        <div class="form-grid">
+          <div class="form-field form-field--full" style="grid-column: 1 / -1;">
+            <label for="new_faq_question">Вопрос *</label>
+            <input class="input" type="text" id="new_faq_question" name="question" placeholder="Например: Заказ не подтверждается, что делать?" required>
+          </div>
+          <div class="form-field form-field--full" style="grid-column: 1 / -1;">
+            <label for="new_faq_answer">Ответ *</label>
+            <textarea class="textarea" id="new_faq_answer" name="answer" rows="3" placeholder="Подробный ответ для пользователя..." required></textarea>
+          </div>
+          <div class="form-field">
+            <label for="new_faq_sort">Порядок отображения</label>
+            <input class="input" type="number" id="new_faq_sort" name="sort_order" value="0">
+          </div>
+          <div class="form-field" style="display: flex; align-items: center; margin-top: 24px;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" name="is_active" checked>
+              <span>Отображать в приложении</span>
+            </label>
+          </div>
+        </div>
+        <div class="action-row" style="margin-top: 16px;">
+          <button class="btn btn-primary" type="submit">Добавить вопрос в FAQ</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>
 {% endblock %}

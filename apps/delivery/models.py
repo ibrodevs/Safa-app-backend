@@ -687,3 +687,55 @@ class SupportContact(models.Model):
             },
         )
         return obj
+
+
+class PrivacyPolicy(models.Model):
+    content = models.TextField(
+        verbose_name="Текст политики конфиденциальности",
+        default=(
+            "1. Какие данные мы собираем\n"
+            "Мы собираем данные, необходимые для работы сервиса доставки: ваше имя, номер телефона, "
+            "данные о местоположении для отслеживания посылок в реальном времени, а также информацию о ваших заказах.\n\n"
+            "2. Как мы используем данные\n"
+            "Ваше местоположение используется для построения маршрута курьером и информирования клиента о статусе доставки. "
+            "Номер телефона необходим для связи и подтверждения заказов.\n\n"
+            "3. Передача данных третьим лицам\n"
+            "Мы не продаём ваши данные. Данные передаются только участникам процесса доставки "
+            "(курьеру или клиенту) исключительно для выполнения услуги.\n\n"
+            "4. Безопасность\n"
+            "Мы используем современные методы шифрования для защиты вашей личной информации и данных о платежах.\n\n"
+            "5. Ваши права\n"
+            "Вы имеете право запросить удаление вашего аккаунта и всех связанных данных в любой момент через службу поддержки."
+        ),
+    )
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлено")
+
+    class Meta:
+        verbose_name = "Политика конфиденциальности"
+        verbose_name_plural = "Политика конфиденциальности"
+
+    def __str__(self) -> str:
+        return f"Политика конфиденциальности (обновлено {self.updated_at.strftime('%d.%m.%Y %H:%M') if self.updated_at else ''})"
+
+    @classmethod
+    def get_solo(cls) -> PrivacyPolicy:
+        obj, _ = cls.objects.get_or_create(id=1)
+        return obj
+
+
+class FAQItem(models.Model):
+    question = models.CharField(max_length=255, verbose_name="Вопрос")
+    answer = models.TextField(verbose_name="Ответ")
+    sort_order = models.PositiveSmallIntegerField(default=0, verbose_name="Порядок")
+    is_active = models.BooleanField(default=True, verbose_name="Активен")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлен")
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        verbose_name = "Частый вопрос (FAQ)"
+        verbose_name_plural = "Частые вопросы (FAQ)"
+
+    def __str__(self) -> str:
+        return self.question
+
