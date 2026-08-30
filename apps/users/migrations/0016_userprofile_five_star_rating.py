@@ -7,6 +7,16 @@ def reset_legacy_automatic_rating(apps, schema_editor):
     UserProfile.objects.all().update(rate=0, client_rate_count="0")
 
 
+def drop_duplicate_client_rate_constraint(apps, schema_editor):
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    schema_editor.execute(
+        'ALTER TABLE "users_userprofile" '
+        'DROP CONSTRAINT IF EXISTS '
+        '"users_userprofile_client_rate_count_4bac21b6_check";'
+    )
+
+
 class Migration(migrations.Migration):
     dependencies = [
         ("users", "0015_reopen_auto_approved_kyc"),
@@ -24,6 +34,10 @@ class Migration(migrations.Migration):
                 validators=[MinValueValidator(0), MaxValueValidator(5)],
                 verbose_name="Средняя оценка",
             ),
+        ),
+        migrations.RunPython(
+            drop_duplicate_client_rate_constraint,
+            migrations.RunPython.noop,
         ),
         migrations.AlterField(
             model_name="userprofile",
