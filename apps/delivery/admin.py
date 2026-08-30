@@ -15,6 +15,7 @@ from .models import (
     DeliveryDistrict,
     Passage,
     Container,
+    SupportContact,
 )
 from .map_cleanup import delete_bazar_with_map, delete_passage_with_containers
 from .map_models import MarketMapRevision
@@ -448,3 +449,10 @@ class CourierPositionAdmin(admin.ModelAdmin):
     list_display = ("user", "lat", "lon", "updated_at")
     search_fields = ("user__phone_number", "user__first_name")
     autocomplete_fields = ("user",)
+
+
+@admin.register(SupportContact)
+class SupportContactAdmin(admin.ModelAdmin):
+    list_display = ("phone", "telegram", "whatsapp", "working_hours", "is_active", "updated_at")
+    list_editable = ("is_active",)
+

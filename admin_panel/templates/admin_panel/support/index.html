@@ -1,0 +1,109 @@
+{% extends "admin_panel/base.html" %}
+{% load panel_tags %}
+{% block content %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Система</p>
+    <h1>Служба поддержки</h1>
+    <p>Управление контактными данными и графиком работы поддержки в мобильном приложении.</p>
+  </div>
+</header>
+
+<div class="detail-grid">
+  <section class="card">
+    <div class="card-header">
+      <div>
+        <h2>Настройки контактов</h2>
+        <p>Эти данные сразу отображаются на странице «Служба поддержки» в приложении пользователя и специалиста.</p>
+      </div>
+    </div>
+    <form class="card-body" method="post" action="{% url 'admin_panel:support' %}">
+      {% csrf_token %}
+      <div class="form-grid">
+        <div class="form-field">
+          <label for="id_phone">Основной телефон поддержки *</label>
+          <input class="input" type="text" id="id_phone" name="phone" value="{{ contact.phone }}" placeholder="+996 509 10 67 88" required>
+          <small class="muted">Номер для прямых звонков из приложения.</small>
+        </div>
+
+        <div class="form-field">
+          <label for="id_telegram">Telegram (username или телефон)</label>
+          <input class="input" type="text" id="id_telegram" name="telegram" value="{{ contact.telegram }}" placeholder="@safasupport или 996509106788">
+          <small class="muted">Username через @ или номер телефона в международном формате.</small>
+        </div>
+
+        <div class="form-field">
+          <label for="id_whatsapp">WhatsApp (номер телефона)</label>
+          <input class="input" type="text" id="id_whatsapp" name="whatsapp" value="{{ contact.whatsapp }}" placeholder="+996509106788">
+          <small class="muted">Номер для чата WhatsApp (начинается с +996).</small>
+        </div>
+
+        <div class="form-field">
+          <label for="id_working_hours">График и часы работы</label>
+          <input class="input" type="text" id="id_working_hours" name="working_hours" value="{{ contact.working_hours }}" placeholder="Ежедневно с 09:00 до 21:00 по Бишкеку.">
+          <small class="muted">Отображается под номером телефона.</small>
+        </div>
+
+        <div class="form-field form-field--full" style="grid-column: 1 / -1;">
+          <label for="id_message">Текст сообщения / описания</label>
+          <textarea class="textarea" id="id_message" name="message" rows="3" placeholder="Если что-то пошло не так — напишите нам или позвоните...">{{ contact.message }}</textarea>
+          <small class="muted">Приветственный текст для клиентов в приложении.</small>
+        </div>
+
+        <div class="form-field form-field--full" style="grid-column: 1 / -1;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" name="is_active" {% if contact.is_active %}checked{% endif %}>
+            <span>Служба поддержки активна</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="action-row" style="margin-top: 24px;">
+        <button class="btn btn-primary" type="submit">Сохранить изменения</button>
+      </div>
+    </form>
+  </section>
+
+  <aside class="stack">
+    <section class="card">
+      <div class="card-header">
+        <h2>Предпросмотр в приложении</h2>
+      </div>
+      <div class="card-body">
+        <dl class="definition-list">
+          <div>
+            <dt>Статус</dt>
+            <dd>
+              {% if contact.is_active %}
+                <span class="badge badge--active">Активна</span>
+              {% else %}
+                <span class="badge">Отключена</span>
+              {% endif %}
+            </dd>
+          </div>
+          <div>
+            <dt>Телефон</dt>
+            <dd><strong>{{ contact.phone }}</strong></dd>
+          </div>
+          <div>
+            <dt>Telegram</dt>
+            <dd>{{ contact.telegram }}</dd>
+          </div>
+          <div>
+            <dt>WhatsApp</dt>
+            <dd>{{ contact.whatsapp }}</dd>
+          </div>
+          <div>
+            <dt>Часы работы</dt>
+            <dd>{{ contact.working_hours }}</dd>
+          </div>
+          <div>
+            <dt>Обновлено</dt>
+            <dd>{{ contact.updated_at|panel_datetime }}</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+  </aside>
+</div>
+{% endblock %}

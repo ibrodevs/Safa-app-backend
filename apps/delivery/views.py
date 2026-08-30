@@ -43,7 +43,7 @@ from .realtime import broadcast_courier_position, broadcast_shipment
 from .reverse_geocoding import reverse_geocode_address
 from .operations import cancel_shipment
 from .geo import haversine_m, polyline_len_km
-from .models import AmanatCampaign, AmanatCategory, AmanatDonation, Bazar, Container, CourierPosition, GlobalDeliveryConfig, Passage, Shipment, ShipmentStop
+from .models import AmanatCampaign, AmanatCategory, AmanatDonation, Bazar, Container, CourierPosition, GlobalDeliveryConfig, Passage, Shipment, ShipmentStop, SupportContact
 from .pagination import StandardResultsSetPagination
 from .serializer import (
     AmanatCampaignSerializer,
@@ -1324,9 +1324,12 @@ class SupportView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
+        contact = SupportContact.get_solo()
         return Response({
-            "phone": "+996 555 123 456",
-            "telegram": "@dogo_support",
-            "working_hours": "24/7",
-            "message": "Мы всегда на связи!"
+            "phone": contact.phone,
+            "telegram": contact.telegram,
+            "whatsapp": contact.whatsapp or contact.phone,
+            "working_hours": contact.working_hours,
+            "message": contact.message,
+            "is_active": contact.is_active,
         })

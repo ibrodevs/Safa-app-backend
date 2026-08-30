@@ -635,3 +635,55 @@ class CourierPosition(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user_id}@{self.lat},{self.lon}"
+
+
+class SupportContact(models.Model):
+    phone = models.CharField(
+        max_length=50,
+        default="+996 509 10 67 88",
+        verbose_name="Телефон поддержки",
+    )
+    telegram = models.CharField(
+        max_length=100,
+        default="996509106788",
+        verbose_name="Telegram (username или телефон)",
+    )
+    whatsapp = models.CharField(
+        max_length=50,
+        default="+996509106788",
+        blank=True,
+        verbose_name="WhatsApp",
+    )
+    working_hours = models.CharField(
+        max_length=255,
+        default="Ежедневно с 09:00 до 21:00 по Бишкеку.",
+        verbose_name="Часы работы",
+    )
+    message = models.TextField(
+        default="Если что-то пошло не так — напишите нам или позвоните. Мы поможем с заказами, оплатой и приложением.",
+        verbose_name="Текст сообщения",
+    )
+    is_active = models.BooleanField(default=True, verbose_name="Активна")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлено")
+
+    class Meta:
+        verbose_name = "Служба поддержки"
+        verbose_name_plural = "Служба поддержки"
+
+    def __str__(self) -> str:
+        return f"Служба поддержки ({self.phone})"
+
+    @classmethod
+    def get_solo(cls) -> SupportContact:
+        obj, _ = cls.objects.get_or_create(
+            id=1,
+            defaults={
+                "phone": "+996 509 10 67 88",
+                "telegram": "996509106788",
+                "whatsapp": "+996509106788",
+                "working_hours": "Ежедневно с 09:00 до 21:00 по Бишкеку.",
+                "message": "Если что-то пошло не так — напишите нам или позвоните. Мы поможем с заказами, оплатой и приложением.",
+                "is_active": True,
+            },
+        )
+        return obj

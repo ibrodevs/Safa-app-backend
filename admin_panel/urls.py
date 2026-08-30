@@ -1,6 +1,6 @@
 from django.urls import path
 
-from admin_panel.views import amanat, auth, catalog, dashboard, finance, kyc, map, orders, search, settings, tariffs, users
+from admin_panel.views import amanat, auth, catalog, dashboard, finance, kyc, map, orders, search, settings, support, tariffs, users
 
 app_name = "admin_panel"
 
@@ -65,5 +65,6 @@ urlpatterns = [
     path("amanat/categories/<int:pk>/edit/", amanat.amanat_category_form, name="amanat_category_edit"),
     path("amanat/campaigns/<int:pk>/", amanat.amanat_detail, name="amanat_detail"),
     path("search/", search.global_search, name="search"),
+    path("support/", support.support_page, name="support"),
     path("settings/", settings.settings_page, name="settings"),
 ]
