@@ -174,7 +174,7 @@ class VerifiedTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 
 
-MAX_MB = 32
+MAX_MB = 10
 
 
 
@@ -192,7 +192,7 @@ class SelfieWithIdCardSerializer(serializers.Serializer):
 
     def validate_selfie_id_card(self, f):
         if f.size > MAX_MB * 1024 * 1024:
-            raise serializers.ValidationError(f"Файл больше {MAX_MB} МБ")
+            raise serializers.ValidationError(f"Размер файла selfie_id_card не должен превышать {MAX_MB} МБ.")
         if not f.content_type.startswith("image/"):
             raise serializers.ValidationError("Нужна картинка (JPEG/PNG)")
         return f
