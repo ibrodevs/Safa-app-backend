@@ -72,6 +72,11 @@ def _send_to_user(
     tokens: Iterable[FCMToken] = list(
         FCMToken.objects.filter(user_id=user_id, is_active=True)
     )
+    if not tokens:
+        logger.warning(
+            "FCM delivery skipped: user=%s has no active device token",
+            user_id,
+        )
     delivered = False
     for token_obj in tokens:
         result = send_data_message(
@@ -82,6 +87,14 @@ def _send_to_user(
             platform=token_obj.platform,
         )
         delivered = delivered or result.success
+        if not result.success:
+            logger.warning(
+                "FCM delivery failed: user=%s token_id=%s platform=%s error=%s",
+                user_id,
+                token_obj.pk,
+                token_obj.platform,
+                result.error,
+            )
         if result.deactivate_token:
             FCMToken.objects.filter(pk=token_obj.pk, is_active=True).update(
                 is_active=False,

@@ -45,13 +45,32 @@ class ShipmentContractTests(APITestCase):
         self.shipment.current_stop_index = 0
         self.shipment.save(update_fields=["current_stop_index"])
 
-        started = self.client.post(f"/api/delivery/shipments/{self.shipment.id}/advance/")
+        started = self.client.post(
+            f"/api/delivery/shipments/{self.shipment.id}/advance/",
+            {"expected_status": Shipment.Status.ASSIGNED, "expected_stop_index": 0},
+            format="json",
+        )
         self.assertEqual(started.status_code, 200)
         self.shipment.refresh_from_db()
         self.assertEqual(self.shipment.status, Shipment.Status.IN_TRANSIT)
         self.assertEqual(self.shipment.current_stop_index, 1)
 
-        awaiting_payment = self.client.post(f"/api/delivery/shipments/{self.shipment.id}/advance/")
+        retry = self.client.post(
+            f"/api/delivery/shipments/{self.shipment.id}/advance/",
+            {"expected_status": Shipment.Status.ASSIGNED, "expected_stop_index": 0},
+            format="json",
+        )
+        self.assertEqual(retry.status_code, 200)
+        self.assertEqual(retry.headers.get("X-Idempotent-Replay"), "1")
+        self.shipment.refresh_from_db()
+        self.assertEqual(self.shipment.status, Shipment.Status.IN_TRANSIT)
+        self.assertEqual(self.shipment.current_stop_index, 1)
+
+        awaiting_payment = self.client.post(
+            f"/api/delivery/shipments/{self.shipment.id}/advance/",
+            {"expected_status": Shipment.Status.IN_TRANSIT, "expected_stop_index": 1},
+            format="json",
+        )
         self.assertEqual(awaiting_payment.status_code, 200)
         self.shipment.refresh_from_db()
         self.assertEqual(self.shipment.status, Shipment.Status.AWAITING_PAYMENT)

@@ -9,7 +9,6 @@ from django.contrib.auth.models import AnonymousUser
 from django.db import transaction
 from django.utils import timezone
 
-from .lifecycle import mark_shipment_awaiting_payment
 from .models import Shipment, CourierPosition, ARRIVAL_RADIUS_M
 from .geo import haversine_m
 from .realtime import courier_position_payload
@@ -110,7 +109,7 @@ class ShipmentTrackingConsumer(JsonWebsocketConsumer):
             try:
                 shipment: Shipment = (
                     Shipment.objects
-                    .select_related("segment", "carrier")
+                    .select_related("carrier")
                     .prefetch_related("stops")
                     .get(id=self.shipment_id)
                 )
@@ -146,29 +145,21 @@ class ShipmentTrackingConsumer(JsonWebsocketConsumer):
                 dist_m_to_target = shipment.distance_to_next_m(float(lat), float(lon))
                 arrived = dist_m_to_target <= ARRIVAL_RADIUS_M
 
-                if arrived:
-                    stops = list(shipment.stops.order_by("position"))
-                    if shipment.current_stop_index >= len(stops) - 1:
-                        mark_shipment_awaiting_payment(shipment)
-                    else:
-                        shipment.current_stop_index += 1
-                        shipment.eta_to_next_min = Decimal("0.0")
-                else:
-                    if dist_m_to_target > 0:
-                        speed = client_speed or BASE_SPEED_KMH
-                        try:
-                            eta = (
-                                (dist_m_to_target / Decimal("1000")) / speed * Decimal("60")
-                            ).quantize(Decimal("0.1"))
-                        except Exception:
-                            eta = None
-                    else:
+                if dist_m_to_target > 0 and not arrived:
+                    speed = client_speed or BASE_SPEED_KMH
+                    try:
+                        eta = (
+                            (dist_m_to_target / Decimal("1000")) / speed * Decimal("60")
+                        ).quantize(Decimal("0.1"))
+                    except Exception:
                         eta = None
                     shipment.eta_to_next_min = eta or Decimal("0.0")
+                else:
+                    shipment.eta_to_next_min = Decimal("0.0")
 
-                shipment.save(
-                    update_fields=["current_stop_index", "eta_to_next_min"]
-                )
+                # GPS only reports arrival and ETA. Advancing to the next stop
+                # or completing work is always an explicit specialist action.
+                shipment.save(update_fields=["eta_to_next_min"])
 
             payload = {
                 "type": "telemetry",
@@ -181,6 +172,7 @@ class ShipmentTrackingConsumer(JsonWebsocketConsumer):
                 },
                 "target_index": shipment.current_stop_index,
                 "distance_m": str(dist_m_to_target),
+                "arrived": arrived,
                 "eta_min": str(shipment.eta_to_next_min) if shipment.eta_to_next_min else None,
             }
 

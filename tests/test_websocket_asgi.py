@@ -6,7 +6,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 import pytest
 
-from apps.delivery.models import CourierPosition, Shipment
+from apps.delivery.models import CourierPosition, Shipment, ShipmentStop
 from apps.users.models import User
 from core.asgi import application
 
@@ -98,3 +98,56 @@ def test_client_receives_initial_and_live_courier_position():
         await communicator.disconnect()
 
     async_to_sync(scenario)()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_gps_arrival_never_advances_or_completes_order_automatically():
+    client = _user("996700990005")
+    carrier = _user("996700990006")
+    carrier.role = User.Roles.CARRIER
+    carrier.is_active = True
+    carrier.save(update_fields=["role", "is_active"])
+    shipment = Shipment.objects.create(
+        client=client,
+        carrier=carrier,
+        title="Manual progress order",
+        status=Shipment.Status.ASSIGNED,
+        current_stop_index=0,
+    )
+    ShipmentStop.objects.create(
+        shipment=shipment,
+        position=0,
+        title="Pickup",
+        lat="42.870000",
+        lon="74.600000",
+    )
+    ShipmentStop.objects.create(
+        shipment=shipment,
+        position=1,
+        title="Drop-off",
+        lat="42.880000",
+        lon="74.610000",
+    )
+
+    async def scenario():
+        token = str(AccessToken.for_user(carrier))
+        communicator = WebsocketCommunicator(
+            application,
+            f"/ws/shipments/{shipment.id}/?token={token}",
+        )
+        connected, _ = await communicator.connect()
+        assert connected is True
+
+        await communicator.send_json_to(
+            {"type": "loc", "lat": 42.870000, "lon": 74.600000}
+        )
+        telemetry = await communicator.receive_json_from()
+        assert telemetry["type"] == "telemetry"
+        assert telemetry["arrived"] is True
+        assert telemetry["target_index"] == 0
+        await communicator.disconnect()
+
+    async_to_sync(scenario)()
+    shipment.refresh_from_db()
+    assert shipment.status == Shipment.Status.ASSIGNED
+    assert shipment.current_stop_index == 0

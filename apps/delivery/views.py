@@ -1050,35 +1050,78 @@ class ShipmentViewSet(viewsets.ModelViewSet):
     @extend_schema(
         tags=["Shipments"],
         summary="Курьер продвигает доставку к следующей точке / завершает доставку",
-        request=None,
+        request=inline_serializer(
+            name="ShipmentAdvanceRequest",
+            fields={
+                "expected_status": serializers.ChoiceField(
+                    choices=[Shipment.Status.ASSIGNED, Shipment.Status.IN_TRANSIT],
+                    required=False,
+                ),
+                "expected_stop_index": serializers.IntegerField(
+                    min_value=0,
+                    required=False,
+                ),
+            },
+        ),
         responses=ShipmentDetailSerializer,
     )
     @action(detail=True, methods=["post"])
     def advance(self, request, pk=None):
         rid = _rid(request)
-        s = self.get_object()
-        if s.carrier_id != request.user.id and not request.user.is_staff:
+        visible_shipment = self.get_object()
+        if visible_shipment.carrier_id != request.user.id and not request.user.is_staff:
             return response.Response({"detail": "only_assigned_carrier"}, status=status.HTTP_403_FORBIDDEN)
-        if s.status not in (Shipment.Status.ASSIGNED, Shipment.Status.IN_TRANSIT):
-            return response.Response({"detail": "status_transition_not_allowed"}, status=status.HTTP_409_CONFLICT)
-        prev_index = s.current_stop_index
-        prev_status = s.status
+
+        expected_status = request.data.get("expected_status")
+        expected_stop_index = request.data.get("expected_stop_index")
+        if expected_status not in (None, Shipment.Status.ASSIGNED, Shipment.Status.IN_TRANSIT):
+            return response.Response({"detail": "bad_expected_status"}, status=status.HTTP_400_BAD_REQUEST)
+        if expected_stop_index is not None:
+            try:
+                expected_stop_index = int(expected_stop_index)
+            except (TypeError, ValueError):
+                return response.Response({"detail": "bad_expected_stop_index"}, status=status.HTTP_400_BAD_REQUEST)
+            if expected_stop_index < 0:
+                return response.Response({"detail": "bad_expected_stop_index"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            total_stops = s.stops.count()
-            if s.status == Shipment.Status.ASSIGNED:
-                s.status = Shipment.Status.IN_TRANSIT
-                s.current_stop_index = 1 if total_stops > 1 else 0
-                s.save(update_fields=["status", "current_stop_index"])
-                notify_shipment_status(s)
-            elif s.status == Shipment.Status.IN_TRANSIT:
-                if s.current_stop_index < total_stops - 1:
+            with transaction.atomic():
+                s = (
+                    Shipment.objects.select_for_update()
+                    .select_related("client", "carrier", "carrier_settlement", "review")
+                    .prefetch_related("stops")
+                    .get(pk=visible_shipment.pk)
+                )
+                if (
+                    (expected_status is not None and s.status != expected_status)
+                    or (
+                        expected_stop_index is not None
+                        and s.current_stop_index != expected_stop_index
+                    )
+                ):
+                    return response.Response(
+                        ShipmentDetailSerializer(s, context={"request": request}).data,
+                        status=status.HTTP_200_OK,
+                        headers={"X-Idempotent-Replay": "1"},
+                    )
+                if s.status not in (Shipment.Status.ASSIGNED, Shipment.Status.IN_TRANSIT):
+                    return response.Response(
+                        {"detail": "status_transition_not_allowed"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
+                prev_index = s.current_stop_index
+                prev_status = s.status
+                total_stops = s.stops.count()
+                if s.status == Shipment.Status.ASSIGNED:
+                    s.status = Shipment.Status.IN_TRANSIT
+                    s.current_stop_index = 1 if total_stops > 1 else 0
+                    s.save(update_fields=["status", "current_stop_index"])
+                elif s.current_stop_index < total_stops - 1:
                     s.current_stop_index += 1
                     s.save(update_fields=["current_stop_index"])
-                    notify_shipment_status(s)
                 else:
                     _mark_work_done(s)
-                    notify_shipment_status(s)
         except ShipmentFareUnavailable:
             logger.warning(
                 "shipment_advance_missing_fare",
@@ -1093,6 +1136,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
+        notify_shipment_status(s)
         broadcast_shipment(s)
 
         logger.info(
@@ -1107,7 +1151,9 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 "new_status": s.status,
             },
         )
-        return response.Response(ShipmentDetailSerializer(s).data)
+        return response.Response(
+            ShipmentDetailSerializer(s, context={"request": request}).data
+        )
 
     @extend_schema(
         tags=["Shipments"],
