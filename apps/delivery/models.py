@@ -6,7 +6,7 @@ from typing import Optional, List, Tuple
 from django.utils import timezone
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from .geo import polyline_len_km, haversine_m
@@ -587,6 +587,30 @@ class Shipment(models.Model):
     def courier_income(self) -> int:
         fare = int(self.final_fare or self.estimated_fare or 0)
         return fare - self.commission_amount
+
+
+class ShipmentReview(models.Model):
+    shipment = models.OneToOneField(
+        Shipment,
+        on_delete=models.CASCADE,
+        related_name="review",
+        verbose_name="Заказ",
+    )
+    rating = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        verbose_name="Оценка",
+    )
+    comment = models.TextField(blank=True, max_length=1000, verbose_name="Комментарий")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Оставлен")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Изменён")
+
+    class Meta:
+        ordering = ("-created_at",)
+        verbose_name = "Отзыв о специалисте"
+        verbose_name_plural = "Отзывы о специалистах"
+
+    def __str__(self) -> str:
+        return f"Отзыв к заказу #{self.shipment_id}: {self.rating}/5"
 
 
 class ShipmentStop(models.Model):

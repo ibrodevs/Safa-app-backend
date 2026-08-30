@@ -25,6 +25,7 @@ from .models import (
     Container,
     Passage,
     Shipment,
+    ShipmentReview,
     ShipmentStop,
 )
 from .specialists import point_inside_bazar
@@ -33,6 +34,16 @@ from .map_point_resolver import resolve_market_point
 logger = logging.getLogger(__name__)
 
 _DEC6 = Decimal("0.000001")
+
+
+class ShipmentReviewSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ShipmentReview
+        fields = ("rating", "comment", "created_at")
+        read_only_fields = ("created_at",)
+
+    def validate_comment(self, value):
+        return value.strip()
 
 
 def _norm(s: str | None) -> str:
@@ -734,6 +745,8 @@ class ShipmentDetailSerializer(ShipmentTestPriceRepresentationMixin, serializers
     client_first_name = serializers.SerializerMethodField()
     client_phone = serializers.SerializerMethodField()
     client_avatar_url = serializers.SerializerMethodField()
+    review = ShipmentReviewSerializer(read_only=True)
+    can_review = serializers.SerializerMethodField()
 
     class Meta:
         model = Shipment
@@ -769,6 +782,8 @@ class ShipmentDetailSerializer(ShipmentTestPriceRepresentationMixin, serializers
             "work_completed_at",
             "is_paid",
             "paid_at",
+            "review",
+            "can_review",
         ]
         read_only_fields = fields
 
@@ -828,6 +843,18 @@ class ShipmentDetailSerializer(ShipmentTestPriceRepresentationMixin, serializers
         url = obj.client.avatar.url
         return request.build_absolute_uri(url) if request else url
 
+    def get_can_review(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            return False
+        return (
+            obj.client_id == user.id
+            and obj.status == Shipment.Status.COMPLETED
+            and obj.carrier_id is not None
+            and not hasattr(obj, "review")
+        )
+
 
 class ShipmentStatusSerializer(serializers.ModelSerializer):
     class Meta:
@@ -867,6 +894,8 @@ class ShipmentCardSerializer(ShipmentTestPriceRepresentationMixin, serializers.M
     client_first_name = serializers.SerializerMethodField()
     client_phone = serializers.SerializerMethodField()
     client_avatar_url = serializers.SerializerMethodField()
+    review = ShipmentReviewSerializer(read_only=True)
+    can_review = serializers.SerializerMethodField()
 
     class Meta:
         model = Shipment
@@ -884,6 +913,8 @@ class ShipmentCardSerializer(ShipmentTestPriceRepresentationMixin, serializers.M
             "stops_count",
             "status",
             "created_at",
+            "review",
+            "can_review",
         ]
 
     def get_client_first_name(self, obj):
@@ -901,6 +932,18 @@ class ShipmentCardSerializer(ShipmentTestPriceRepresentationMixin, serializers.M
 
     def get_stops_count(self, obj):
         return len(obj.stops.all())
+
+    def get_can_review(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return bool(
+            user
+            and user.is_authenticated
+            and obj.client_id == user.id
+            and obj.status == Shipment.Status.COMPLETED
+            and obj.carrier_id is not None
+            and not hasattr(obj, "review")
+        )
 
 
 class ShipmentNearbySerializer(ShipmentTestPriceRepresentationMixin, serializers.ModelSerializer):

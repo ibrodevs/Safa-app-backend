@@ -523,7 +523,7 @@ class DeleteAccountView(generics.GenericAPIView):
         if hasattr(user, 'profile'):
             profile = user.profile
             profile.rate = 0
-            profile.client_rate_count = "0"
+            profile.client_rate_count = 0
             profile.save()
 
         # Удаление аватара, если есть

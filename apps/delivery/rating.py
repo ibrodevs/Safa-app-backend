@@ -1,41 +1,30 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
+
 from django.db import transaction
-from apps.users.models import UserProfile, User
-from .models import Shipment
+from django.db.models import Avg, Count
+
+from apps.users.models import UserProfile
+
+from .models import Shipment, ShipmentReview
 
 
-def apply_rating_for_completed_shipment(shipment: Shipment) -> None:
-    if not shipment.carrier_id:
-        return
-    if shipment.status != Shipment.Status.COMPLETED:
-        return
-
+def recalculate_carrier_rating(carrier_id: int) -> UserProfile:
+    """Synchronize the profile cache with actual 1–5 star reviews."""
     with transaction.atomic():
-        s = (
-            Shipment.objects
-            .select_for_update()
-            .get(pk=shipment.pk)
+        profile, _ = UserProfile.objects.get_or_create(user_id=carrier_id)
+        profile = UserProfile.objects.select_for_update().get(pk=profile.pk)
+        summary = ShipmentReview.objects.filter(
+            shipment__carrier_id=carrier_id,
+            shipment__status=Shipment.Status.COMPLETED,
+        ).aggregate(
+            average=Avg("rating"),
+            count=Count("id"),
         )
-        if s.rating_applied or not s.carrier_id or s.status != Shipment.Status.COMPLETED:
-            return
-
-        profile, _ = UserProfile.objects.get_or_create(user_id=s.carrier_id)
-
-        try:
-            current_rate = int(profile.rate or 0)
-            current_clients = int(profile.client_rate_count or 0)
-
-            new_rate = min(100, current_rate + 1)
-            profile.rate = new_rate
-            profile.client_rate_count = str(current_clients + 1)
-            profile.save(update_fields=["rate", "client_rate_count"])
-
-            s.rating_applied = True
-            s.save(update_fields=["rating_applied"])
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.exception(
-                "apply_rating_failed", 
-                extra={"shipment_id": shipment.id, "carrier_id": s.carrier_id, "error": str(e)}
-            )
+        average = Decimal(str(summary["average"] or 0)).quantize(
+            Decimal("0.01"),
+            rounding=ROUND_HALF_UP,
+        )
+        profile.rate = average
+        profile.client_rate_count = int(summary["count"] or 0)
+        profile.save(update_fields=["rate", "client_rate_count"])
+        return profile

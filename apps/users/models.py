@@ -96,8 +96,17 @@ class CourierKYC(models.Model):
 
 class UserProfile(models.Model):
     user   = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
-    rate = models.PositiveIntegerField(default=0, null=True, blank=True, verbose_name='Оценка',validators=[MinValueValidator(0), MaxValueValidator(100)])
-    client_rate_count = models.CharField(max_length=155, null=True, blank=True, verbose_name='Сколько клиентов оценили')
+    rate = models.DecimalField(
+        max_digits=3,
+        decimal_places=2,
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(5)],
+        verbose_name="Средняя оценка",
+    )
+    client_rate_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Сколько клиентов оценили",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

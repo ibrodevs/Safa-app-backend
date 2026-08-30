@@ -7,7 +7,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 import requests
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count, IntegerField, Prefetch, Q, Sum, Value
 from django.db.models.functions import Coalesce
 from django.urls import reverse
@@ -38,7 +38,7 @@ from apps.payments.settlement import complete_paid_shipment
 from apps.users.models import User
 from .geocoding import twogis_autocomplete
 from .lifecycle import ShipmentFareUnavailable, mark_shipment_awaiting_payment
-from .rating import apply_rating_for_completed_shipment
+from .rating import recalculate_carrier_rating
 from .realtime import broadcast_courier_position, broadcast_shipment
 from .reverse_geocoding import reverse_geocode_address
 from .operations import cancel_shipment
@@ -55,6 +55,7 @@ from .models import (
     Passage,
     PrivacyPolicy,
     Shipment,
+    ShipmentReview,
     ShipmentStop,
     SupportContact,
 )
@@ -73,6 +74,7 @@ from .serializer import (
     ShipmentCreateSerializer,
     ShipmentDetailSerializer,
     ShipmentNearbySerializer,
+    ShipmentReviewSerializer,
 )
 from .stats import carrier_daily_stats_with_change
 
@@ -104,7 +106,6 @@ def _mark_work_done(s: Shipment) -> None:
         return
 
     complete_paid_shipment(shipment=s, payment_attempt=successful_attempt)
-    apply_rating_for_completed_shipment(s)
 
 
 def _quote_fixed_bazar_fare(stops: list[dict]) -> int | None:
@@ -443,6 +444,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         "client",
         "carrier",
         "carrier_settlement",
+        "review",
     ).prefetch_related(
         Prefetch(
             "stops",
@@ -527,6 +529,59 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
         return response.Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        tags=["Shipments"],
+        summary="Оставить отзыв о специалисте",
+        request=ShipmentReviewSerializer,
+        responses={201: ShipmentReviewSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="review")
+    def review(self, request, pk=None):
+        serializer = ShipmentReviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            with transaction.atomic():
+                shipment = Shipment.objects.select_for_update().get(pk=self.get_object().pk)
+                if shipment.client_id != request.user.id:
+                    return response.Response(
+                        {"detail": "only_for_client"},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+                if shipment.status != Shipment.Status.COMPLETED:
+                    return response.Response(
+                        {"detail": "shipment_not_completed"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                if not shipment.carrier_id:
+                    return response.Response(
+                        {"detail": "shipment_has_no_carrier"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                if ShipmentReview.objects.filter(shipment=shipment).exists():
+                    return response.Response(
+                        {"detail": "review_already_exists"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+
+                review = ShipmentReview.objects.create(
+                    shipment=shipment,
+                    **serializer.validated_data,
+                )
+                shipment.rating_applied = True
+                shipment.save(update_fields=["rating_applied"])
+                recalculate_carrier_rating(shipment.carrier_id)
+        except IntegrityError:
+            return response.Response(
+                {"detail": "review_already_exists"},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        return response.Response(
+            ShipmentReviewSerializer(review).data,
+            status=status.HTTP_201_CREATED,
+        )
 
     @extend_schema(
         tags=["Shipments"],
@@ -1082,14 +1137,14 @@ class ShipmentViewSet(viewsets.ModelViewSet):
 
         page = self.paginate_queryset(qs)
         if page is not None:
-            ser = ShipmentCardSerializer(page, many=True)
+            ser = ShipmentCardSerializer(page, many=True, context={"request": request})
             logger.info(
                 "history_listed",
                 extra={"request_id": rid, "user_id": request.user.id, "count": len(ser.data)},
             )
             return self.get_paginated_response(ser.data)
 
-        ser = ShipmentCardSerializer(qs, many=True)
+        ser = ShipmentCardSerializer(qs, many=True, context={"request": request})
         logger.info(
             "history_listed",
             extra={"request_id": rid, "user_id": request.user.id, "count": len(ser.data)},
@@ -1383,4 +1438,3 @@ class FAQListView(APIView):
             }
             for item in items
         ])
-

@@ -24,7 +24,7 @@ STATUS_LABELS = dict(Shipment.Status.choices)
 def _orders_queryset():
     return (
         Shipment.objects.exclude(is_demo=True)
-        .select_related("client", "carrier")
+        .select_related("client", "carrier", "review")
         .prefetch_related("stops")
     )
 

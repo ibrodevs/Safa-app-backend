@@ -33,7 +33,6 @@ from apps.payments.finik import (
 )
 from apps.payments.settlement import complete_paid_shipment
 from apps.payments.amounts import effective_finik_test_amount
-from apps.delivery.rating import apply_rating_for_completed_shipment
 from apps.delivery.realtime import broadcast_shipment
 from apps.notification.events import notify_shipment_status
 
@@ -105,7 +104,6 @@ def _finish_verified_shipment_payment(
         completed_shipment = shipment
 
     if changed:
-        apply_rating_for_completed_shipment(completed_shipment)
         notify_shipment_status(completed_shipment)
         broadcast_shipment(completed_shipment)
     return completed_shipment, changed
@@ -544,7 +542,6 @@ class FinikCallbackView(APIView):
                 completed_shipment = shipment
 
         if completed_shipment is not None:
-            apply_rating_for_completed_shipment(completed_shipment)
             notify_shipment_status(completed_shipment)
             broadcast_shipment(completed_shipment)
 

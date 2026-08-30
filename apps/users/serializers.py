@@ -243,6 +243,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     avatar = serializers.ImageField(source='user.avatar', required=False, allow_null=True)
     avatar_url = serializers.SerializerMethodField()
     city = serializers.CharField(source='user.city', required=False)
+    rate = serializers.FloatField(read_only=True)
 
     class Meta:
         model = UserProfile
@@ -258,7 +259,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'client_rate_count',
             'created_at',
         )
-        read_only_fields = ('created_at', 'avatar_url')
+        read_only_fields = ('rate', 'client_rate_count', 'created_at', 'avatar_url')
 
     def get_avatar_url(self, obj):
         user = getattr(obj, "user", None)

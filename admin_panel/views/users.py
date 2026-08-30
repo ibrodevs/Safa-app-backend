@@ -40,9 +40,9 @@ def user_list(request):
 
 def _detail_context(user):
     if user.role == User.Roles.CARRIER:
-        orders = user.shipments_as_carrier.select_related("client")[:10]
+        orders = user.shipments_as_carrier.select_related("client", "review")[:10]
     else:
-        orders = user.shipments_as_client.select_related("carrier")[:10]
+        orders = user.shipments_as_client.select_related("carrier", "review")[:10]
     return {"person": user, "orders": orders}
 
 
