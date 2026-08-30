@@ -236,6 +236,8 @@ def _nominatim_compose(payload: dict, lat: float = 0.0, lon: float = 0.0) -> str
         return ", ".join([p for p in parts if p])
 
     parts = []
+    if city:
+        parts.append(city)
     if road and house:
         parts.append(f"{road}, {house}")
     elif road:
@@ -245,7 +247,6 @@ def _nominatim_compose(payload: dict, lat: float = 0.0, lon: float = 0.0) -> str
     elif suburb:
         parts.append(suburb)
 
-    parts.append(city)
     return ", ".join([p for p in parts if p])
 
 

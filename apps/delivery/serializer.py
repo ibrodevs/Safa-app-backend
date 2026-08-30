@@ -745,7 +745,7 @@ class ShipmentDetailSerializer(ShipmentTestPriceRepresentationMixin, serializers
     client_first_name = serializers.SerializerMethodField()
     client_phone = serializers.SerializerMethodField()
     client_avatar_url = serializers.SerializerMethodField()
-    review = ShipmentReviewSerializer(read_only=True)
+    review = serializers.SerializerMethodField()
     can_review = serializers.SerializerMethodField()
 
     class Meta:
@@ -842,6 +842,20 @@ class ShipmentDetailSerializer(ShipmentTestPriceRepresentationMixin, serializers
         request = self.context.get("request")
         url = obj.client.avatar.url
         return request.build_absolute_uri(url) if request else url
+
+    def get_review(self, obj):
+        try:
+            rev = obj.review
+        except (AttributeError, ShipmentReview.DoesNotExist):
+            return None
+        if rev is None:
+            return None
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user and user.is_authenticated and not user.is_staff and not user.is_superuser:
+            if obj.carrier_id == user.id and obj.client_id != user.id:
+                return None
+        return ShipmentReviewSerializer(rev, context=self.context).data
 
     def get_can_review(self, obj):
         request = self.context.get("request")

@@ -17,6 +17,24 @@
           {% for district in districts %}<option value="{{ district.id }}">{{ district.name }}{% if not district.is_active %} · отключён{% endif %}</option>{% endfor %}
         </select>
       </div>
+      <div class="district-map-colors" id="district-map-colors-block" hidden>
+        <div class="district-map-color-row">
+          <div class="form-field form-field--color">
+            <label for="district-map-stroke-color">Цвет краев</label>
+            <div class="color-picker-wrapper">
+              <input type="color" id="district-map-stroke-color" value="#2563eb" class="input-color" title="Выбрать цвет краев">
+              <input type="text" id="district-map-stroke-hex" value="#2563eb" class="input-hex" maxlength="7" spellcheck="false">
+            </div>
+          </div>
+          <div class="form-field form-field--color">
+            <label for="district-map-fill-color">Цвет заливки</label>
+            <div class="color-picker-wrapper">
+              <input type="color" id="district-map-fill-color" value="#60a5fa" class="input-color" title="Выбрать цвет заливки">
+              <input type="text" id="district-map-fill-hex" value="#60a5fa" class="input-hex" maxlength="7" spellcheck="false">
+            </div>
+          </div>
+        </div>
+      </div>
       {% if districts %}
         <button class="btn btn-primary" type="button" id="district-map-draw" disabled>Нарисовать границы</button>
         <button class="btn btn-secondary" type="button" id="district-map-edit" disabled>Редактировать границы</button>

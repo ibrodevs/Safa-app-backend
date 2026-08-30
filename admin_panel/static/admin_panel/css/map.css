@@ -11,6 +11,73 @@
 .district-map-status { padding: 11px 12px; border-radius: 10px; background: #f8fafc; color: #475467; font-size: 13px; line-height: 1.4; }
 .district-map-status.is-error { background: #fef2f2; color: #b42318; }
 .district-map-status.is-success { background: #ecfdf3; color: #027a48; }
+.district-map-colors {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid var(--border-color, #e5e7eb);
+}
+.district-map-color-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.form-field--color label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-color, #334155);
+  margin-bottom: 6px;
+  display: block;
+}
+.color-picker-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffffff;
+  padding: 4px 6px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 8px;
+}
+.input-color {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 0;
+  background: transparent;
+  flex-shrink: 0;
+}
+.input-color::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.input-color::-webkit-color-swatch {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+}
+.input-color::-moz-color-swatch {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+}
+.input-hex {
+  width: 100%;
+  min-width: 0;
+  border: none;
+  padding: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-color, #1e293b);
+  background: transparent;
+  outline: none;
+}
 .district-map-stage { overflow: hidden; min-height: 620px; position: relative; }
 #district-map-canvas { width: 100%; height: 100%; min-height: 620px; background: #eef2f6; }
 .district-map-key-warning { position: absolute; z-index: 4; top: 16px; left: 16px; right: 16px; display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 14px; border-radius: 10px; border: 1px solid #fecdca; background: #fff6f5; color: #912018; }
