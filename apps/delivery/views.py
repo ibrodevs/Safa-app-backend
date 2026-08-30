@@ -1087,8 +1087,8 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         try:
             with transaction.atomic():
                 s = (
-                    Shipment.objects.select_for_update()
-                    .select_related("client", "carrier", "carrier_settlement", "review")
+                    Shipment.objects.select_for_update(of=("self",))
+                    .select_related("client")
                     .prefetch_related("stops")
                     .get(pk=visible_shipment.pk)
                 )
