@@ -20,6 +20,24 @@
   border-radius: 12px;
   border: 1px solid var(--border-color, #e5e7eb);
 }
+.district-map-history-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.district-map-history-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+.district-map-history-btn svg {
+  flex-shrink: 0;
+}
 .district-map-colors-header {
   display: flex;
   flex-direction: column;

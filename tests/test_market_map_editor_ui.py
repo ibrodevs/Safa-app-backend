@@ -369,11 +369,17 @@ def test_custom_panel_map_is_district_only_and_uses_yandex():
 
     assert 'id="district-map-select"' in panel
     assert 'id="district-map-save"' in panel
+    assert 'id="district-map-undo"' in panel
+    assert 'id="district-map-redo"' in panel
     assert "api-maps.yandex.ru/2.1/" in panel
     assert "container" not in panel.lower()
     assert "passage" not in panel.lower()
     assert "ringsIntersect" in javascript
     assert "base_geojson: null" in javascript
+    assert "undoStack" in javascript
+    assert "redoStack" in javascript
+    assert "applySnapshot" in javascript
+
 
 
 def test_container_number_and_passage_are_applied_automatically():

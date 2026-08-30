@@ -1,5 +1,5 @@
 {% extends "admin_panel/base.html" %}{% load static %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'admin_panel/css/map.css' %}?v=20260830-2">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'admin_panel/css/map.css' %}?v=20260830-4">{% endblock %}
 {% block page_class %}page--map{% endblock %}
 {% block content %}
 <header class="page-header district-map-heading">
@@ -39,6 +39,16 @@
           </div>
         </div>
       </div>
+      <div class="district-map-history-row">
+        <button class="btn btn-secondary btn-sm district-map-history-btn" type="button" id="district-map-undo" title="Отменить действие (Ctrl+Z / ⌘Z)" disabled>
+          <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M3 13a9 9 0 0 1 15.36-6.36L21 9"/></svg>
+          <span>Назад</span>
+        </button>
+        <button class="btn btn-secondary btn-sm district-map-history-btn" type="button" id="district-map-redo" title="Повторить действие (Ctrl+Y / ⌘Shift+Z)" disabled>
+          <span>Вперед</span>
+          <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M21 13a9 9 0 0 0-15.36-6.36L3 9"/></svg>
+        </button>
+      </div>
       {% if districts %}
         <button class="btn btn-primary" type="button" id="district-map-draw" disabled>Нарисовать границы</button>
         <button class="btn btn-secondary" type="button" id="district-map-edit" disabled>Редактировать границы</button>
@@ -66,6 +76,6 @@
 {{ districts|json_script:"district-map-catalog" }}
 {% endblock %}
 {% block extra_js %}
-<script src="{% static 'admin_panel/js/district_map.js' %}?v=20260830-2" defer></script>
+<script src="{% static 'admin_panel/js/district_map.js' %}?v=20260830-4" defer></script>
 {% if yandex_maps_api_key %}<script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU&amp;apikey={{ yandex_maps_api_key|urlencode }}" defer></script>{% endif %}
 {% endblock %}

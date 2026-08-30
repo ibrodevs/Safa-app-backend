@@ -12,6 +12,8 @@
   const strokeHexInput = document.getElementById("district-map-stroke-hex");
   const fillColorInput = document.getElementById("district-map-fill-color");
   const fillHexInput = document.getElementById("district-map-fill-hex");
+  const undoButton = document.getElementById("district-map-undo");
+  const redoButton = document.getElementById("district-map-redo");
   const drawButton = document.getElementById("district-map-draw");
   const editButton = document.getElementById("district-map-edit");
   const deleteButton = document.getElementById("district-map-delete");
@@ -25,6 +27,13 @@
   const districtColors = new Map();
   const polygons = new Map();
   const featureIds = new Map();
+
+  const MAX_HISTORY = 60;
+  const undoStack = [];
+  const redoStack = [];
+  let isApplyingHistory = false;
+  let historyTimer = null;
+
   let map = null;
   let selectedId = "";
   let dirty = false;
@@ -84,36 +93,175 @@
     if (deleteButton) deleteButton.disabled = !hasPolygon;
   }
 
+  function updateHistoryButtons() {
+    if (undoButton) undoButton.disabled = undoStack.length <= 1;
+    if (redoButton) redoButton.disabled = redoStack.length === 0;
+  }
+
+  function takeSnapshot() {
+    const polyData = {};
+    polygons.forEach((polygon, id) => {
+      polyData[id] = polygon.geometry.getCoordinates();
+    });
+    const colorsData = {};
+    districtColors.forEach((color, id) => {
+      colorsData[id] = { stroke: color.stroke, fill: color.fill };
+    });
+    const featData = {};
+    featureIds.forEach((featId, id) => {
+      featData[id] = featId;
+    });
+    return {
+      polygons: polyData,
+      colors: colorsData,
+      featureIds: featData,
+      selectedId: selectedId,
+    };
+  }
+
+  function pushHistory() {
+    if (isApplyingHistory) return;
+    const snapshot = takeSnapshot();
+    const json = JSON.stringify(snapshot);
+    if (undoStack.length > 0 && JSON.stringify(undoStack[undoStack.length - 1]) === json) {
+      return;
+    }
+    undoStack.push(snapshot);
+    if (undoStack.length > MAX_HISTORY) undoStack.shift();
+    redoStack.length = 0;
+    updateHistoryButtons();
+  }
+
+  function schedulePushHistory(delay = 300) {
+    if (isApplyingHistory) return;
+    if (historyTimer) clearTimeout(historyTimer);
+    historyTimer = setTimeout(() => {
+      pushHistory();
+    }, delay);
+  }
+
+  function applySnapshot(state) {
+    if (!state) return;
+    isApplyingHistory = true;
+    try {
+      const statePolyIds = new Set(Object.keys(state.polygons || {}));
+
+      polygons.forEach((polygon) => {
+        if (polygon.editor) polygon.editor.stopEditing();
+      });
+
+      const toDelete = [];
+      polygons.forEach((polygon, id) => {
+        if (!statePolyIds.has(id)) {
+          map.geoObjects.remove(polygon);
+          toDelete.push(id);
+        }
+      });
+      toDelete.forEach((id) => {
+        polygons.delete(id);
+        featureIds.delete(id);
+      });
+
+      featureIds.clear();
+      Object.entries(state.featureIds || {}).forEach(([id, fId]) => {
+        featureIds.set(id, fId);
+      });
+
+      districtColors.clear();
+      Object.entries(state.colors || {}).forEach(([id, color]) => {
+        districtColors.set(id, { stroke: color.stroke, fill: color.fill });
+      });
+
+      Object.entries(state.polygons || {}).forEach(([id, coordinates]) => {
+        const colors = getColors(id);
+        let polygon = polygons.get(id);
+        if (polygon) {
+          polygon.geometry.setCoordinates(coordinates);
+          polygon.options.set({
+            strokeColor: colors.stroke,
+            fillColor: colors.fill,
+          });
+        } else {
+          createPolygon(id, coordinates, featureIds.get(id), colors.stroke, colors.fill);
+        }
+      });
+
+      selectDistrict(state.selectedId || "", false);
+      updateButtons();
+      updateHistoryButtons();
+      validateAndReport(false);
+    } finally {
+      isApplyingHistory = false;
+    }
+  }
+
+  function undo() {
+    if (undoStack.length <= 1) return;
+    const current = undoStack.pop();
+    redoStack.push(current);
+    const previous = undoStack[undoStack.length - 1];
+    applySnapshot(previous);
+    markDirty();
+    updateHistoryButtons();
+    setStatus("Действие отменено (Назад).");
+  }
+
+  function redo() {
+    if (redoStack.length === 0) return;
+    const next = redoStack.pop();
+    undoStack.push(next);
+    applySnapshot(next);
+    markDirty();
+    updateHistoryButtons();
+    setStatus("Действие повторено (Вперед).");
+  }
+
   function stopEditors(exceptId) {
     polygons.forEach((polygon, districtId) => {
-      if (districtId !== exceptId && polygon.editor) polygon.editor.stopEditing();
+      const isExcept = districtId === exceptId;
+      if (!isExcept && polygon.editor) polygon.editor.stopEditing();
       const colors = getColors(districtId);
+      const isEditing = polygon.editor && polygon.editor.state && polygon.editor.state.get("editing");
       polygon.options.set({
         strokeColor: colors.stroke,
         fillColor: colors.fill,
-        strokeWidth: districtId === exceptId ? 4 : 2,
-        fillOpacity: districtId === exceptId ? 0.28 : 0.16,
+        strokeWidth: isExcept ? 4 : 2,
+        fillOpacity: isExcept ? 0.28 : 0.16,
       });
+      if (isEditing) {
+        polygon.editor.startEditing();
+      }
     });
   }
 
   function syncColorInputs(colors, enabled) {
     const isEnabled = Boolean(enabled);
+    const disabled = !isEnabled;
     if (strokeColorInput) {
-      strokeColorInput.value = colors.stroke;
-      strokeColorInput.disabled = !isEnabled;
+      if (strokeColorInput.disabled !== disabled) strokeColorInput.disabled = disabled;
+      if (document.activeElement !== strokeColorInput && strokeColorInput.value !== colors.stroke) {
+        strokeColorInput.value = colors.stroke;
+      }
     }
     if (strokeHexInput) {
-      strokeHexInput.value = colors.stroke.toUpperCase();
-      strokeHexInput.disabled = !isEnabled;
+      if (strokeHexInput.disabled !== disabled) strokeHexInput.disabled = disabled;
+      if (document.activeElement !== strokeHexInput) {
+        const hex = (colors.stroke || "").toUpperCase();
+        if (strokeHexInput.value.toUpperCase() !== hex) strokeHexInput.value = hex;
+      }
     }
     if (fillColorInput) {
-      fillColorInput.value = colors.fill;
-      fillColorInput.disabled = !isEnabled;
+      if (fillColorInput.disabled !== disabled) fillColorInput.disabled = disabled;
+      if (document.activeElement !== fillColorInput && fillColorInput.value !== colors.fill) {
+        fillColorInput.value = colors.fill;
+      }
     }
     if (fillHexInput) {
-      fillHexInput.value = colors.fill.toUpperCase();
-      fillHexInput.disabled = !isEnabled;
+      if (fillHexInput.disabled !== disabled) fillHexInput.disabled = disabled;
+      if (document.activeElement !== fillHexInput) {
+        const hex = (colors.fill || "").toUpperCase();
+        if (fillHexInput.value.toUpperCase() !== hex) fillHexInput.value = hex;
+      }
     }
     if (colorsBlock) colorsBlock.classList.toggle("is-disabled", !isEnabled);
   }
@@ -146,15 +294,20 @@
     const newStroke = stroke !== undefined ? stroke : current.stroke;
     const newFill = fill !== undefined ? fill : current.fill;
     districtColors.set(selectedId, { stroke: newStroke, fill: newFill });
-    syncColorInputs({ stroke: newStroke, fill: newFill });
+    syncColorInputs({ stroke: newStroke, fill: newFill }, true);
     const polygon = selectedPolygon();
     if (polygon) {
+      const isEditing = polygon.editor && polygon.editor.state && polygon.editor.state.get("editing");
       polygon.options.set({
         strokeColor: newStroke,
         fillColor: newFill,
       });
+      if (isEditing) {
+        polygon.editor.startEditing();
+      }
     }
     markDirty();
+    schedulePushHistory(200);
   }
 
   function yandexCoordinates(geometry) {
@@ -196,7 +349,14 @@
     polygon.geometry.events.add("change", function () {
       markDirty();
       validateAndReport(false);
+      schedulePushHistory(300);
     });
+    if (polygon.editor && polygon.editor.events) {
+      polygon.editor.events.add("drawingstop", function () {
+        markDirty();
+        pushHistory();
+      });
+    }
     map.geoObjects.add(polygon);
     polygons.set(String(districtId), polygon);
     featureIds.set(String(districtId), featureId || `district-${districtId}`);
@@ -240,6 +400,7 @@
 
   function startDrawing() {
     if (!selectedId) return;
+    pushHistory();
     const existing = selectedPolygon();
     if (existing) {
       existing.editor.stopEditing();
@@ -259,11 +420,13 @@
   function deleteSelected() {
     const polygon = selectedPolygon();
     if (!polygon) return;
+    pushHistory();
     polygon.editor.stopEditing();
     map.geoObjects.remove(polygon);
     polygons.delete(selectedId);
     featureIds.delete(selectedId);
     markDirty();
+    pushHistory();
     updateButtons();
     setStatus("Границы удалены. Нажмите «Сохранить», чтобы применить изменение.");
   }
@@ -390,9 +553,12 @@
     loadPolygons();
     const bounds = allBounds();
     if (bounds) map.setBounds(bounds, { checkZoomRange: true, zoomMargin: 48 });
+
     if (select) select.addEventListener("change", () => selectDistrict(select.value, false));
     if (strokeColorInput) {
-      strokeColorInput.addEventListener("input", (e) => updateSelectedColors(e.target.value, undefined));
+      const handleStroke = (e) => updateSelectedColors(e.target.value, undefined);
+      strokeColorInput.addEventListener("input", handleStroke);
+      strokeColorInput.addEventListener("change", handleStroke);
     }
     if (strokeHexInput) {
       strokeHexInput.addEventListener("input", (e) => {
@@ -404,11 +570,13 @@
         let hex = e.target.value.trim();
         if (!hex.startsWith("#")) hex = "#" + hex;
         if (/^#[0-9a-fA-F]{6}$/.test(hex)) updateSelectedColors(hex, undefined);
-        else e.target.value = getColors(selectedId).stroke.toUpperCase();
+        else if (selectedId) e.target.value = getColors(selectedId).stroke.toUpperCase();
       });
     }
     if (fillColorInput) {
-      fillColorInput.addEventListener("input", (e) => updateSelectedColors(undefined, e.target.value));
+      const handleFill = (e) => updateSelectedColors(undefined, e.target.value);
+      fillColorInput.addEventListener("input", handleFill);
+      fillColorInput.addEventListener("change", handleFill);
     }
     if (fillHexInput) {
       fillHexInput.addEventListener("input", (e) => {
@@ -420,17 +588,70 @@
         let hex = e.target.value.trim();
         if (!hex.startsWith("#")) hex = "#" + hex;
         if (/^#[0-9a-fA-F]{6}$/.test(hex)) updateSelectedColors(undefined, hex);
-        else e.target.value = getColors(selectedId).fill.toUpperCase();
+        else if (selectedId) e.target.value = getColors(selectedId).fill.toUpperCase();
       });
     }
+
+    if (undoButton) undoButton.addEventListener("click", undo);
+    if (redoButton) redoButton.addEventListener("click", redo);
+
     if (drawButton) drawButton.addEventListener("click", startDrawing);
-    if (editButton) editButton.addEventListener("click", () => { const polygon = selectedPolygon(); if (polygon) { stopEditors(selectedId); polygon.editor.startEditing(); setStatus("Перетаскивайте вершины района, затем нажмите «Сохранить»."); } });
+    if (editButton) editButton.addEventListener("click", () => {
+      const polygon = selectedPolygon();
+      if (polygon) {
+        stopEditors(selectedId);
+        polygon.editor.startEditing();
+        setStatus("Перетаскивайте вершины района, затем нажмите «Сохранить».");
+      }
+    });
     if (deleteButton) deleteButton.addEventListener("click", deleteSelected);
     if (saveButton) saveButton.addEventListener("click", save);
-    window.addEventListener("beforeunload", (event) => { if (!dirty) return; event.preventDefault(); event.returnValue = ""; });
-    setStatus(polygons.size ? "Выберите район, чтобы изменить его границы." : "Выберите район и нажмите «Нарисовать границы»." );
+
+    window.addEventListener("keydown", (event) => {
+      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+      const modifier = isMac ? event.metaKey : event.ctrlKey;
+      if (!modifier) return;
+
+      const active = document.activeElement;
+      const isTextInput = active && (active.tagName === "TEXTAREA" || (active.tagName === "INPUT" && active.type !== "color"));
+
+      // Undo: Ctrl+Z or Cmd+Z
+      if ((event.key === "z" || event.key === "Z" || event.code === "KeyZ") && !event.shiftKey) {
+        if (isTextInput && active.id !== "district-map-stroke-hex" && active.id !== "district-map-fill-hex") {
+          return;
+        }
+        event.preventDefault();
+        undo();
+        return;
+      }
+
+      // Redo: Ctrl+Y or Ctrl+Shift+Z or Cmd+Shift+Z
+      if (
+        ((event.key === "y" || event.key === "Y" || event.code === "KeyY") && !event.shiftKey) ||
+        ((event.key === "z" || event.key === "Z" || event.code === "KeyZ") && event.shiftKey)
+      ) {
+        if (isTextInput && active.id !== "district-map-stroke-hex" && active.id !== "district-map-fill-hex") {
+          return;
+        }
+        event.preventDefault();
+        redo();
+        return;
+      }
+    });
+
+    window.addEventListener("beforeunload", (event) => {
+      if (!dirty) return;
+      event.preventDefault();
+      event.returnValue = "";
+    });
+
+    setStatus(polygons.size ? "Выберите район, чтобы изменить его границы." : "Выберите район и нажмите «Нарисовать границы».");
     updateButtons();
     syncColorInputs(selectedId ? getColors(selectedId) : { stroke: "#2563eb", fill: "#60a5fa" }, Boolean(selectedId));
+
+    // Capture initial state into undo stack
+    undoStack.push(takeSnapshot());
+    updateHistoryButtons();
   }
 
   let attempts = 0;
