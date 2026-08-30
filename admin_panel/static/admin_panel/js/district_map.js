@@ -6,6 +6,8 @@
 
   const select = document.getElementById("district-map-select");
   const colorsBlock = document.getElementById("district-map-colors-block");
+  const colorsTitle = document.getElementById("district-map-colors-title");
+  const colorsHint = document.getElementById("district-map-colors-hint");
   const strokeColorInput = document.getElementById("district-map-stroke-color");
   const strokeHexInput = document.getElementById("district-map-stroke-hex");
   const fillColorInput = document.getElementById("district-map-fill-color");
@@ -95,11 +97,25 @@
     });
   }
 
-  function syncColorInputs(colors) {
-    if (strokeColorInput) strokeColorInput.value = colors.stroke;
-    if (strokeHexInput) strokeHexInput.value = colors.stroke.toUpperCase();
-    if (fillColorInput) fillColorInput.value = colors.fill;
-    if (fillHexInput) fillHexInput.value = colors.fill.toUpperCase();
+  function syncColorInputs(colors, enabled) {
+    const isEnabled = Boolean(enabled);
+    if (strokeColorInput) {
+      strokeColorInput.value = colors.stroke;
+      strokeColorInput.disabled = !isEnabled;
+    }
+    if (strokeHexInput) {
+      strokeHexInput.value = colors.stroke.toUpperCase();
+      strokeHexInput.disabled = !isEnabled;
+    }
+    if (fillColorInput) {
+      fillColorInput.value = colors.fill;
+      fillColorInput.disabled = !isEnabled;
+    }
+    if (fillHexInput) {
+      fillHexInput.value = colors.fill.toUpperCase();
+      fillHexInput.disabled = !isEnabled;
+    }
+    if (colorsBlock) colorsBlock.classList.toggle("is-disabled", !isEnabled);
   }
 
   function selectDistrict(id, startEditing) {
@@ -111,12 +127,13 @@
     const district = districtById.get(selectedId);
     if (!district) {
       setStatus("Выберите район в списке.");
-      if (colorsBlock) colorsBlock.hidden = true;
+      if (colorsTitle) colorsTitle.textContent = "Цвета района";
+      if (colorsHint) colorsHint.textContent = "Выберите район в списке выше";
+      syncColorInputs({ stroke: "#2563eb", fill: "#60a5fa" }, false);
     } else {
-      if (colorsBlock) {
-        colorsBlock.hidden = false;
-        syncColorInputs(getColors(selectedId));
-      }
+      if (colorsTitle) colorsTitle.textContent = `Цвета: ${district.name}`;
+      if (colorsHint) colorsHint.textContent = "Измените цвет краев или заливки";
+      syncColorInputs(getColors(selectedId), true);
       if (polygon) setStatus(`Район «${district.name}»: границы можно редактировать, перетаскивая точки.`);
       else setStatus(`Район «${district.name}» пока не нарисован.`);
     }
@@ -413,6 +430,7 @@
     window.addEventListener("beforeunload", (event) => { if (!dirty) return; event.preventDefault(); event.returnValue = ""; });
     setStatus(polygons.size ? "Выберите район, чтобы изменить его границы." : "Выберите район и нажмите «Нарисовать границы»." );
     updateButtons();
+    syncColorInputs(selectedId ? getColors(selectedId) : { stroke: "#2563eb", fill: "#60a5fa" }, Boolean(selectedId));
   }
 
   let attempts = 0;

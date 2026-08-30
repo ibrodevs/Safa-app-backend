@@ -1,5 +1,5 @@
 {% extends "admin_panel/base.html" %}{% load static %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'admin_panel/css/map.css' %}?v=20260830-1">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'admin_panel/css/map.css' %}?v=20260830-2">{% endblock %}
 {% block page_class %}page--map{% endblock %}
 {% block content %}
 <header class="page-header district-map-heading">
@@ -17,20 +17,24 @@
           {% for district in districts %}<option value="{{ district.id }}">{{ district.name }}{% if not district.is_active %} · отключён{% endif %}</option>{% endfor %}
         </select>
       </div>
-      <div class="district-map-colors" id="district-map-colors-block" hidden>
+      <div class="district-map-colors" id="district-map-colors-block">
+        <div class="district-map-colors-header">
+          <span class="district-map-colors-title" id="district-map-colors-title">Цвета района</span>
+          <span class="district-map-colors-hint" id="district-map-colors-hint">Выберите район в списке</span>
+        </div>
         <div class="district-map-color-row">
           <div class="form-field form-field--color">
             <label for="district-map-stroke-color">Цвет краев</label>
             <div class="color-picker-wrapper">
-              <input type="color" id="district-map-stroke-color" value="#2563eb" class="input-color" title="Выбрать цвет краев">
-              <input type="text" id="district-map-stroke-hex" value="#2563eb" class="input-hex" maxlength="7" spellcheck="false">
+              <input type="color" id="district-map-stroke-color" value="#2563eb" class="input-color" title="Выбрать цвет краев" disabled>
+              <input type="text" id="district-map-stroke-hex" value="#2563EB" class="input-hex" maxlength="7" spellcheck="false" disabled>
             </div>
           </div>
           <div class="form-field form-field--color">
             <label for="district-map-fill-color">Цвет заливки</label>
             <div class="color-picker-wrapper">
-              <input type="color" id="district-map-fill-color" value="#60a5fa" class="input-color" title="Выбрать цвет заливки">
-              <input type="text" id="district-map-fill-hex" value="#60a5fa" class="input-hex" maxlength="7" spellcheck="false">
+              <input type="color" id="district-map-fill-color" value="#60a5fa" class="input-color" title="Выбрать цвет заливки" disabled>
+              <input type="text" id="district-map-fill-hex" value="#60A5FA" class="input-hex" maxlength="7" spellcheck="false" disabled>
             </div>
           </div>
         </div>
@@ -62,6 +66,6 @@
 {{ districts|json_script:"district-map-catalog" }}
 {% endblock %}
 {% block extra_js %}
-<script src="{% static 'admin_panel/js/district_map.js' %}?v=20260830-1" defer></script>
+<script src="{% static 'admin_panel/js/district_map.js' %}?v=20260830-2" defer></script>
 {% if yandex_maps_api_key %}<script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU&amp;apikey={{ yandex_maps_api_key|urlencode }}" defer></script>{% endif %}
 {% endblock %}
