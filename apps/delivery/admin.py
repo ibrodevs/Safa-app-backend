@@ -217,12 +217,28 @@ class AmanatCampaignAdmin(admin.ModelAdmin):
     list_editable = ("status", "is_featured", "sort_order")
     search_fields = ("title", "short_title", "description")
     autocomplete_fields = ("category",)
-    readonly_fields = ("created_at", "updated_at", "collected_amount_display", "helpers_count_display")
+    readonly_fields = (
+        "safa_amount",
+        "created_at",
+        "updated_at",
+        "collected_amount_display",
+        "helpers_count_display",
+    )
     inlines = (AmanatDocumentInline, AmanatDonationInline)
     ordering = ("sort_order", "-created_at")
     fieldsets = (
         ("Основное", {"fields": ("category", "title", "short_title", "description", "goal", "cover_image")}),
-        ("Суммы", {"fields": ("needed_amount", "collected_amount_manual", "safa_amount", "helpers_count_manual")}),
+        (
+            "Суммы",
+            {
+                "fields": (
+                    "needed_amount",
+                    "collected_amount_manual",
+                    "safa_amount",
+                    "helpers_count_manual",
+                )
+            },
+        ),
         ("Публикация", {"fields": ("status", "is_featured", "sort_order", "ends_at")}),
         ("Служебное", {"fields": ("collected_amount_display", "helpers_count_display", "created_at", "updated_at")}),
     )
@@ -455,4 +471,3 @@ class CourierPositionAdmin(admin.ModelAdmin):
 class SupportContactAdmin(admin.ModelAdmin):
     list_display = ("phone", "telegram", "whatsapp", "working_hours", "is_active", "updated_at")
     list_editable = ("is_active",)
-

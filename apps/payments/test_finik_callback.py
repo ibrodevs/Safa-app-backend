@@ -103,6 +103,84 @@ def test_verified_success_callback_marks_shipment_paid_and_records_ids():
 
 
 @pytest.mark.django_db
+@override_settings(FINIK_ACCOUNT_ID=ACCOUNT_ID, PLATFORM_COMMISSION_PCT=Decimal("0.10"))
+def test_verified_order_commission_updates_featured_amanat_exactly_once():
+    category, _ = AmanatCategory.objects.get_or_create(
+        slug="education",
+        defaults={"name": "Образование"},
+    )
+    campaign, _ = AmanatCampaign.objects.update_or_create(
+        title="Пожертвование на Медресе",
+        defaults={
+            "category": category,
+            "description": "Медресе",
+            "needed_amount": 1_600_000,
+            "collected_amount_manual": 650_000,
+            "safa_amount": 0,
+            "status": AmanatCampaign.Status.ACTIVE,
+            "is_featured": True,
+        },
+    )
+    shipment = _shipment()
+    attempt = _attempt(shipment)
+    payload = _callback(attempt)
+
+    first_response = APIClient().post(
+        "/api/payments/finik/callback/",
+        payload,
+        format="json",
+    )
+    second_response = APIClient().post(
+        "/api/payments/finik/callback/",
+        payload,
+        format="json",
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    campaign.refresh_from_db()
+    assert campaign.safa_amount == 45
+    assert campaign.collected_amount == 650_045
+
+
+@pytest.mark.django_db
+def test_amanat_migration_replaces_demo_amount_with_real_commissions():
+    category, _ = AmanatCategory.objects.get_or_create(
+        slug="education",
+        defaults={"name": "Образование"},
+    )
+    campaign, _ = AmanatCampaign.objects.update_or_create(
+        title="Пожертвование на Медресе",
+        defaults={
+            "category": category,
+            "description": "Медресе",
+            "needed_amount": 1_600_000,
+            "safa_amount": 706_624,
+            "status": AmanatCampaign.Status.ACTIVE,
+            "is_featured": True,
+        },
+    )
+    shipment = _shipment()
+    attempt = _attempt(shipment)
+    CarrierSettlement.objects.create(
+        shipment=shipment,
+        payment_attempt=attempt,
+        carrier=shipment.carrier,
+        gross_amount=450,
+        commission_amount=45,
+        net_amount=405,
+    )
+
+    migration = import_module(
+        "apps.delivery.migrations.0039_recalculate_amanat_safa_amount"
+    )
+    migration.recalculate_amanat_safa_amount(django_apps, None)
+
+    campaign.refresh_from_db()
+    assert campaign.safa_amount == 45
+
+
+@pytest.mark.django_db
 @override_settings(FINIK_ACCOUNT_ID=ACCOUNT_ID)
 def test_callback_accepts_lowercase_status_and_nested_account_id():
     shipment = _shipment()
