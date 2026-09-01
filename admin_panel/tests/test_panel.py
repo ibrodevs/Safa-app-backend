@@ -1,6 +1,7 @@
 import json
 from unittest.mock import patch
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.urls import reverse
 
@@ -364,3 +365,80 @@ class PanelWorkflowTests(TestCase):
             self.client.get(reverse("admin_panel:order_edit", args=(shipment.pk,))).status_code,
             200,
         )
+
+    def test_kyc_document_serving_and_permissions(self):
+        # Create KYC with a file
+        image_content = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4"
+        uploaded = SimpleUploadedFile("selfie.png", image_content, content_type="image/png")
+        self.kyc.selfie_id_card = uploaded
+        self.kyc.save()
+
+        doc_url = reverse("admin_panel:kyc_document", args=(self.kyc.pk, "selfie_id_card"))
+
+        # Authenticated staff can access the file
+        response = self.client.get(doc_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(b"".join(response.streaming_content), image_content)
+
+        # Invalid doc_type returns 404
+        bad_doc_url = reverse("admin_panel:kyc_document", args=(self.kyc.pk, "unknown_doc"))
+        self.assertEqual(self.client.get(bad_doc_url).status_code, 404)
+
+        # Non-existent file on field returns 404
+        empty_doc_url = reverse("admin_panel:kyc_document", args=(self.kyc.pk, "id_front"))
+        self.assertEqual(self.client.get(empty_doc_url).status_code, 404)
+
+        # Unauthenticated user is redirected to login
+        anon_client = Client()
+        anon_response = anon_client.get(doc_url)
+        self.assertEqual(anon_response.status_code, 302)
+
+    def test_amanat_category_management_and_display(self):
+        # Create category via admin panel
+        response = self.client.post(
+            reverse("admin_panel:amanat_category_create"),
+            {
+                "name": "Медицина",
+                "slug": "medical",
+                "sort_order": 1,
+                "is_active": "on",
+            },
+        )
+        self.assertRedirects(response, reverse("admin_panel:amanat"))
+        category = AmanatCategory.objects.get(slug="medical")
+        self.assertEqual(category.name, "Медицина")
+
+        # Create campaign in category
+        campaign = AmanatCampaign.objects.create(
+            category=category,
+            title="Сбор на операцию",
+            needed_amount=50000,
+        )
+
+        # Check list page renders category with count
+        list_response = self.client.get(reverse("admin_panel:amanat"))
+        self.assertEqual(list_response.status_code, 200)
+        self.assertContains(list_response, "Медицина")
+        self.assertContains(list_response, "medical")
+        self.assertContains(list_response, "Категории Amanat")
+
+        # Check detail page renders category link and badge
+        detail_response = self.client.get(reverse("admin_panel:amanat_detail", args=(campaign.pk,)))
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertContains(detail_response, "Медицина")
+        self.assertContains(detail_response, reverse("admin_panel:amanat_category_edit", args=(category.pk,)))
+
+        # Edit category
+        edit_response = self.client.post(
+            reverse("admin_panel:amanat_category_edit", args=(category.pk,)),
+            {
+                "name": "Срочная медицина",
+                "slug": "medical",
+                "sort_order": 2,
+                "is_active": "on",
+            },
+        )
+        self.assertRedirects(edit_response, reverse("admin_panel:amanat"))
+        category.refresh_from_db()
+        self.assertEqual(category.name, "Срочная медицина")
+        self.assertEqual(category.sort_order, 2)

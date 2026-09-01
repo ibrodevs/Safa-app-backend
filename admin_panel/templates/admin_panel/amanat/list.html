@@ -20,5 +20,55 @@
   </tbody></table></div>{% include "admin_panel/components/pagination.html" %}
   {% else %}{% include "admin_panel/components/empty_state.html" with empty_title="Сборов в этом статусе нет" empty_text="Создайте новый сбор или выберите другую вкладку." %}{% endif %}
 </section>
-{% if categories %}<section class="card" style="margin-top:16px"><div class="card-header"><div><h2>Категории</h2><p>Используются в формах сборов Amanat.</p></div></div><div class="compact-list">{% for category in categories %}<a href="{% url 'admin_panel:amanat_category_edit' category.pk %}"><span><strong>{{ category.name }}</strong><small>{{ category.slug }}</small></span><span class="badge {% if category.is_active %}badge--success{% endif %}">{% if category.is_active %}Активна{% else %}Выключена{% endif %}</span></a>{% endfor %}</div></section>{% endif %}
+<section class="card table-card" style="margin-top:24px">
+  <div class="card-header" style="padding:16px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border);">
+    <div>
+      <h2 style="margin:0; font-size:16px; font-weight:600;">Категории Amanat</h2>
+      <p style="margin:4px 0 0; color:var(--muted); font-size:13px;">Тематические разделы для благотворительных сборов.</p>
+    </div>
+    <a class="btn btn-secondary" href="{% url 'admin_panel:amanat_category_create' %}">+ Добавить категорию</a>
+  </div>
+  {% if categories %}
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Категория</th>
+          <th>Код (Slug)</th>
+          <th>Сборов</th>
+          <th>Порядок</th>
+          <th>Статус</th>
+          <th style="text-align:right">Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for category in categories %}
+        <tr>
+          <td>
+            <a class="table-primary" href="{% url 'admin_panel:amanat_category_edit' category.pk %}">
+              <strong>{{ category.name }}</strong>
+            </a>
+          </td>
+          <td><code>{{ category.slug }}</code></td>
+          <td><strong>{{ category.campaigns_count|default:0 }}</strong></td>
+          <td>{{ category.sort_order }}</td>
+          <td>
+            <span class="badge {% if category.is_active %}badge--success{% else %}badge--neutral{% endif %}">
+              {% if category.is_active %}Активна{% else %}Выключена{% endif %}
+            </span>
+          </td>
+          <td style="text-align:right">
+            <a class="btn btn-sm btn-secondary" href="{% url 'admin_panel:amanat_category_edit' category.pk %}">Изменить</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="padding:24px; text-align:center;">
+    {% include "admin_panel/components/empty_state.html" with empty_title="Категорий пока нет" empty_text="Создайте первую категорию, чтобы группировать сборы Amanat." %}
+  </div>
+  {% endif %}
+</section>
 {% endblock %}

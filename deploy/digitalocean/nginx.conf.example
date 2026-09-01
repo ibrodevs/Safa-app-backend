@@ -34,11 +34,10 @@ server {
     }
 
     # ── Media files ───────────────────────────────────────────────
-    # NOTE: KYC documents under /media/kyc/ should be served through
-    # Django with X-Accel-Redirect. This block intentionally excludes
-    # /media/kyc/ and serves only safe public media (avatars, etc.).
+    # NOTE: Direct unauthenticated access to /media/kyc/ is blocked
+    # for privacy (sensitive passports/selfies). The admin panel loads
+    # them securely via staff-authenticated endpoints (/panel/kyc/<id>/document/<type>/).
     location /media/kyc/ {
-        # Block direct access — KYC docs must go through Django auth
         return 403;
     }
 

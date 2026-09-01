@@ -1,5 +1,7 @@
+import mimetypes
 from django.contrib import messages
 from django.core.paginator import Paginator
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect
 from django.views.decorators.http import require_POST
 
@@ -46,6 +48,31 @@ def kyc_detail(request, pk):
         section="kyc",
         title=f"Проверка {kyc.user.first_name or kyc.user.phone_number}",
     )
+
+
+@staff_required
+def kyc_document(request, pk, doc_type):
+    kyc = get_object_or_404(_kyc_queryset(), pk=pk)
+    valid_fields = {
+        "id_front": kyc.id_front,
+        "id_back": kyc.id_back,
+        "selfie_id_card": kyc.selfie_id_card,
+        "selfie": kyc.selfie_id_card,
+    }
+    if doc_type not in valid_fields:
+        raise Http404("Неверный тип документа.")
+
+    file_field = valid_fields[doc_type]
+    if not file_field or not bool(file_field.name):
+        raise Http404("Файл не прикреплен.")
+
+    try:
+        content_type, _ = mimetypes.guess_type(file_field.name)
+        response = FileResponse(file_field.open("rb"), content_type=content_type or "image/jpeg")
+        response["Cache-Control"] = "private, max-age=3600"
+        return response
+    except (FileNotFoundError, ValueError, OSError):
+        raise Http404("Файл не найден на сервере.")
 
 
 def _next_pending(exclude_pk):

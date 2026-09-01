@@ -197,7 +197,34 @@ class AmanatCampaignForm(StyledModelForm):
             "is_featured",
             "sort_order",
         )
+        labels = {
+            "category": "Категория",
+            "title": "Название сбора",
+            "short_title": "Короткое название",
+            "description": "Полное описание сбора",
+            "goal": "Цель сбора",
+            "cover_image": "Обложка (фото)",
+            "needed_amount": "Нужно собрать (сом)",
+            "collected_amount_manual": "Собрано вручную (сом)",
+            "safa_amount": "Начисления Safa (сом)",
+            "helpers_count_manual": "Помогли вручную (человек)",
+            "ends_at": "Дата завершения",
+            "status": "Статус сбора",
+            "is_featured": "Главный сбор на первом экране",
+            "sort_order": "Порядок сортировки",
+        }
+        help_texts = {
+            "category": "Выберите тематическую категорию сбора.",
+            "is_featured": "Будет выделен в блоке главного сбора в приложении.",
+            "sort_order": "Меньшее число показывается выше в списке.",
+        }
         widgets = {"ends_at": forms.DateInput(attrs={"type": "date"})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "category" in self.fields:
+            self.fields["category"].empty_label = "Выберите категорию"
+            self.fields["category"].queryset = AmanatCategory.objects.order_by("sort_order", "name")
 
 
 class AmanatCategoryForm(StyledModelForm):
@@ -205,10 +232,15 @@ class AmanatCategoryForm(StyledModelForm):
         model = AmanatCategory
         fields = ("name", "slug", "sort_order", "is_active")
         labels = {
-            "name": "Название",
-            "slug": "Код категории",
-            "sort_order": "Порядок",
+            "name": "Название категории",
+            "slug": "Код категории (slug)",
+            "sort_order": "Порядок сортировки",
             "is_active": "Категория активна",
+        }
+        help_texts = {
+            "name": "Например: Лечение, Малоимущие семьи, Сироты, Образование.",
+            "slug": "Уникальный код на латинице (например: medical, orphans, food).",
+            "sort_order": "Меньшее число отображается раньше.",
         }
 
 

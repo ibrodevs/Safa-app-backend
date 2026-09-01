@@ -25,6 +25,7 @@ urlpatterns = [
     path("couriers/<int:pk>/edit/", users.user_form, {"courier": True}, name="courier_edit"),
     path("kyc/", kyc.kyc_list, name="kyc_list"),
     path("kyc/<int:pk>/", kyc.kyc_detail, name="kyc_detail"),
+    path("kyc/<int:pk>/document/<str:doc_type>/", kyc.kyc_document, name="kyc_document"),
     path("kyc/<int:pk>/approve/", kyc.kyc_approve, name="kyc_approve"),
     path("kyc/<int:pk>/reject/", kyc.kyc_reject, name="kyc_reject"),
     path("map/", map.map_list, name="map_list"),

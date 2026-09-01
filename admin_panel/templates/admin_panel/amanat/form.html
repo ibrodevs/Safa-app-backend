@@ -1,2 +1,20 @@
 {% extends "admin_panel/base.html" %}
-{% block content %}<nav class="breadcrumbs"><a href="{% url 'admin_panel:amanat' %}">Amanat</a> / Новый сбор</nav><header class="page-header"><div><h1>Новый сбор</h1><p>Заполните публичные данные кампании.</p></div></header><form class="card" method="post" enctype="multipart/form-data">{% csrf_token %}<div class="card-body">{% include "admin_panel/components/campaign_form_fields.html" %}</div><div class="card-header"><a class="btn btn-secondary" href="{% url 'admin_panel:amanat' %}">Отмена</a><button class="btn btn-primary" type="submit">Создать сбор</button></div></form>{% endblock %}
+{% block content %}
+<nav class="breadcrumbs"><a href="{% url 'admin_panel:amanat' %}">Amanat</a><span>/</span><span>Новый сбор</span></nav>
+<header class="page-header">
+  <div>
+    <h1>Новый сбор</h1>
+    <p>Заполните публичные данные благотворительной кампании.</p>
+  </div>
+</header>
+<form class="card" method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  <div class="card-body">
+    {% include "admin_panel/components/campaign_form_fields.html" %}
+    <div class="action-row" style="margin-top:24px; display:flex; justify-content:flex-end; gap:12px;">
+      <a class="btn btn-secondary" href="{% url 'admin_panel:amanat' %}">Отмена</a>
+      <button class="btn btn-primary" type="submit">Создать сбор</button>
+    </div>
+  </div>
+</form>
+{% endblock %}

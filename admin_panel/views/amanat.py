@@ -38,7 +38,9 @@ def amanat_list(request):
         {
             "page": page,
             "selected_status": selected,
-            "categories": AmanatCategory.objects.order_by("sort_order", "name"),
+            "categories": AmanatCategory.objects.annotate(
+                campaigns_count=Count("campaigns")
+            ).order_by("sort_order", "name"),
         },
         section="amanat",
         title="Amanat",
