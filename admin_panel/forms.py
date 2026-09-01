@@ -218,13 +218,26 @@ class AmanatCampaignForm(StyledModelForm):
             "is_featured": "Будет выделен в блоке главного сбора в приложении.",
             "sort_order": "Меньшее число показывается выше в списке.",
         }
-        widgets = {"ends_at": forms.DateInput(attrs={"type": "date"})}
+        widgets = {
+            "ends_at": forms.DateInput(attrs={"type": "date"}),
+            "cover_image": forms.FileInput(attrs={"class": "input file-input", "accept": "image/*"}),
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if "category" in self.fields:
             self.fields["category"].empty_label = "Выберите категорию"
             self.fields["category"].queryset = AmanatCategory.objects.order_by("sort_order", "name")
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.data.get("cover_image-clear") and not self.cleaned_data.get("cover_image"):
+            if instance.cover_image:
+                instance.cover_image.delete(save=False)
+            instance.cover_image = None
+        if commit:
+            instance.save()
+        return instance
 
 
 class AmanatCategoryForm(StyledModelForm):

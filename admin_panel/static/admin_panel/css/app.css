@@ -222,10 +222,28 @@ td small, .table-primary small { display: block; margin-top: 2px; color: var(--m
 .login-card h1 { margin: 0 0 6px; font-size: 25px; letter-spacing: -.03em; }
 .login-card > p { margin: 0 0 22px; color: var(--muted); }
 .login-card form { display: grid; gap: 14px; }
-.login-shell { width: min(400px,100%); }
-.login-copy { color: var(--muted); }
-.brand--login { margin-bottom: 24px; }
 .form-alert { padding: 10px 12px; color: var(--red); background: var(--red-soft); border-radius: var(--radius); }
+
+/* ── Image upload widget ────────────────────────────────────────── */
+.image-upload-widget { display: flex; gap: 16px; align-items: flex-start; padding: 14px 16px; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.image-upload-preview { display: flex; flex-direction: column; gap: 8px; width: 140px; flex-shrink: 0; }
+.image-upload-preview img { width: 100%; height: 95px; object-fit: cover; border-radius: var(--radius); border: 1px solid var(--border); background: white; }
+.image-upload-clear { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--red); cursor: pointer; }
+.image-upload-control { flex: 1; min-width: 0; display: grid; gap: 6px; }
+.image-upload-control label { font-size: 12px; font-weight: 650; }
+.file-input { padding: 6px 10px; background: white; font-size: 13px; }
+
+/* ── Compact donations scrollable list ───────────────────────────── */
+.donations-card { overflow: hidden; }
+.donations-scroll-list { max-height: 380px; overflow-y: auto; display: grid; gap: 1px; background: var(--border); overscroll-behavior: contain; }
+.donation-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; background: white; transition: background .15s ease; }
+.donation-row:hover { background: #fafafa; }
+.donation-row__left { min-width: 0; display: grid; gap: 2px; }
+.donation-row__name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.donation-row__meta { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.donation-row__comment { font-size: 11px; color: #525252; font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.donation-row__right { text-align: right; flex-shrink: 0; display: grid; gap: 3px; justify-items: end; }
+.donation-row__amount { font-size: 13px; font-weight: 700; color: var(--text); }
 
 @media (max-width: 1100px) {
   .topbar { grid-template-columns: 1fr minmax(260px,400px); }

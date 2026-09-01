@@ -1,13 +1,64 @@
-<fieldset class="form-section"><legend>Основное</legend><div class="form-grid">
-  {% include "admin_panel/components/form_field.html" with field=form.category %}{% include "admin_panel/components/form_field.html" with field=form.cover_image %}
-  {% include "admin_panel/components/form_field.html" with field=form.title %}{% include "admin_panel/components/form_field.html" with field=form.short_title %}
-  {% include "admin_panel/components/form_field.html" with field=form.description wide=True %}{% include "admin_panel/components/form_field.html" with field=form.goal wide=True %}
-</div></fieldset>
-<fieldset class="form-section"><legend>Суммы</legend><div class="form-grid">
-  {% include "admin_panel/components/form_field.html" with field=form.needed_amount %}{% include "admin_panel/components/form_field.html" with field=form.collected_amount_manual %}
-  {% include "admin_panel/components/form_field.html" with field=form.safa_amount %}{% include "admin_panel/components/form_field.html" with field=form.helpers_count_manual %}
-</div></fieldset>
-<fieldset class="form-section"><legend>Публикация</legend><div class="form-grid">
-  {% include "admin_panel/components/form_field.html" with field=form.ends_at %}{% include "admin_panel/components/form_field.html" with field=form.status %}
-  {% include "admin_panel/components/form_field.html" with field=form.is_featured %}{% include "admin_panel/components/form_field.html" with field=form.sort_order %}
-</div></fieldset>
+<fieldset class="form-section">
+  <legend>Основная информация</legend>
+  <div class="form-grid">
+    {% include "admin_panel/components/form_field.html" with field=form.category %}
+    {% include "admin_panel/components/form_field.html" with field=form.status %}
+    {% include "admin_panel/components/form_field.html" with field=form.title %}
+    {% include "admin_panel/components/form_field.html" with field=form.short_title %}
+    {% include "admin_panel/components/form_field.html" with field=form.goal wide=True %}
+    {% include "admin_panel/components/form_field.html" with field=form.description wide=True %}
+  </div>
+</fieldset>
+
+<fieldset class="form-section">
+  <legend>Обложка сбора</legend>
+  <div class="form-field span-2">
+    <div class="image-upload-widget">
+      {% if form.instance.pk and form.instance.cover_image %}
+      <div class="image-upload-preview">
+        <a href="{{ form.instance.cover_image.url }}" target="_blank" rel="noopener">
+          <img src="{{ form.instance.cover_image.url }}" alt="Обложка сбора">
+        </a>
+        <label class="image-upload-clear">
+          <input type="checkbox" name="cover_image-clear" id="cover_image-clear_id">
+          <span>Удалить фото</span>
+        </label>
+      </div>
+      {% endif %}
+      <div class="image-upload-control">
+        <label class="form-field-label" for="{{ form.cover_image.id_for_label }}">
+          {% if form.instance.pk and form.instance.cover_image %}Заменить обложку (выберите новый файл){% else %}Загрузить обложку (фото сбора){% endif %}
+        </label>
+        {{ form.cover_image }}
+        {{ form.cover_image.errors }}
+        <span class="helptext">Рекомендуемый формат: JPG, PNG или WebP (до 5 МБ). Отображается в карточке сбора в мобильном приложении.</span>
+      </div>
+    </div>
+  </div>
+</fieldset>
+
+<fieldset class="form-section">
+  <legend>Суммы и прогресс</legend>
+  <div class="form-grid">
+    {% include "admin_panel/components/form_field.html" with field=form.needed_amount %}
+    {% include "admin_panel/components/form_field.html" with field=form.collected_amount_manual %}
+    {% include "admin_panel/components/form_field.html" with field=form.safa_amount %}
+    {% include "admin_panel/components/form_field.html" with field=form.helpers_count_manual %}
+  </div>
+</fieldset>
+
+<fieldset class="form-section">
+  <legend>Публикация</legend>
+  <div class="form-grid">
+    {% include "admin_panel/components/form_field.html" with field=form.ends_at %}
+    {% include "admin_panel/components/form_field.html" with field=form.sort_order %}
+    <div class="form-field span-2">
+      <label class="checkbox-label" style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; padding:6px 0;">
+        {{ form.is_featured }}
+        <span>{{ form.is_featured.label }}</span>
+      </label>
+      {% if form.is_featured.help_text %}<span class="helptext" style="display:block; margin-left:24px;">{{ form.is_featured.help_text }}</span>{% endif %}
+      {{ form.is_featured.errors }}
+    </div>
+  </div>
+</fieldset>

@@ -1,10 +1,128 @@
 {% extends "admin_panel/base.html" %}{% load panel_tags %}
 {% block content %}
 <nav class="breadcrumbs"><a href="{% url 'admin_panel:amanat' %}">Amanat</a><span>/</span><a href="{% url 'admin_panel:amanat_category_edit' campaign.category_id %}">{{ campaign.category.name }}</a><span>/</span><span>{{ campaign.title }}</span></nav>
-<header class="page-header"><div><h1>{{ campaign.title }}</h1><p><span class="badge badge--neutral" style="font-weight:600; margin-right:6px;">{{ campaign.category.name }}</span>{% if campaign.short_title %}{{ campaign.short_title }}{% endif %}</p></div>{% status_badge campaign.status campaign.get_status_display %}</header>
+<header class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
+  <div>
+    <div class="title-row" style="display:flex; align-items:center; gap:10px;">
+      <h1 style="margin:0;">{{ campaign.title }}</h1>
+      {% status_badge campaign.status campaign.get_status_display %}
+      {% if campaign.is_featured %}<span class="badge badge--warning">★ Главный сбор</span>{% endif %}
+    </div>
+    <p style="margin:6px 0 0; color:var(--muted); font-size:13px; display:flex; align-items:center; gap:8px;">
+      <a href="{% url 'admin_panel:amanat_category_edit' campaign.category_id %}" class="badge badge--neutral" style="text-decoration:none;">📁 {{ campaign.category.name }}</a>
+      {% if campaign.short_title %}<span>· {{ campaign.short_title }}</span>{% endif %}
+    </p>
+  </div>
+</header>
 <div class="detail-grid">
-  <form class="card" method="post" enctype="multipart/form-data">{% csrf_token %}<div class="card-header"><div><h2>Настройки сбора</h2><p>Изменения сохраняются в текущей кампании.</p></div></div><div class="card-body">{% include "admin_panel/components/campaign_form_fields.html" %}<div class="action-row" style="margin-top:18px"><button class="btn btn-primary" type="submit">Сохранить</button></div></div></form>
-  <aside class="stack"><section class="card"><div class="card-header"><h2>Результат</h2></div><div class="card-body"><dl class="definition-list"><div><dt>Категория</dt><dd><a href="{% url 'admin_panel:amanat_category_edit' campaign.category_id %}"><strong>{{ campaign.category.name }}</strong> →</a></dd></div><div><dt>Нужно собрать</dt><dd>{{ campaign.needed_amount|money }}</dd></div><div><dt>Собрано всего</dt><dd>{{ campaign.collected_amount|money }}</dd></div><div><dt>Оплаченные пожертвования</dt><dd>{{ campaign.paid_donations_amount|money }}</dd></div><div><dt>Помощников</dt><dd>{{ campaign.helpers_count }}</dd></div><div><dt>Завершение</dt><dd>{{ campaign.ends_at|date:'d.m.Y'|default:'—' }}</dd></div></dl></div></section>
-  <section class="card"><div class="card-header"><h2>Последние пожертвования</h2></div>{% if donations %}<div class="table-scroll"><table><thead><tr><th>Пользователь</th><th>Сумма</th><th>Статус</th><th>Анонимно</th><th>Дата</th></tr></thead><tbody>{% for donation in donations %}<tr><td>{% if donation.donor %}{{ donation.donor.first_name|default:donation.donor.phone_number }}{% else %}{{ donation.donor_label|default:'Без пользователя' }}{% endif %}</td><td>{{ donation.amount|money }}</td><td>{% status_badge donation.status donation.get_status_display %}</td><td>{{ donation.is_anonymous|yesno:'Да,Нет' }}</td><td>{{ donation.created_at|panel_datetime }}</td></tr>{% endfor %}</tbody></table></div>{% else %}{% include "admin_panel/components/empty_state.html" with empty_title="Пожертвований нет" empty_text="Пожертвования появятся здесь." %}{% endif %}</section></aside>
+  <form class="card" method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="card-header">
+      <div>
+        <h2>Настройки сбора</h2>
+        <p>Параметры сбора, цели и правила публикации.</p>
+      </div>
+    </div>
+    <div class="card-body">
+      {% include "admin_panel/components/campaign_form_fields.html" %}
+      <div class="action-row" style="margin-top:24px; padding-top:16px; border-top:1px solid var(--border); display:flex; justify-content:flex-end;">
+        <button class="btn btn-primary" type="submit">Сохранить изменения</button>
+      </div>
+    </div>
+  </form>
+
+  <aside class="stack">
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>Прогресс сбора</h2>
+          <p>Собрано <strong>{{ campaign.collected_amount|money }}</strong> из {{ campaign.needed_amount|money }}</p>
+        </div>
+        <span class="badge badge--info" style="font-weight:700;">
+          {% if campaign.needed_amount > 0 %}{% widthratio campaign.collected_amount campaign.needed_amount 100 %}%{% else %}0%{% endif %}
+        </span>
+      </div>
+      <div class="card-body">
+        <div class="progress" style="width:100%; height:8px; margin:0 0 18px; background:#e5e7eb; border-radius:999px; overflow:hidden;">
+          <span style="display:block; height:100%; width:{% if campaign.needed_amount > 0 %}{% widthratio campaign.collected_amount campaign.needed_amount 100 %}%{% else %}0%{% endif %}; max-width:100%; background:var(--blue); border-radius:inherit;"></span>
+        </div>
+        <dl class="definition-list">
+          <div>
+            <dt>Категория</dt>
+            <dd><a href="{% url 'admin_panel:amanat_category_edit' campaign.category_id %}" style="color:var(--blue); font-weight:600;">{{ campaign.category.name }} →</a></dd>
+          </div>
+          <div>
+            <dt>Нужно собрать</dt>
+            <dd>{{ campaign.needed_amount|money }}</dd>
+          </div>
+          <div>
+            <dt>Собрано всего</dt>
+            <dd><strong style="color:var(--green);">{{ campaign.collected_amount|money }}</strong></dd>
+          </div>
+          <div>
+            <dt>Через приложение</dt>
+            <dd>{{ campaign.paid_donations_amount|money }}</dd>
+          </div>
+          <div>
+            <dt>Собрано вручную</dt>
+            <dd>{{ campaign.collected_amount_manual|money }}</dd>
+          </div>
+          <div>
+            <dt>Помощников</dt>
+            <dd>{{ campaign.helpers_count }} чел.</dd>
+          </div>
+          <div>
+            <dt>Завершение</dt>
+            <dd>{{ campaign.ends_at|date:'d.m.Y'|default:'Бессрочно' }}</dd>
+          </div>
+          <div>
+            <dt>Главный сбор</dt>
+            <dd>{{ campaign.is_featured|yesno:'Да,Нет' }}</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="card donations-card">
+      <div class="card-header" style="padding:14px 18px;">
+        <div>
+          <h2 style="font-size:15px; margin:0;">Последние пожертвования</h2>
+          <p style="margin:2px 0 0; font-size:12px; color:var(--muted);">Компактный список с прокруткой.</p>
+        </div>
+        {% if donations %}<span class="badge badge--neutral">{{ donations|length }}</span>{% endif %}
+      </div>
+      {% if donations %}
+      <div class="donations-scroll-list">
+        {% for donation in donations %}
+        <div class="donation-row">
+          <div class="donation-row__left">
+            <span class="donation-row__name">
+              {% if donation.is_anonymous %}
+                <span class="muted">Анонимно</span>
+              {% elif donation.donor %}
+                {{ donation.donor.first_name|default:donation.donor.phone_number }}
+              {% else %}
+                {{ donation.donor_label|default:'Пользователь' }}
+              {% endif %}
+            </span>
+            <div class="donation-row__meta">
+              <span>{{ donation.created_at|date:"d.m.Y, H:i" }}</span>
+              {% if donation.comment %}<span class="donation-row__comment" title="{{ donation.comment }}">«{{ donation.comment }}»</span>{% endif %}
+            </div>
+          </div>
+          <div class="donation-row__right">
+            <span class="donation-row__amount">{{ donation.amount|money }}</span>
+            {% status_badge donation.status donation.get_status_display %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div style="padding:20px;">
+        {% include "admin_panel/components/empty_state.html" with empty_title="Пожертвований нет" empty_text="Новые пожертвования отобразятся здесь." %}
+      </div>
+      {% endif %}
+    </section>
+  </aside>
 </div>
 {% endblock %}
