@@ -1,2 +1,106 @@
 {% extends "admin_panel/base.html" %}
-{% block content %}<header class="page-header"><div><p class="eyebrow">Система</p><h1>Настройки</h1><p>Безопасный обзор конфигурации без раскрытия секретов.</p></div></header><div class="detail-grid"><section class="card"><div class="card-header"><h2>Окружение</h2></div><div class="card-body"><dl class="definition-list"><div><dt>Режим</dt><dd>{{ system.environment }}</dd></div><div><dt>Часовой пояс</dt><dd>{{ system.timezone }}</dd></div></dl></div></section><section class="card"><div class="card-header"><h2>Интеграции</h2></div><div class="card-body stack"><div>Finik <span class="badge {% if system.finik %}badge--active{% endif %}">{% if system.finik %}настроен{% else %}не настроен{% endif %}</span></div><div>Firebase Android <span class="badge {% if system.firebase_android %}badge--active{% endif %}">{% if system.firebase_android %}настроен{% else %}не настроен{% endif %}</span></div><div>Firebase iOS <span class="badge {% if system.firebase_ios %}badge--active{% endif %}">{% if system.firebase_ios %}настроен{% else %}не настроен{% endif %}</span></div></div></section></div>{% endblock %}
+{% block content %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Система</p>
+    <h1>Настройки</h1>
+    <p>Безопасный обзор конфигурации, безопасность и управление доступом.</p>
+  </div>
+</header>
+
+<div class="detail-grid">
+  <div class="stack">
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>Безопасность и учётная запись</h2>
+          <p>Управление вашим паролем и сотрудниками.</p>
+        </div>
+      </div>
+      <div class="card-body">
+        <dl class="definition-list" style="margin-bottom:18px;">
+          <div>
+            <dt>Ваш телефон (логин)</dt>
+            <dd><code>{{ request.user.phone_number }}</code></dd>
+          </div>
+          <div>
+            <dt>Имя сотрудника</dt>
+            <dd>{{ request.user.first_name|default:'Не указано' }}</dd>
+          </div>
+          <div>
+            <dt>Роль</dt>
+            <dd>
+              {% if request.user.is_superuser %}
+                <span class="badge badge--violet">★ Суперпользователь</span>
+              {% else %}
+                <span class="badge badge--info">Администратор</span>
+              {% endif %}
+            </dd>
+          </div>
+          <div>
+            <dt>Статус</dt>
+            <dd><span class="badge badge--success"><span class="badge__dot"></span>Активен</span></dd>
+          </div>
+        </dl>
+        <div class="action-row" style="padding-top:14px; border-top:1px solid var(--border); display:flex; gap:10px;">
+          <a class="btn btn-primary" href="{% url 'admin_panel:password_change' %}">🔑 Сменить мой пароль</a>
+          <a class="btn btn-secondary" href="{% url 'admin_panel:admins' %}">👥 Управление администраторами</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>Окружение</h2>
+          <p>Параметры текущего сервера и среды выполнения.</p>
+        </div>
+      </div>
+      <div class="card-body">
+        <dl class="definition-list">
+          <div>
+            <dt>Режим</dt>
+            <dd>{{ system.environment }}</dd>
+          </div>
+          <div>
+            <dt>Часовой пояс</dt>
+            <dd>{{ system.timezone }}</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+  </div>
+
+  <aside class="stack">
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2>Интеграции</h2>
+          <p>Статус внешних сервисов.</p>
+        </div>
+      </div>
+      <div class="card-body stack">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border);">
+          <span>Finik (Эквайринг)</span>
+          <span class="badge {% if system.finik %}badge--success{% else %}badge--neutral{% endif %}">
+            {% if system.finik %}● настроен{% else %}не настроен{% endif %}
+          </span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border);">
+          <span>Firebase Android</span>
+          <span class="badge {% if system.firebase_android %}badge--success{% else %}badge--neutral{% endif %}">
+            {% if system.firebase_android %}● настроен{% else %}не настроен{% endif %}
+          </span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0;">
+          <span>Firebase iOS</span>
+          <span class="badge {% if system.firebase_ios %}badge--success{% else %}badge--neutral{% endif %}">
+            {% if system.firebase_ios %}● настроен{% else %}не настроен{% endif %}
+          </span>
+        </div>
+      </div>
+    </section>
+  </aside>
+</div>
+{% endblock %}
+

@@ -442,3 +442,120 @@ class PanelWorkflowTests(TestCase):
         category.refresh_from_db()
         self.assertEqual(category.name, "Срочная медицина")
         self.assertEqual(category.sort_order, 2)
+
+    def test_admin_management_crud_and_validation(self):
+        # 1. Access admin list
+        list_response = self.client.get(reverse("admin_panel:admins"))
+        self.assertEqual(list_response.status_code, 200)
+        self.assertContains(list_response, "Администраторы")
+        self.assertContains(list_response, self.staff.phone_number)
+
+        # 2. Create new admin
+        create_response = self.client.post(
+            reverse("admin_panel:admin_create"),
+            {
+                "phone_number": "996700112233",
+                "first_name": "Новый Менеджер",
+                "city": "Бишкек",
+                "password": "strong-admin-pass",
+                "password_confirm": "strong-admin-pass",
+                "is_superuser": "on",
+                "is_active": "on",
+            },
+        )
+        self.assertRedirects(create_response, reverse("admin_panel:admins"))
+        new_admin = User.objects.get(phone_number="996700112233")
+        self.assertTrue(new_admin.is_staff)
+        self.assertTrue(new_admin.is_superuser)
+        self.assertTrue(new_admin.is_verify)
+        self.assertTrue(new_admin.check_password("strong-admin-pass"))
+
+        # 3. New admin can log in
+        login_client = Client()
+        logged_in = login_client.login(username="996700112233", password="strong-admin-pass")
+        self.assertTrue(logged_in)
+        dashboard_response = login_client.get(reverse("admin_panel:dashboard"))
+        self.assertEqual(dashboard_response.status_code, 200)
+
+        # 4. Edit admin
+        edit_response = self.client.post(
+            reverse("admin_panel:admin_edit", args=(new_admin.pk,)),
+            {
+                "phone_number": "996700112233",
+                "first_name": "Старший Менеджер",
+                "city": "Ош",
+                "new_password": "updated-admin-pass",
+                "new_password_confirm": "updated-admin-pass",
+                "is_superuser": "on",
+                "is_active": "on",
+            },
+        )
+        self.assertRedirects(edit_response, reverse("admin_panel:admins"))
+        new_admin.refresh_from_db()
+        self.assertEqual(new_admin.first_name, "Старший Менеджер")
+        self.assertEqual(new_admin.city, "Ош")
+        self.assertTrue(new_admin.check_password("updated-admin-pass"))
+
+        # 5. Prevent self-deactivation
+        self_deactivate_response = self.client.post(
+            reverse("admin_panel:admin_edit", args=(self.staff.pk,)),
+            {
+                "phone_number": self.staff.phone_number,
+                "first_name": self.staff.first_name,
+                "is_active": "",
+            },
+        )
+        self.assertEqual(self_deactivate_response.status_code, 200)
+        self.assertContains(
+            self_deactivate_response,
+            "Вы не можете заблокировать свою собственную учётную запись.",
+        )
+
+    def test_admin_password_change_workflow(self):
+        # 1. Invalid old password
+        bad_old_response = self.client.post(
+            reverse("admin_panel:password_change"),
+            {
+                "old_password": "wrong-password",
+                "new_password": "new-strong-pass",
+                "new_password_confirm": "new-strong-pass",
+            },
+        )
+        self.assertEqual(bad_old_response.status_code, 200)
+        self.assertContains(
+            bad_old_response,
+            "Текущий пароль указан неверно.",
+        )
+
+        # 2. Mismatched new passwords
+        mismatch_response = self.client.post(
+            reverse("admin_panel:password_change"),
+            {
+                "old_password": "test-password",
+                "new_password": "new-strong-pass-1",
+                "new_password_confirm": "new-strong-pass-2",
+            },
+        )
+        self.assertEqual(mismatch_response.status_code, 200)
+        self.assertContains(
+            mismatch_response,
+            "Новые пароли не совпадают.",
+        )
+
+        # 3. Successful password change
+        good_response = self.client.post(
+            reverse("admin_panel:password_change"),
+            {
+                "old_password": "test-password",
+                "new_password": "super-new-password",
+                "new_password_confirm": "super-new-password",
+            },
+        )
+        self.assertRedirects(good_response, reverse("admin_panel:password_change"))
+        self.staff.refresh_from_db()
+        self.assertTrue(self.staff.check_password("super-new-password"))
+
+        # 4. Session remains active after password change
+        after_response = self.client.get(reverse("admin_panel:dashboard"))
+        self.assertEqual(after_response.status_code, 200)
+

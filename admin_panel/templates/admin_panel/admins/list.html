@@ -1,0 +1,99 @@
+{% extends "admin_panel/base.html" %}{% load panel_tags %}
+{% block content %}
+<nav class="breadcrumbs"><span>Система</span><span>/</span><span>Администраторы</span></nav>
+<header class="page-header">
+  <div>
+    <h1>Администраторы</h1>
+    <p>Сотрудники с доступом в панель управления Safa (всего: {{ total_admins }}).</p>
+  </div>
+  <div class="header-actions">
+    <a class="btn btn-primary" href="{% url 'admin_panel:admin_create' %}">+ Добавить администратора</a>
+  </div>
+</header>
+
+<form method="get" class="filter-bar">
+  <div class="search-input">
+    <span>🔍</span>
+    <input class="input" type="search" name="q" value="{{ query }}" placeholder="Поиск по имени или телефону…">
+  </div>
+  <select class="select" name="status" onchange="this.form.submit()">
+    <option value="">Все статусы</option>
+    <option value="active" {% if selected_status == 'active' %}selected{% endif %}>Только активные</option>
+    <option value="inactive" {% if selected_status == 'inactive' %}selected{% endif %}>Заблокированные</option>
+  </select>
+  <button class="btn btn-secondary" type="submit">Найти</button>
+  {% if query or selected_status %}
+    <a class="btn btn-ghost" href="{% url 'admin_panel:admins' %}">Сбросить</a>
+  {% endif %}
+</form>
+
+<div class="card table-card">
+  {% if page.object_list %}
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Администратор</th>
+          <th>Телефон (Логин)</th>
+          <th>Роль</th>
+          <th>Город</th>
+          <th>Статус</th>
+          <th>Добавлен</th>
+          <th style="text-align:right;">Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for adm in page.object_list %}
+        <tr>
+          <td>
+            <div class="person-cell">
+              <span class="avatar avatar--sm">{{ adm.first_name|default:adm.phone_number|slice:':1'|upper }}</span>
+              <div>
+                <strong>{{ adm.first_name|default:'Без имени' }}</strong>
+                {% if adm.pk == request.user.pk %}<small style="color:var(--blue); font-weight:600;">(Это вы)</small>{% endif %}
+              </div>
+            </div>
+          </td>
+          <td><code>{{ adm.phone_number }}</code></td>
+          <td>
+            {% if adm.is_superuser %}
+              <span class="badge badge--violet">★ Суперпользователь</span>
+            {% else %}
+              <span class="badge badge--info">Администратор</span>
+            {% endif %}
+          </td>
+          <td>{{ adm.city|default:'—' }}</td>
+          <td>
+            {% if adm.is_active %}
+              <span class="badge badge--success"><span class="badge__dot"></span>Активен</span>
+            {% else %}
+              <span class="badge badge--danger"><span class="badge__dot"></span>Заблокирован</span>
+            {% endif %}
+          </td>
+          <td>{{ adm.created_at|date:"d.m.Y, H:i" }}</td>
+          <td style="text-align:right;">
+            <a class="btn btn-secondary btn-sm" href="{% url 'admin_panel:admin_edit' adm.pk %}">Изменить</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page.has_other_pages %}
+    <div class="pagination">
+      <span>Страница {{ page.number }} из {{ page.paginator.num_pages }}</span>
+      <div class="pagination__actions">
+        {% if page.has_previous %}
+          <a class="btn btn-secondary btn-sm" href="?page={{ page.previous_page_number }}{% if query %}&q={{ query }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}">Назад</a>
+        {% endif %}
+        {% if page.has_next %}
+          <a class="btn btn-secondary btn-sm" href="?page={{ page.next_page_number }}{% if query %}&q={{ query }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}">Вперёд</a>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+  {% else %}
+    {% include "admin_panel/components/empty_state.html" with empty_title="Администраторы не найдены" empty_text="Попробуйте изменить параметры поиска или добавьте нового сотрудника." %}
+  {% endif %}
+</div>
+{% endblock %}

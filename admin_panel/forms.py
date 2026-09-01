@@ -407,3 +407,157 @@ ShipmentStopFormSet = inlineformset_factory(
     can_delete=True,
     can_order=True,
 )
+
+
+class AdminCreateForm(StyledModelForm):
+    password = forms.CharField(
+        label="Пароль",
+        widget=forms.PasswordInput(attrs={"class": "input", "placeholder": "Минимум 6 символов"}),
+        min_length=6,
+        help_text="Минимум 6 символов для входа в панель.",
+    )
+    password_confirm = forms.CharField(
+        label="Подтверждение пароля",
+        widget=forms.PasswordInput(attrs={"class": "input", "placeholder": "Повторите пароль"}),
+        min_length=6,
+    )
+
+    class Meta:
+        model = User
+        fields = ("phone_number", "first_name", "city", "is_superuser", "is_active")
+        labels = {
+            "phone_number": "Номер телефона (логин)",
+            "first_name": "Имя сотрудника",
+            "city": "Город",
+            "is_superuser": "Суперпользователь (полный доступ)",
+            "is_active": "Доступ активен",
+        }
+        help_texts = {
+            "phone_number": "В формате 996XXXXXXXXX (12 цифр). Будет использоваться для входа.",
+            "is_superuser": "Даёт неограниченные административные привилегии.",
+        }
+
+    def clean_phone_number(self):
+        phone = self.cleaned_data.get("phone_number", "").strip()
+        if phone.startswith("+"):
+            phone = phone[1:]
+        if not phone.startswith("996"):
+            if len(phone) == 9 and phone.startswith(("5", "7", "9", "2", "3")):
+                phone = "996" + phone
+        return phone
+
+    def clean(self):
+        cleaned = super().clean()
+        password = cleaned.get("password")
+        password_confirm = cleaned.get("password_confirm")
+        if password and password_confirm and password != password_confirm:
+            self.add_error("password_confirm", "Пароли не совпадают.")
+        return cleaned
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.is_staff = True
+        user.is_verify = True
+        user.role = User.Roles.CLIENT
+        user.set_password(self.cleaned_data["password"])
+        if commit:
+            user.save()
+            from apps.users.models import UserProfile
+
+            UserProfile.objects.get_or_create(user=user)
+        return user
+
+
+class AdminEditForm(StyledModelForm):
+    new_password = forms.CharField(
+        label="Новый пароль (необязательно)",
+        required=False,
+        widget=forms.PasswordInput(attrs={"class": "input", "placeholder": "Оставьте пустым, если не меняется"}),
+        min_length=6,
+        help_text="Заполняйте только если хотите изменить пароль этого администратора.",
+    )
+    new_password_confirm = forms.CharField(
+        label="Подтверждение нового пароля",
+        required=False,
+        widget=forms.PasswordInput(attrs={"class": "input", "placeholder": "Повторите новый пароль"}),
+        min_length=6,
+    )
+
+    class Meta:
+        model = User
+        fields = ("phone_number", "first_name", "city", "is_superuser", "is_active")
+        labels = {
+            "phone_number": "Номер телефона (логин)",
+            "first_name": "Имя сотрудника",
+            "city": "Город",
+            "is_superuser": "Суперпользователь (полный доступ)",
+            "is_active": "Доступ активен",
+        }
+
+    def clean_phone_number(self):
+        phone = self.cleaned_data.get("phone_number", "").strip()
+        if phone.startswith("+"):
+            phone = phone[1:]
+        if not phone.startswith("996"):
+            if len(phone) == 9 and phone.startswith(("5", "7", "9", "2", "3")):
+                phone = "996" + phone
+        return phone
+
+    def clean(self):
+        cleaned = super().clean()
+        new_password = cleaned.get("new_password")
+        new_password_confirm = cleaned.get("new_password_confirm")
+        if new_password:
+            if new_password != new_password_confirm:
+                self.add_error("new_password_confirm", "Новые пароли не совпадают.")
+        return cleaned
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.is_staff = True
+        new_password = self.cleaned_data.get("new_password")
+        if new_password:
+            user.set_password(new_password)
+        if commit:
+            user.save()
+        return user
+
+
+class AdminPasswordChangeForm(forms.Form):
+    old_password = forms.CharField(
+        label="Текущий пароль",
+        widget=forms.PasswordInput(attrs={"class": "input", "placeholder": "Введите текущий пароль", "autofocus": True}),
+    )
+    new_password = forms.CharField(
+        label="Новый пароль",
+        widget=forms.PasswordInput(attrs={"class": "input", "placeholder": "Минимум 6 символов"}),
+        min_length=6,
+        help_text="Минимум 6 символов.",
+    )
+    new_password_confirm = forms.CharField(
+        label="Подтвердите новый пароль",
+        widget=forms.PasswordInput(attrs={"class": "input", "placeholder": "Повторите новый пароль"}),
+        min_length=6,
+    )
+
+    def __init__(self, user, *args, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+
+    def clean_old_password(self):
+        old_password = self.cleaned_data.get("old_password")
+        if not self.user.check_password(old_password):
+            raise forms.ValidationError("Текущий пароль указан неверно.")
+        return old_password
+
+    def clean(self):
+        cleaned = super().clean()
+        old_password = cleaned.get("old_password")
+        new_password = cleaned.get("new_password")
+        new_password_confirm = cleaned.get("new_password_confirm")
+        if new_password and new_password_confirm:
+            if new_password != new_password_confirm:
+                self.add_error("new_password_confirm", "Новые пароли не совпадают.")
+            elif old_password and old_password == new_password:
+                self.add_error("new_password", "Новый пароль должен отличаться от текущего.")
+        return cleaned

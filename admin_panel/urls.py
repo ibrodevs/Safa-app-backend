@@ -1,6 +1,6 @@
 from django.urls import path
 
-from admin_panel.views import amanat, auth, catalog, dashboard, finance, kyc, map, orders, privacy, search, settings, support, tariffs, users
+from admin_panel.views import admins, amanat, auth, catalog, dashboard, finance, kyc, map, orders, privacy, search, settings, support, tariffs, users
 
 app_name = "admin_panel"
 
@@ -23,6 +23,10 @@ urlpatterns = [
     path("couriers/new/", users.user_form, {"courier": True}, name="courier_create"),
     path("couriers/<int:pk>/", users.courier_detail, name="courier_detail"),
     path("couriers/<int:pk>/edit/", users.user_form, {"courier": True}, name="courier_edit"),
+    path("admins/", admins.admin_list, name="admins"),
+    path("admins/new/", admins.admin_create, name="admin_create"),
+    path("admins/<int:pk>/edit/", admins.admin_edit, name="admin_edit"),
+    path("profile/password/", admins.password_change, name="password_change"),
     path("kyc/", kyc.kyc_list, name="kyc_list"),
     path("kyc/<int:pk>/", kyc.kyc_detail, name="kyc_detail"),
     path("kyc/<int:pk>/document/<str:doc_type>/", kyc.kyc_document, name="kyc_document"),

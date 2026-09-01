@@ -1,0 +1,60 @@
+{% extends "admin_panel/base.html" %}
+{% block content %}
+<nav class="breadcrumbs">
+  <a href="{% url 'admin_panel:admins' %}">Администраторы</a>
+  <span>/</span>
+  <span>{% if admin_user %}{{ admin_user.first_name|default:admin_user.phone_number }}{% else %}Новый администратор{% endif %}</span>
+</nav>
+
+<header class="page-header">
+  <div>
+    <h1>{% if admin_user %}Редактировать администратора{% else %}Новый администратор{% endif %}</h1>
+    <p>{% if admin_user %}Управление учётной записью и правами сотрудника.{% else %}Добавление нового сотрудника с доступом в панель управления.{% endif %}</p>
+  </div>
+</header>
+
+<form method="post" class="card" style="max-width:760px;">
+  {% csrf_token %}
+  <div class="card-header">
+    <div>
+      <h2>Данные учётной записи</h2>
+      <p>Заполните телефон, имя, город и параметры доступа.</p>
+    </div>
+    {% if admin_user %}
+      <span class="badge {% if admin_user.is_active %}badge--success{% else %}badge--danger{% endif %}">
+        {% if admin_user.is_active %}● Активен{% else %}● Заблокирован{% endif %}
+      </span>
+    {% endif %}
+  </div>
+
+  <div class="card-body">
+    <div class="form-grid">
+      {% for field in form %}
+        {% if field.name == 'is_superuser' or field.name == 'is_active' %}
+          <div class="form-field span-2">
+            <label class="checkbox-label" style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:600; padding:4px 0;">
+              {{ field }}
+              <span>{{ field.label }}</span>
+            </label>
+            {% if field.help_text %}<span class="helptext" style="display:block; margin-left:24px;">{{ field.help_text }}</span>{% endif %}
+            {{ field.errors }}
+          </div>
+        {% else %}
+          {% include "admin_panel/components/form_field.html" with field=field wide=False %}
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    {% if admin_user and admin_user.pk == request.user.pk %}
+      <div style="margin-top:16px; padding:12px 14px; background:var(--blue-soft); border-radius:var(--radius); color:var(--blue); font-size:12px;">
+        💡 Вы редактируете собственную учётную запись. Чтобы изменить свой пароль, воспользуйтесь страницей <a href="{% url 'admin_panel:password_change' %}" style="font-weight:600; text-decoration:underline;">Смена пароля</a>.
+      </div>
+    {% endif %}
+
+    <div class="action-row" style="margin-top:24px; padding-top:16px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:12px;">
+      <a class="btn btn-secondary" href="{% url 'admin_panel:admins' %}">Отмена</a>
+      <button class="btn btn-primary" type="submit">{% if admin_user %}Сохранить изменения{% else %}Создать администратора{% endif %}</button>
+    </div>
+  </div>
+</form>
+{% endblock %}
