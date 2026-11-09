@@ -96,7 +96,13 @@ POSTGRES_PORT=5432
 
 CHANNEL_BACKEND=redis
 REDIS_URL=redis://redis:6379/0
+OTP_CACHE_REDIS_URL=redis://redis:6379/1
 ```
+
+The Django default cache uses `OTP_CACHE_REDIS_URL` when `CHANNEL_BACKEND=redis`.
+Keep OTP values and resend locks in shared Redis storage so requests handled by
+different Gunicorn workers verify the same code. Redis DB 1 keeps OTP state apart
+from Channels traffic on DB 0; keep both internal, never expose Redis publicly.
 
 Keep `DATABASE_URL` empty when using the individual PostgreSQL variables.
 If `DATABASE_URL` is set, Django intentionally gives it priority.
