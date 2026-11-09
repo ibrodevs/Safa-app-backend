@@ -165,6 +165,18 @@ if CHANNEL_BACKEND not in {"memory", "redis"}:
     raise RuntimeError("CHANNEL_BACKEND must be either 'memory' or 'redis'")
 
 if CHANNEL_BACKEND == "redis":
+    # OTP codes and resend locks must be shared by every Gunicorn/Uvicorn worker.
+    # Channels Redis is a separate concern and does not configure Django cache.
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": (
+                os.getenv("OTP_CACHE_REDIS_URL", "").strip()
+                or os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
+            ),
+            "KEY_PREFIX": "safa-otp",
+        }
+    }
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
